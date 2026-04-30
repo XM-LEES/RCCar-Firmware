@@ -1,0 +1,12 @@
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F/port.c
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
+wheeltec\port.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+wheeltec\port.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+wheeltec\port.o: ../Core/Inc/FreeRTOSConfig.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/projdefs.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/portable.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/deprecated_definitions.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F/portmacro.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/task.h
+wheeltec\port.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/list.h

@@ -1,3 +1,6 @@
 # Word document extraction leftovers.
 __docx_tmp/
 __docx_tmp.zip
+
+# Keil per-user GUI state.
+*.uvguix.*
