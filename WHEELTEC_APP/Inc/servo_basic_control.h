@@ -15,9 +15,6 @@ extern "C" {
 
 #include <stdint.h>
 
-#define SERVO_CAN_ID_0 0x1314U
-#define SERVO_CAN_ID_1 0x2568U
-
 #define SERVO_CMD_SET_SERVO_ANGLE 0x53U
 #define SERVO_CMD_SET_SERVO_PULSE 0x50U
 #define SERVO_CMD_SET_ESC_PULSE   0x45U

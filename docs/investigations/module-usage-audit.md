@@ -40,6 +40,7 @@ the current `main` branch.
 | Legacy robot runtime state | `robot_select_init.*` only populated a vendor-style model/geometry cache that no current control path read. | Replaced it with `app_runtime_state.*`, which keeps only voltage, debug level, and UART DMA busy/error counters. Vehicle/Orin defaults now live in `app_vehicle_config.h`. |
 | Dormant BSP source | RGBLight, software IIC, EEPROM, UserKey, UserLED, and RTOS debug source remained in the repo but were not part of the current Keil target or APP flow. | Deleted `bsp_RGBLight.*`, `bsp_siic.*`, `bsp_eeprom.*`, `bsp_key.*`, `bsp_led.*`, and `bsp_RTOSdebug.*`; restore from git history or vendor code only with a new APP owner. |
 | Dormant Core/IOC hardware setup | TIM9/TIM11 RGB PWM, PB6/PB7 software IIC, UserKey, UserLED, and ENKey were configured but unused by the current product APP. | Removed the unused init calls, GPIO/timer setup, macros, and IOC entries while keeping VersionBit board-version detection. |
+| Final current-target residue | TIM4 CH4/PD15, unused RC mode aliases, empty OLED page functions, extra TIM8 CH3/CH4 PWM starts, and old CAN debug naming remained after the aggressive cleanup. | Removed these final edge residues; current RC input is TIM4 CH1/CH2/CH3 and current PWM output is TIM8 CH1/CH2 only. |
 | Hall debug telemetry | The 32-byte debug frame was diagnostic-only and conflicted with the fixed ROS UART4 parser contract if mixed into the stream. | Deleted the debug frame path plus IRQ/Callback/accepted-edge counters; kept `g_hall_speed_state` for Keil Watch/OLED diagnosis. |
 
 ## Still Present But Not Primary Motion Control
@@ -67,4 +68,5 @@ the project contract.
 3. Recheck `WHEELTEC.ioc` before any future CubeMX regeneration; it is now
    aligned with this cleanup state and no longer configures USB Host,
    USB OTG FS, Bluetooth/App USART2, Ranger TIM2/TIM3, Ranger GPIO, CAN1/2,
-   USART3/RS485, TIM9/TIM11, RGB PWM, software IIC, UserKey, UserLED, or ENKey.
+   USART3/RS485, TIM9/TIM11, TIM4 CH4/PD15, RGB PWM, software IIC, UserKey,
+   UserLED, or ENKey.

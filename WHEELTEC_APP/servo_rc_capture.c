@@ -68,12 +68,6 @@ uint16_t ServoRC_GetGuardPulse(void)
 	return g_rc_guard.pulse_ticks;
 }
 
-uint16_t ServoRC_GetModePulse(void)
-{
-	/* Legacy alias kept for older debug scripts. */
-	return ServoRC_GetGuardPulse();
-}
-
 static uint32_t rc_capture_diff(uint32_t start, uint32_t end, uint32_t period)
 {
 	if (end >= start)
@@ -189,12 +183,6 @@ uint8_t ServoRC_HasSteeringFault(void)
 uint8_t ServoRC_HasGuardFault(void)
 {
 	return g_rc_guard.fault_active;
-}
-
-uint8_t ServoRC_IsModeActive(uint32_t timeout_ms)
-{
-	/* Legacy alias kept for older debug scripts. */
-	return ServoRC_IsGuardActive(timeout_ms);
 }
 
 void ServoRC_IC_CaptureCallback(TIM_HandleTypeDef *htim)

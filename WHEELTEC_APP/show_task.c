@@ -1,5 +1,4 @@
-﻿#include "show_task.h"
-#include "FreeRTOS.h"
+﻿#include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
 #include "bsp_oled.h"
@@ -9,14 +8,6 @@
 #include "servo_basic_control.h"
 
 static pOLEDInterface_t oled = &UserOLED;
-
-void oled_page_up(void)
-{
-}
-
-void oled_page_down(void)
-{
-}
 
 static void show_u4_zero_padded(uint8_t x, uint8_t y, uint32_t value)
 {

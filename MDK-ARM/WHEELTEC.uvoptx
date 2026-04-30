@@ -225,11 +225,6 @@
           <ItemText>tskIDLE_PRIORITY</ItemText>
         </Ww>
         <Ww>
-          <count>4</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>g_debug_servo_can_id </ItemText>
-        </Ww>
-        <Ww>
           <count>5</count>
           <WinNumber>1</WinNumber>
           <ItemText>g_debug_servo_cmd </ItemText>
@@ -280,24 +275,9 @@
           <ItemText>g_state.rc_takeover_pending</ItemText>
         </Ww>
         <Ww>
-          <count>15</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>ServoRC_GetModePulse()</ItemText>
-        </Ww>
-        <Ww>
           <count>16</count>
           <WinNumber>1</WinNumber>
           <ItemText>TIM8-&gt;CCR1</ItemText>
-        </Ww>
-        <Ww>
-          <count>17</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>RC_MODE_MID_CENTER_US</ItemText>
-        </Ww>
-        <Ww>
-          <count>18</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>RC_MODE_MID_CENTER_US</ItemText>
         </Ww>
         <Ww>
           <count>19</count>
@@ -313,21 +293,6 @@
           <count>21</count>
           <WinNumber>1</WinNumber>
           <ItemText>g_rc_signal_timeout_ms </ItemText>
-        </Ww>
-        <Ww>
-          <count>22</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>ServoRC_GetModePulse()</ItemText>
-        </Ww>
-        <Ww>
-          <count>23</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>ServoRC_IsModeActive()</ItemText>
-        </Ww>
-        <Ww>
-          <count>24</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>g_rc_no_signal_force_autonomous </ItemText>
         </Ww>
         <Ww>
           <count>25</count>

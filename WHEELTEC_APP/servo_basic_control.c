@@ -57,7 +57,6 @@ static servo_basic_state_t g_state = {
 
 // Debug trigger variables (set from Keil Watch/Command).
 volatile uint32_t g_debug_servo_trigger = 0U;
-volatile uint32_t g_debug_servo_can_id = SERVO_CAN_ID_0;
 volatile uint32_t g_debug_servo_cmd = SERVO_CMD_SET_SERVO_ANGLE;
 volatile uint32_t g_debug_servo_value = 90U;
 
@@ -1257,7 +1256,6 @@ void ServoBasic_Task(void *param)
 			const uint32_t value = g_debug_servo_value;
 
 			g_debug_servo_trigger = 0U;
-			(void)g_debug_servo_can_id;
 			servo_basic_apply_debug_command(cmd, value);
 		}
 

@@ -32,7 +32,7 @@
 - 引脚：
   - `PC6 -> TIM8_CH1`：ESC PWM
   - `PC7 -> TIM8_CH2`：Servo PWM
-- `PC8/PC9` 当前不作为正式控制输出使用。
+- 只初始化和启动 `TIM8_CH1/CH2`；`PC8/PC9` 当前不作为控制输出。
 
 ### 4. 霍尔轮速反馈（阶段一）
 - 当前阶段新增双路霍尔轮速输入，仅用于替换 `ROS` 上行 `vx` 伪反馈，不参与 `ESC` 闭环控制。
@@ -187,11 +187,11 @@ Keil Watch 运行时参数为：
 - CAN 当前工程入口：`MX_CAN1_Init()` / `MX_CAN2_Init()`、CAN IRQ、HAL CAN 编译开关、Keil `can.c` / `stm32f4xx_hal_can.c` 编译项和 `WHEELTEC.ioc` CAN 配置已移除；当前清理版本同时删除 `Core/Src/can.c` / `Core/Inc/can.h`，未来需要 CAN 时从 git 历史或厂家参考代码恢复
 - USART3/RS485 当前入口：移除 `MX_USART3_UART_Init()`、USART3 RX DMA、USART3 IRQ、PB10/PB11 USART3 引脚和 `WHEELTEC.ioc` USART3 配置；当前上位机链路只走 `UART4`
 - 当前产品不用的 BSP 历史源码：删除 `bsp_RGBLight.*`、`bsp_siic.*`、`bsp_eeprom.*`、`bsp_key.*`、`bsp_RTOSdebug.*`、`bsp_led.*`，未来需要时从 git 历史或厂家参考代码恢复
-- 当前产品不用的 Core/IOC 硬件入口：移除 TIM9/TIM11 RGB PWM、PB6/PB7 software IIC、UserKey、UserLED 和 ENKey 配置；保留 VersionBit 硬件版本检测
+- 当前产品不用的 Core/IOC 硬件入口：移除 TIM9/TIM11 RGB PWM、TIM4_CH4/PD15、PB6/PB7 software IIC、UserKey、UserLED 和 ENKey 配置；保留 VersionBit 硬件版本检测
 - Hall 32 字节调试帧和 IRQ/Callback/有效边沿调试计数：删除串口混发风险，仅保留 `g_hall_speed_state`
-- `WHEELTEC.ioc` 已同步移除 USB Host、USB OTG FS、Bluetooth/App USART2、USART2 TX DMA、Ranger TIM2/TIM3、超声波 GPIO、CAN1/CAN2、CAN NVIC、CAN 引脚、USART3/RS485、USART1 RX、TIM9/TIM11、RGB/IIC/按键/用户 LED/ENKey
+- `WHEELTEC.ioc` 已同步移除 USB Host、USB OTG FS、Bluetooth/App USART2、USART2 TX DMA、Ranger TIM2/TIM3、超声波 GPIO、CAN1/CAN2、CAN NVIC、CAN 引脚、USART3/RS485、USART1 RX、TIM9/TIM11、TIM4_CH4/PD15、RGB/IIC/按键/用户 LED/ENKey
 
 保留路径不变：
 - `UART4` ROS 下行控制与 24 字节上行基础帧
-- `TIM4 CH1/CH2/CH3` RC 接收器接管
+- `TIM4 CH1/CH2/CH3` RC 接收器接管；不再配置 `TIM4_CH4`
 - `PE13/PE14` 霍尔轮速反馈

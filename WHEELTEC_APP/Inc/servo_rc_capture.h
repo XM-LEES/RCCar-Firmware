@@ -20,16 +20,12 @@ void ServoRC_IC_CaptureCallback(TIM_HandleTypeDef *htim);
 uint16_t ServoRC_GetThrottlePulse(void);
 uint16_t ServoRC_GetSteeringPulse(void);
 uint16_t ServoRC_GetGuardPulse(void);
-/* Legacy alias kept for compatibility; returns the guard pulse. */
-uint16_t ServoRC_GetModePulse(void);
 uint8_t ServoRC_IsThrottleActive(uint32_t timeout_ms);
 uint8_t ServoRC_IsSteeringActive(uint32_t timeout_ms);
 uint8_t ServoRC_IsGuardActive(uint32_t timeout_ms);
 uint8_t ServoRC_HasThrottleFault(void);
 uint8_t ServoRC_HasSteeringFault(void);
 uint8_t ServoRC_HasGuardFault(void);
-/* Legacy alias kept for compatibility; returns the guard active state. */
-uint8_t ServoRC_IsModeActive(uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

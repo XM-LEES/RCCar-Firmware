@@ -140,7 +140,8 @@ Keil project:
   from source. Restore them from git history or vendor source only with a new
   APP owner.
 - Current-product Core/IOC boundary: TIM9/TIM11 RGB PWM, PB6/PB7 software IIC,
-  UserKey, UserLED, and ENKey setup are removed. VersionBit detection remains.
+  TIM4 CH4/PD15, UserKey, UserLED, and ENKey setup are removed. VersionBit
+  detection remains.
 - Hall debug telemetry: removed the 32-byte Hall debug frame and
   IRQ/Callback/accepted-edge debug counters so UART4 stays on the fixed ROS
   frame contract.
