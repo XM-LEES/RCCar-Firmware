@@ -5,6 +5,7 @@
 
 #include "servo_basic_control.h"
 #include <stddef.h>
+#include <string.h>
 #include <math.h>
 #include "FreeRTOS.h"
 #include "task.h"

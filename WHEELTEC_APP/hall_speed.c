@@ -16,13 +16,20 @@
 #define HALL_TIMEOUT_MAX_US          4000000U
 #define HALL_DIR_INVERT                  1U
 #define HALL_COUNT_USE_CHANNEL_B         1U
+#define HALL_STATE_A_HIGH             0x02U
+#define HALL_STATE_B_HIGH             0x01U
+#define HALL_STATE_00                 0x00U
+#define HALL_STATE_01                 0x01U
+#define HALL_STATE_10                 0x02U
+#define HALL_STATE_11                 0x03U
+#define HALL_SEQUENCE_NONE            0xFFU
 
 volatile hall_speed_state_t g_hall_speed_state = {0};
 
-static GPIO_TypeDef *hall_count_gpio_port = HallA_GPIO_Port;
 static uint16_t hall_count_pin = HallA_Pin;
-static GPIO_TypeDef *hall_dir_gpio_port = HallB_GPIO_Port;
-static uint16_t hall_dir_pin = HallB_Pin;
+static uint8_t hall_last_state = HALL_STATE_11;
+static uint8_t hall_sequence_origin = HALL_SEQUENCE_NONE;
+static uint8_t hall_state_initialized = 0U;
 
 static uint32_t hall_speed_get_time_us(void)
 {
@@ -49,9 +56,144 @@ static uint32_t hall_speed_get_timeout_us(uint32_t last_period_us)
 	return (uint32_t)timeout_us;
 }
 
-static uint8_t hall_speed_get_dir_active(void)
+static uint8_t hall_speed_read_state(void)
 {
-	return (HAL_GPIO_ReadPin(hall_dir_gpio_port, hall_dir_pin) == GPIO_PIN_RESET) ? 1U : 0U;
+	uint8_t state = 0U;
+
+	if (HAL_GPIO_ReadPin(HallA_GPIO_Port, HallA_Pin) != GPIO_PIN_RESET)
+	{
+		state |= HALL_STATE_A_HIGH;
+	}
+	if (HAL_GPIO_ReadPin(HallB_GPIO_Port, HallB_Pin) != GPIO_PIN_RESET)
+	{
+		state |= HALL_STATE_B_HIGH;
+	}
+	return state;
+}
+
+static uint8_t hall_speed_count_pin_is_low(uint8_t state)
+{
+	if (hall_count_pin == HallB_Pin)
+	{
+		return ((state & HALL_STATE_B_HIGH) == 0U) ? 1U : 0U;
+	}
+	return ((state & HALL_STATE_A_HIGH) == 0U) ? 1U : 0U;
+}
+
+static uint8_t hall_speed_changed_bit_count(uint8_t previous_state, uint8_t state)
+{
+	const uint8_t diff = (previous_state ^ state) & HALL_STATE_11;
+
+	if (diff == 0U)
+	{
+		return 0U;
+	}
+	if (diff == HALL_STATE_A_HIGH || diff == HALL_STATE_B_HIGH)
+	{
+		return 1U;
+	}
+	return 2U;
+}
+
+static int8_t hall_speed_apply_dir_invert(int8_t direction)
+{
+#if HALL_DIR_INVERT != 0U
+	return (int8_t)-direction;
+#else
+	return direction;
+#endif
+}
+
+static void hall_speed_accept_direction(int8_t direction)
+{
+	g_hall_speed_state.direction = hall_speed_apply_dir_invert(direction);
+}
+
+static void hall_speed_record_state_fault(void)
+{
+	g_hall_speed_state.fault_count++;
+	hall_sequence_origin = HALL_SEQUENCE_NONE;
+}
+
+static void hall_speed_observe_state(uint8_t state)
+{
+	if (hall_state_initialized == 0U)
+	{
+		hall_last_state = state;
+		hall_state_initialized = 1U;
+		return;
+	}
+
+	if (state == hall_last_state)
+	{
+		return;
+	}
+
+	if (hall_speed_changed_bit_count(hall_last_state, state) > 1U)
+	{
+		hall_speed_record_state_fault();
+		hall_last_state = state;
+		return;
+	}
+
+	switch (hall_last_state)
+	{
+	case HALL_STATE_01:
+		if (state == HALL_STATE_00)
+		{
+			hall_sequence_origin = HALL_STATE_01;
+		}
+		else if (state == HALL_STATE_11)
+		{
+			hall_sequence_origin = HALL_SEQUENCE_NONE;
+		}
+		break;
+
+	case HALL_STATE_10:
+		if (state == HALL_STATE_00)
+		{
+			hall_sequence_origin = HALL_STATE_10;
+		}
+		else if (state == HALL_STATE_11)
+		{
+			hall_sequence_origin = HALL_SEQUENCE_NONE;
+		}
+		break;
+
+	case HALL_STATE_00:
+		if (state == HALL_STATE_10)
+		{
+			if (hall_sequence_origin == HALL_STATE_01)
+			{
+				hall_speed_accept_direction(-1);
+			}
+			else if (hall_sequence_origin == HALL_STATE_10)
+			{
+				hall_speed_record_state_fault();
+			}
+			hall_sequence_origin = HALL_SEQUENCE_NONE;
+		}
+		else if (state == HALL_STATE_01)
+		{
+			if (hall_sequence_origin == HALL_STATE_10)
+			{
+				hall_speed_accept_direction(1);
+			}
+			else if (hall_sequence_origin == HALL_STATE_01)
+			{
+				hall_speed_record_state_fault();
+			}
+			hall_sequence_origin = HALL_SEQUENCE_NONE;
+		}
+		break;
+
+	case HALL_STATE_11:
+	default:
+		hall_sequence_origin = HALL_SEQUENCE_NONE;
+		break;
+	}
+
+	hall_last_state = state;
 }
 
 void HallSpeed_Init(void)
@@ -59,18 +201,15 @@ void HallSpeed_Init(void)
 	__disable_irq();
 	if (HALL_COUNT_USE_CHANNEL_B != 0U)
 	{
-		hall_count_gpio_port = HallB_GPIO_Port;
 		hall_count_pin = HallB_Pin;
-		hall_dir_gpio_port = HallA_GPIO_Port;
-		hall_dir_pin = HallA_Pin;
 	}
 	else
 	{
-		hall_count_gpio_port = HallA_GPIO_Port;
 		hall_count_pin = HallA_Pin;
-		hall_dir_gpio_port = HallB_GPIO_Port;
-		hall_dir_pin = HallB_Pin;
 	}
+	hall_last_state = hall_speed_read_state();
+	hall_sequence_origin = HALL_SEQUENCE_NONE;
+	hall_state_initialized = 1U;
 	g_hall_speed_state.event_count_total = 0;
 	g_hall_speed_state.last_event_us = 0U;
 	g_hall_speed_state.last_period_us = 0U;
@@ -86,9 +225,6 @@ void HallSpeed_Init(void)
 void HallSpeed_OnCountEvent(void)
 {
 	const uint32_t now_us = hall_speed_get_time_us();
-	const uint8_t dir_active = hall_speed_get_dir_active();
-	const uint8_t forward_active = (dir_active ^ HALL_DIR_INVERT) ? 0U : 1U;
-	const int8_t direction = (forward_active != 0U) ? 1 : -1;
 	const uint32_t last_event_us = g_hall_speed_state.last_event_us;
 
 	if (last_event_us != 0U)
@@ -104,9 +240,8 @@ void HallSpeed_OnCountEvent(void)
 	}
 
 	g_hall_speed_state.last_event_us = now_us;
-	g_hall_speed_state.direction = direction;
 	g_hall_speed_state.timeout_active = 0U;
-	g_hall_speed_state.event_count_total += direction;
+	g_hall_speed_state.event_count_total++;
 }
 
 hall_speed_state_t HallSpeed_GetState(void)
@@ -170,10 +305,23 @@ uint8_t HallSpeed_GetSignedSpeedMps(float *speed_mps)
 	return 1U;
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+void HallSpeed_OnGpioEdge(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == hall_count_pin)
+	const uint8_t state = hall_speed_read_state();
+
+	if (GPIO_Pin != HallA_Pin && GPIO_Pin != HallB_Pin)
+	{
+		return;
+	}
+
+	hall_speed_observe_state(state);
+	if (GPIO_Pin == hall_count_pin && hall_speed_count_pin_is_low(state) != 0U)
 	{
 		HallSpeed_OnCountEvent();
 	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	HallSpeed_OnGpioEdge(GPIO_Pin);
 }
