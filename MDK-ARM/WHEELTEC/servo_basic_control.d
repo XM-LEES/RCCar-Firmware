@@ -2,6 +2,7 @@ wheeltec\servo_basic_control.o: ..\WHEELTEC_APP\servo_basic_control.c
 wheeltec\servo_basic_control.o: ../WHEELTEC_APP/Inc/servo_basic_control.h
 wheeltec\servo_basic_control.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 wheeltec\servo_basic_control.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+wheeltec\servo_basic_control.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 wheeltec\servo_basic_control.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 wheeltec\servo_basic_control.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h
 wheeltec\servo_basic_control.o: ../Core/Inc/FreeRTOSConfig.h

@@ -57,9 +57,9 @@ I (C:\Keil_v5\ARM\ARMCC\include\stdio.h)(0x5F63877C)
 I (../WHEELTEC_BSP/Inc/bsp_oled.h)(0x69F0632A)
 I (../WHEELTEC_BSP/Inc/bsp_dwt.h)(0x69F0632A)
 I (../WHEELTEC_BSP/Inc/bsp_adc.h)(0x69F0632A)
-I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69F3776A)
+I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69FAA55D)
 I (../WHEELTEC_APP/Inc/servo_basic_control.h)(0x69F346A1)
-F (../Core/Src/gpio.c)(0x69F32F22)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\gpio.o --omf_browse wheeltec\gpio.crf --depend wheeltec\gpio.d)
+F (../Core/Src/gpio.c)(0x69FAA55D)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\gpio.o --omf_browse wheeltec\gpio.crf --depend wheeltec\gpio.d)
 I (../Core/Inc/gpio.h)(0x69F06329)
 I (../Core/Inc/main.h)(0x69F32F22)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x69F06329)
@@ -325,7 +325,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x69F06329)
 I (../Core/Inc/stm32f4xx_it.h)(0x69F32F22)
-I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69F3776A)
+I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69FAA55D)
 F (../Core/Src/stm32f4xx_hal_msp.c)(0x69F06329)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\stm32f4xx_hal_msp.o --omf_browse wheeltec\stm32f4xx_hal_msp.crf --depend wheeltec\stm32f4xx_hal_msp.d)
 I (../Core/Inc/main.h)(0x69F32F22)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x69F06329)
@@ -1474,7 +1474,7 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x69F06329)
 I (../WHEELTEC_BSP/Inc/bsp_oled.h)(0x69F0632A)
 I (../WHEELTEC_BSP/Inc/bsp_adc.h)(0x69F0632A)
-I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69F3776A)
+I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69FAA55D)
 I (../WHEELTEC_APP/Inc/app_runtime_state.h)(0x69F32F22)
 I (../WHEELTEC_APP/Inc/servo_basic_control.h)(0x69F346A1)
 F (..\WHEELTEC_APP\data_task.c)(0x69F32F22)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\data_task.o --omf_browse wheeltec\data_task.crf --depend wheeltec\data_task.d)
@@ -1657,10 +1657,11 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x69F06329)
-F (..\WHEELTEC_APP\servo_basic_control.c)(0x69F346A1)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\servo_basic_control.o --omf_browse wheeltec\servo_basic_control.crf --depend wheeltec\servo_basic_control.d)
+F (..\WHEELTEC_APP\servo_basic_control.c)(0x69FAD32B)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\servo_basic_control.o --omf_browse wheeltec\servo_basic_control.crf --depend wheeltec\servo_basic_control.d)
 I (../WHEELTEC_APP/Inc/servo_basic_control.h)(0x69F346A1)
 I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5F63877C)
 I (C:\Keil_v5\ARM\ARMCC\include\stddef.h)(0x5F63877C)
+I (C:\Keil_v5\ARM\ARMCC\include\string.h)(0x5F63878A)
 I (C:\Keil_v5\ARM\ARMCC\include\math.h)(0x5F63877C)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/FreeRTOS.h)(0x69F0632A)
 I (../Core/Inc/FreeRTOSConfig.h)(0x69F06329)
@@ -1671,8 +1672,8 @@ I (../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F/portmacro.h
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h)(0x69F0632A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/task.h)(0x69F0632A)
 I (../Middlewares/Third_Party/FreeRTOS/Source/include/list.h)(0x69F0632A)
-I (../WHEELTEC_APP/Inc/app_vehicle_config.h)(0x69F32F22)
-I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69F3776A)
+I (../WHEELTEC_APP/Inc/app_vehicle_config.h)(0x69FAD32B)
+I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69FAA55D)
 I (../WHEELTEC_APP/Inc/servo_rc_capture.h)(0x69F346A1)
 I (../Core/Inc/tim.h)(0x69F32F22)
 I (../Core/Inc/main.h)(0x69F32F22)
@@ -1744,8 +1745,8 @@ I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h)(0x69F06329)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h)(0x69F06329)
-F (..\WHEELTEC_APP\hall_speed.c)(0x69F3776A)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\hall_speed.o --omf_browse wheeltec\hall_speed.crf --depend wheeltec\hall_speed.d)
-I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69F3776A)
+F (..\WHEELTEC_APP\hall_speed.c)(0x69FAD32B)(--c99 -c --cpu Cortex-M4.fp.sp -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc -I ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -I ../Middlewares/Third_Party/FreeRTOS/Source/include -I ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 -I ../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F -I ../Drivers/CMSIS/Device/ST/STM32F4xx/Include -I ../Drivers/CMSIS/Include -I ../WHEELTEC_BSP/Inc -I ../WHEELTEC_APP/Inc-I.\RTE\_WHEELTEC-IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-D__UVISION_VERSION="532" -D_RTE_ -DSTM32F407xx -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F407xx-o wheeltec\hall_speed.o --omf_browse wheeltec\hall_speed.crf --depend wheeltec\hall_speed.d)
+I (../WHEELTEC_APP/Inc/hall_speed.h)(0x69FAA55D)
 I (C:\Keil_v5\ARM\ARMCC\include\stdint.h)(0x5F63877C)
 I (../Core/Inc/main.h)(0x69F32F22)
 I (../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h)(0x69F06329)

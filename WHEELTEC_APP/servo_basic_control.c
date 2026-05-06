@@ -46,6 +46,8 @@ static servo_basic_state_t g_state = {
 #define ORIN_ESC_REVERSE_START_DEFAULT_US        APP_ORIN_ESC_REVERSE_START_US
 #define ORIN_ESC_FORWARD_MAX_DEFAULT_US          APP_ORIN_ESC_FORWARD_MAX_US
 #define ORIN_ESC_REVERSE_MAX_DEFAULT_US          APP_ORIN_ESC_REVERSE_MAX_US
+#define HALL_SPEED_LIMIT_DEFAULT_MMPS            APP_HALL_SPEED_LIMIT_MMPS
+#define HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS    APP_HALL_SPEED_LIMIT_RELEASE_MMPS
 #define RC_VALID_MIN_DEFAULT_US                  APP_RC_VALID_MIN_US
 #define RC_VALID_MAX_DEFAULT_US                  APP_RC_VALID_MAX_US
 #define RC_FRAME_MIN_DEFAULT_US                  APP_RC_FRAME_MIN_US
@@ -88,6 +90,9 @@ volatile uint32_t g_orin_esc_forward_max_us = ORIN_ESC_FORWARD_MAX_DEFAULT_US;
 volatile uint32_t g_orin_esc_reverse_max_us = ORIN_ESC_REVERSE_MAX_DEFAULT_US;
 volatile uint32_t g_orin_servo_center_us = APP_ORIN_SERVO_CENTER_US;
 volatile uint32_t g_orin_servo_range_us = APP_ORIN_SERVO_RANGE_US;
+volatile uint32_t g_hall_speed_limit_mmps = HALL_SPEED_LIMIT_DEFAULT_MMPS;
+volatile uint32_t g_hall_speed_limit_release_mmps = HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS;
+volatile uint32_t g_hall_speed_limit_active = 0U;
 // RC debounce parameters (set from Keil Watch).
 volatile uint32_t g_rc_debounce_enable = APP_RC_DEBOUNCE_ENABLE_DEFAULT;
 volatile uint32_t g_rc_debounce_deadband_us = APP_RC_DEBOUNCE_DEADBAND_US;
@@ -167,6 +172,7 @@ static uint8_t g_autonomous_target_valid = 0U;
 
 static uint16_t limit_esc_safe_pulse(uint16_t pulse_us);
 static uint16_t limit_servo_safe_pulse(uint16_t pulse_us);
+static void apply_drive_esc_pulse(uint16_t pulse_us);
 static uint32_t get_rc_override_center_us(void);
 static uint8_t pulse_is_inside_center(uint16_t pulse_us, uint32_t center_us, uint32_t threshold_us);
 static uint8_t orin_pwm_is_active(void);
@@ -715,6 +721,50 @@ static uint16_t limit_servo_safe_pulse(uint16_t pulse_us)
 	return pulse_us;
 }
 
+static uint32_t get_hall_speed_limit_mmps(void)
+{
+	return (g_hall_speed_limit_mmps == 0U) ?
+		HALL_SPEED_LIMIT_DEFAULT_MMPS : g_hall_speed_limit_mmps;
+}
+
+static uint32_t get_hall_speed_limit_release_mmps(void)
+{
+	uint32_t limit_mmps = get_hall_speed_limit_mmps();
+	uint32_t release_mmps = (g_hall_speed_limit_release_mmps == 0U) ?
+		HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS : g_hall_speed_limit_release_mmps;
+
+	return (release_mmps > limit_mmps) ? limit_mmps : release_mmps;
+}
+
+static uint8_t hall_speed_limit_should_block(void)
+{
+	float feedback_vx_mps = 0.0f;
+	const float limit_mps = (float)get_hall_speed_limit_mmps() / 1000.0f;
+	const float release_mps = (float)get_hall_speed_limit_release_mmps() / 1000.0f;
+	float speed_abs_mps;
+
+	if (HallSpeed_GetSignedSpeedMps(&feedback_vx_mps) == 0U)
+	{
+		g_hall_speed_limit_active = 0U;
+		return 0U;
+	}
+
+	speed_abs_mps = fabsf(feedback_vx_mps);
+	if (g_hall_speed_limit_active != 0U)
+	{
+		if (speed_abs_mps <= release_mps)
+		{
+			g_hall_speed_limit_active = 0U;
+		}
+	}
+	else if (speed_abs_mps >= limit_mps)
+	{
+		g_hall_speed_limit_active = 1U;
+	}
+
+	return (g_hall_speed_limit_active != 0U) ? 1U : 0U;
+}
+
 static uint8_t pulse_is_outside_center(uint16_t pulse_us, uint32_t center_us, uint32_t threshold_us)
 {
 	uint32_t diff;
@@ -855,6 +905,15 @@ static void apply_esc_pulse(uint16_t pulse_us)
 {
 	g_state.esc_pulse_us = pulse_us;
 	ServoBasic_OutputEscPulse(pulse_us);
+}
+
+static void apply_drive_esc_pulse(uint16_t pulse_us)
+{
+	if (pulse_us != 0U && hall_speed_limit_should_block() != 0U)
+	{
+		pulse_us = get_orin_esc_center_pulse();
+	}
+	apply_esc_pulse(pulse_us);
 }
 
 static void apply_servo_pulse(uint16_t pulse_us)
@@ -1206,13 +1265,13 @@ static void apply_rc_passthrough_outputs(void)
 	const uint16_t servo_pulse = (g_rc_steering_present != 0U) ?
 		rc_select_pulse(g_rc_steering_current, 0U) : get_orin_servo_center_pulse();
 
-	apply_esc_pulse(esc_pulse);
+	apply_drive_esc_pulse(esc_pulse);
 	apply_servo_pulse(servo_pulse);
 }
 
 static void apply_autonomous_outputs(void)
 {
-	apply_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_state.esc_pulse_us)));
+	apply_drive_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_state.esc_pulse_us)));
 	apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_state.servo_pulse_us)));
 }
 
@@ -1247,7 +1306,7 @@ void ServoBasic_ProcessControl(void)
 		}
 		else
 		{
-			apply_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_orin_state.esc_pulse_us)));
+			apply_drive_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_orin_state.esc_pulse_us)));
 			apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_orin_state.servo_pulse_us)));
 		}
 	}
@@ -1259,7 +1318,7 @@ void ServoBasic_ProcessControl(void)
 		}
 		else
 		{
-			apply_esc_pulse(get_orin_esc_center_pulse());
+			apply_drive_esc_pulse(get_orin_esc_center_pulse());
 			apply_servo_pulse(get_orin_servo_center_pulse());
 		}
 	}

@@ -26,6 +26,9 @@
 #define APP_ORIN_VX_MAX_DEFAULT_MMPS             1000U
 #define APP_ORIN_VZ_MAX_DEFAULT_MRAD             1000U
 
+#define APP_HALL_SPEED_LIMIT_MMPS                5000U
+#define APP_HALL_SPEED_LIMIT_RELEASE_MMPS        4500U
+
 #define APP_ORIN_ESC_CENTER_US                   1500U
 #define APP_ORIN_ESC_RANGE_US                     500U
 #define APP_ORIN_ESC_FORWARD_START_US            1560U
