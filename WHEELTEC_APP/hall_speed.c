@@ -115,6 +115,16 @@ static void hall_speed_record_state_fault(void)
 	hall_sequence_origin = HALL_SEQUENCE_NONE;
 }
 
+static uint8_t hall_speed_state_is_endpoint(uint8_t state)
+{
+	return (state == HALL_STATE_01 || state == HALL_STATE_10) ? 1U : 0U;
+}
+
+static uint8_t hall_speed_state_is_bridge(uint8_t state)
+{
+	return (state == HALL_STATE_00 || state == HALL_STATE_11) ? 1U : 0U;
+}
+
 static void hall_speed_observe_state(uint8_t state)
 {
 	if (hall_state_initialized == 0U)
@@ -136,61 +146,27 @@ static void hall_speed_observe_state(uint8_t state)
 		return;
 	}
 
-	switch (hall_last_state)
+	if (hall_speed_state_is_endpoint(hall_last_state) != 0U &&
+		hall_speed_state_is_bridge(state) != 0U)
 	{
-	case HALL_STATE_01:
-		if (state == HALL_STATE_00)
+		hall_sequence_origin = hall_last_state;
+	}
+	else if (hall_speed_state_is_bridge(hall_last_state) != 0U &&
+		hall_speed_state_is_endpoint(state) != 0U)
+	{
+		if (hall_sequence_origin == HALL_STATE_01 && state == HALL_STATE_10)
 		{
-			hall_sequence_origin = HALL_STATE_01;
+			hall_speed_accept_direction(-1);
 		}
-		else if (state == HALL_STATE_11)
+		else if (hall_sequence_origin == HALL_STATE_10 && state == HALL_STATE_01)
 		{
-			hall_sequence_origin = HALL_SEQUENCE_NONE;
+			hall_speed_accept_direction(1);
 		}
-		break;
-
-	case HALL_STATE_10:
-		if (state == HALL_STATE_00)
+		else if (hall_sequence_origin == HALL_STATE_01 || hall_sequence_origin == HALL_STATE_10)
 		{
-			hall_sequence_origin = HALL_STATE_10;
+			hall_speed_record_state_fault();
 		}
-		else if (state == HALL_STATE_11)
-		{
-			hall_sequence_origin = HALL_SEQUENCE_NONE;
-		}
-		break;
-
-	case HALL_STATE_00:
-		if (state == HALL_STATE_10)
-		{
-			if (hall_sequence_origin == HALL_STATE_01)
-			{
-				hall_speed_accept_direction(-1);
-			}
-			else if (hall_sequence_origin == HALL_STATE_10)
-			{
-				hall_speed_record_state_fault();
-			}
-			hall_sequence_origin = HALL_SEQUENCE_NONE;
-		}
-		else if (state == HALL_STATE_01)
-		{
-			if (hall_sequence_origin == HALL_STATE_10)
-			{
-				hall_speed_accept_direction(1);
-			}
-			else if (hall_sequence_origin == HALL_STATE_01)
-			{
-				hall_speed_record_state_fault();
-			}
-			hall_sequence_origin = HALL_SEQUENCE_NONE;
-		}
-		break;
-
-	case HALL_STATE_11:
-	default:
 		hall_sequence_origin = HALL_SEQUENCE_NONE;
-		break;
 	}
 
 	hall_last_state = state;
