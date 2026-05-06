@@ -845,7 +845,10 @@ static void set_rc_override_state(uint8_t override_active, uint8_t guard_active)
 	g_state.emergency_stop = g_rc_guard_active;
 	g_rc_override_release_start_ms = 0U;
 	g_rc_override_enter_count = 0U;
-
+	if (g_rc_override_active != 0U)
+	{
+		HallSpeed_SetCommandDirection(0);
+	}
 }
 
 static void apply_esc_pulse(uint16_t pulse_us)
@@ -1023,14 +1026,29 @@ void ServoBasic_UpdateFromOrin(float vx_mps, float vy_mps, float vz_rad_s, uint8
 {
 	float scaled_vx_mps;
 	float limited_vz_rad_s = clamp_legacy_orin_vz(vz_rad_s);
+	int8_t command_direction = 0;
 
 	(void)vy_mps;
 	(void)get_orin_ackermann_track_width_mm();
 	(void)get_orin_ackermann_wheel_radius_mm();
 	if (g_orin_pwm_enable == 0U)
 	{
+		HallSpeed_SetCommandDirection(0);
 		return;
 	}
+
+	if (flag_stop == 0U)
+	{
+		if (vx_mps > 0.0f)
+		{
+			command_direction = 1;
+		}
+		else if (vx_mps < 0.0f)
+		{
+			command_direction = -1;
+		}
+	}
+	HallSpeed_SetCommandDirection(command_direction);
 
 	scaled_vx_mps = scale_and_limit_orin_vx(vx_mps);
 	if (fabsf(scaled_vx_mps) < get_orin_velocity_neutral_threshold_mps())
@@ -1205,6 +1223,10 @@ void ServoBasic_ProcessControl(void)
 	refresh_rc_inputs();
 	update_control_mode_from_rc();
 	orin_active = orin_pwm_is_active();
+	if (g_rc_override_active != 0U || orin_active == 0U)
+	{
+		HallSpeed_SetCommandDirection(0);
+	}
 
 	if (g_state.emergency_stop != 0U)
 	{
