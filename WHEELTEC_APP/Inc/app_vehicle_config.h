@@ -20,10 +20,10 @@
 
 #define APP_ORIN_VX_SCALE_PERMILLE               1000U
 #define APP_ORIN_FEEDBACK_SCALE_PERMILLE         1254U
-#define APP_ORIN_VX_FORWARD_CAP_MMPS             2000U
-#define APP_ORIN_VX_REVERSE_CAP_MMPS             2000U
-#define APP_ORIN_VX_DEADBAND_MMPS                  50U
-#define APP_ORIN_VX_MAX_DEFAULT_MMPS             1000U
+#define APP_ORIN_VX_FORWARD_CAP_MMPS             4500U
+#define APP_ORIN_VX_REVERSE_CAP_MMPS             4500U
+#define APP_ORIN_VX_DEADBAND_MMPS                   0U
+#define APP_ORIN_VX_MAX_DEFAULT_MMPS             4500U
 #define APP_ORIN_VZ_MAX_DEFAULT_MRAD             1000U
 
 #define APP_HALL_SPEED_LIMIT_MMPS                5000U
@@ -31,10 +31,18 @@
 
 #define APP_ORIN_ESC_CENTER_US                   1500U
 #define APP_ORIN_ESC_RANGE_US                     500U
-#define APP_ORIN_ESC_FORWARD_START_US            1560U
-#define APP_ORIN_ESC_REVERSE_START_US            1440U
-#define APP_ORIN_ESC_FORWARD_MAX_US              1650U
-#define APP_ORIN_ESC_REVERSE_MAX_US              1350U
+#define APP_ORIN_ESC_FORWARD_START_US            1546U
+#define APP_ORIN_ESC_REVERSE_START_US            1444U
+#define APP_ORIN_ESC_FORWARD_MAX_US              1603U
+#define APP_ORIN_ESC_REVERSE_MAX_US              1390U
+
+#define APP_ORIN_MIN_FORWARD_VX_MMPS               70U
+#define APP_ORIN_MIN_REVERSE_VX_MMPS              180U
+
+#define APP_SPEED_PI_ENABLE_DEFAULT                 1U
+#define APP_SPEED_PI_KP_DEFAULT_US_PER_MPS       10.0f
+#define APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S      3.0f
+#define APP_SPEED_PI_TRIM_LIMIT_US                 12U
 
 #define APP_ORIN_SERVO_CENTER_US                 1500U
 #define APP_ORIN_SERVO_RANGE_US                   500U
