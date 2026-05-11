@@ -15,6 +15,18 @@
 #include "servo_basic_control.h"
 
 #define ROS_CMD_FRAME_LEN 11U
+#define ROS_CMD_TYPE_MOTION 0U
+#define ROS_CMD_TYPE_LEGACY_IGNORE 4U
+#define ROS_CMD_TYPE_PID_PARAM 5U
+#define ROS_PID_PARAM_ENABLE 1U
+#define ROS_PID_PARAM_KP_X100 2U
+#define ROS_PID_PARAM_KI_X100 3U
+#define ROS_PID_PARAM_TRIM_LIMIT_US 4U
+#define ROS_PID_PARAM_RESET_I 5U
+#define ROS_PID_PARAM_MAGIC0 0x50U
+#define ROS_PID_PARAM_MAGIC1 0x49U
+#define ROS_PID_PARAM_MAGIC2 0x44U
+#define ROS_PID_PARAM_MAGIC3 0x31U
 
 #if ROS_CMD_FRAME_LEN != 11U
 #error "ROS downlink command frame must remain 11 bytes for the firmware parser."
@@ -36,9 +48,49 @@ static uint8_t serial_control_is_zero_motion(float vx_mps, float vy_mps, float v
 	return (vx_mps == 0.0f && vy_mps == 0.0f && vz_rad_s == 0.0f) ? 1U : 0U;
 }
 
+static int16_t serial_control_read_i16_be(const uint8_t *buf)
+{
+	return (int16_t)(((uint16_t)buf[0] << 8) | buf[1]);
+}
+
 static void serial_control_send_zero_command(void)
 {
 	ServoBasic_UpdateFromOrin(0.0f, 0.0f, 0.0f, 1U);
+}
+
+static void serial_control_apply_pid_param_frame(const uint8_t *frame)
+{
+	const uint8_t param_id = frame[2];
+	const int16_t value = serial_control_read_i16_be(&frame[3]);
+
+	if (frame[5] != ROS_PID_PARAM_MAGIC0 ||
+		frame[6] != ROS_PID_PARAM_MAGIC1 ||
+		frame[7] != ROS_PID_PARAM_MAGIC2 ||
+		frame[8] != ROS_PID_PARAM_MAGIC3)
+	{
+		return;
+	}
+
+	switch (param_id)
+	{
+	case ROS_PID_PARAM_ENABLE:
+		ServoBasic_SetSpeedPiEnable((value != 0) ? 1U : 0U);
+		break;
+	case ROS_PID_PARAM_KP_X100:
+		ServoBasic_SetSpeedPiKp((float)value / 100.0f);
+		break;
+	case ROS_PID_PARAM_KI_X100:
+		ServoBasic_SetSpeedPiKi((float)value / 100.0f);
+		break;
+	case ROS_PID_PARAM_TRIM_LIMIT_US:
+		ServoBasic_SetSpeedPiTrimLimitUs((value > 0) ? (uint32_t)value : 0U);
+		break;
+	case ROS_PID_PARAM_RESET_I:
+		ServoBasic_ResetSpeedPi();
+		break;
+	default:
+		break;
+	}
 }
 
 static void serial_control_check_reset(char uart_recv)
@@ -155,20 +207,26 @@ void SerialControlTask(void *param)
 			continue;
 		}
 
-		if (roscmdBuf[1] == 4U)
+		if (roscmdBuf[1] == ROS_CMD_TYPE_PID_PARAM)
+		{
+			serial_control_apply_pid_param_frame(roscmdBuf);
+			continue;
+		}
+
+		if (roscmdBuf[1] == ROS_CMD_TYPE_LEGACY_IGNORE)
 		{
 			continue;
 		}
 
-		if (roscmdBuf[1] != 0U)
+		if (roscmdBuf[1] != ROS_CMD_TYPE_MOTION)
 		{
 			continue;
 		}
 
 		{
-			const float vx_mps = (float)((int16_t)(((uint16_t)roscmdBuf[3] << 8) | roscmdBuf[4])) / 1000.0f;
-			const float vy_mps = (float)((int16_t)(((uint16_t)roscmdBuf[5] << 8) | roscmdBuf[6])) / 1000.0f;
-			const float vz_rad_s = (float)((int16_t)(((uint16_t)roscmdBuf[7] << 8) | roscmdBuf[8])) / 1000.0f;
+			const float vx_mps = (float)serial_control_read_i16_be(&roscmdBuf[3]) / 1000.0f;
+			const float vy_mps = (float)serial_control_read_i16_be(&roscmdBuf[5]) / 1000.0f;
+			const float vz_rad_s = (float)serial_control_read_i16_be(&roscmdBuf[7]) / 1000.0f;
 			const uint8_t flag_stop = (roscmdBuf[2] & 0x80U) ? 1U : 0U;
 			const uint8_t motion_is_zero = serial_control_is_zero_motion(vx_mps, vy_mps, vz_rad_s);
 			uint8_t allow_serial_motion = 1U;

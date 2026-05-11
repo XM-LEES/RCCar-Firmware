@@ -1,0 +1,8 @@
+recommended_set=p12_i0_t12
+enable=1
+kp=12.0
+ki=0.0
+trim_us=12
+mean_score=0.1334
+raw=C:\Users\MilesLi\Desktop\RC\RCCar-new\logs\pid_tune_20260506_192237\raw_telemetry.csv
+summary=C:\Users\MilesLi\Desktop\RC\RCCar-new\logs\pid_tune_20260506_192237\summary.csv

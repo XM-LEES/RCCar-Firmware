@@ -1,0 +1,8 @@
+recommended_set=openloop
+enable=0
+kp=10.0
+ki=3.0
+trim_us=12
+mean_score=0.1573
+raw=C:\Users\MilesLi\Desktop\RC\RCCar-new\logs\pid_tune_20260506_182655\raw_telemetry.csv
+summary=C:\Users\MilesLi\Desktop\RC\RCCar-new\logs\pid_tune_20260506_182655\summary.csv

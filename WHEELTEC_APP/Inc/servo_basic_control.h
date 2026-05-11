@@ -53,6 +53,11 @@ uint8_t ServoBasic_GetOrinFeedback(float *vx_mps, float *vy_mps, float *vz_rad_s
 void ServoBasic_OutputEscPulse(uint16_t pulse_us);
 void ServoBasic_OutputServoPulse(uint16_t pulse_us);
 void ServoBasic_UpdateFromOrin(float vx_mps, float vy_mps, float vz_rad_s, uint8_t flag_stop);
+void ServoBasic_SetSpeedPiEnable(uint8_t enable);
+void ServoBasic_SetSpeedPiKp(float kp_us_per_mps);
+void ServoBasic_SetSpeedPiKi(float ki_us_per_mps_s);
+void ServoBasic_SetSpeedPiTrimLimitUs(uint32_t limit_us);
+void ServoBasic_ResetSpeedPi(void);
 
 #ifdef __cplusplus
 }

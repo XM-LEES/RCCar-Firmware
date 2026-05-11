@@ -54,6 +54,9 @@ static servo_basic_state_t g_state = {
 #define SPEED_PI_KP_DEFAULT_US_PER_MPS           APP_SPEED_PI_KP_DEFAULT_US_PER_MPS
 #define SPEED_PI_KI_DEFAULT_US_PER_MPS_S         APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S
 #define SPEED_PI_TRIM_LIMIT_DEFAULT_US           APP_SPEED_PI_TRIM_LIMIT_US
+#define SPEED_PI_KP_MAX_US_PER_MPS               120.0f
+#define SPEED_PI_KI_MAX_US_PER_MPS_S             40.0f
+#define SPEED_PI_TRIM_LIMIT_PARAM_MAX_US         60U
 #define RC_VALID_MIN_DEFAULT_US                  APP_RC_VALID_MIN_US
 #define RC_VALID_MAX_DEFAULT_US                  APP_RC_VALID_MAX_US
 #define RC_FRAME_MIN_DEFAULT_US                  APP_RC_FRAME_MIN_US
@@ -1002,6 +1005,52 @@ static void speed_pi_reset_controller(void)
 	g_speed_pi_error_mps = 0.0f;
 	g_speed_pi_integral = 0.0f;
 	g_speed_pi_trim_us = 0;
+}
+
+static float clamp_speed_pi_param_float(float value, float max_value)
+{
+	if (value < 0.0f)
+	{
+		return 0.0f;
+	}
+	if (value > max_value)
+	{
+		return max_value;
+	}
+	return value;
+}
+
+void ServoBasic_ResetSpeedPi(void)
+{
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiEnable(uint8_t enable)
+{
+	g_speed_pi_enable = (enable != 0U) ? 1U : 0U;
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiKp(float kp_us_per_mps)
+{
+	g_speed_pi_kp = clamp_speed_pi_param_float(kp_us_per_mps, SPEED_PI_KP_MAX_US_PER_MPS);
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiKi(float ki_us_per_mps_s)
+{
+	g_speed_pi_ki = clamp_speed_pi_param_float(ki_us_per_mps_s, SPEED_PI_KI_MAX_US_PER_MPS_S);
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiTrimLimitUs(uint32_t limit_us)
+{
+	if (limit_us > SPEED_PI_TRIM_LIMIT_PARAM_MAX_US)
+	{
+		limit_us = SPEED_PI_TRIM_LIMIT_PARAM_MAX_US;
+	}
+	g_speed_pi_trim_limit_us = limit_us;
+	speed_pi_reset_controller();
 }
 
 static void apply_orin_esc_pulse(uint16_t pulse_us)
