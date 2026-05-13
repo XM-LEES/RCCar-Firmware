@@ -2,5 +2,12 @@
 __docx_tmp/
 __docx_tmp.zip
 
-# Keil per-user GUI state.
+# Keil local build output and per-user GUI state.
+MDK-ARM/WHEELTEC/
+MDK-ARM/*.lst
+WHEELTEC.bin
 *.uvguix.*
+
+# Raw logs and temporary debug captures. Keep logs/README.md tracked.
+logs/*
+!logs/README.md
