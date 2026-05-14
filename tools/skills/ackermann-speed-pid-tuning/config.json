@@ -1,0 +1,54 @@
+{
+  "name": "ackermann_speed_pid_tuning",
+  "protocol": {
+    "uart": "UART4",
+    "baud": 115200,
+    "command": "ackermann_v1",
+    "cmd": "0x01",
+    "fields": {
+      "speed": "speed_mmps",
+      "steering": "steering_mrad"
+    },
+    "telemetry_frame_len": 24
+  },
+  "safety": {
+    "bench_targets_mps": [-2.5, -1.8, -1.2, -0.8, -0.5, -0.3, 0.3, 0.5, 0.8, 1.2, 1.8, 2.5],
+    "ground_targets_mps": [-0.8, -0.5, -0.3, -0.2, 0.2, 0.3, 0.5, 0.8],
+    "steering_mrad": 0,
+    "require_rc_takeover_check": true,
+    "require_brake_check": true,
+    "require_estop_check": true,
+    "require_timeout_check": true
+  },
+  "timing": {
+    "duration_ms": 4000,
+    "settle_ms": 1200,
+    "gap_ms": 2200,
+    "send_period_ms": 50
+  },
+  "candidates": [
+    {"name": "p18_i0_t12", "enable": true, "kp": 18.0, "ki": 0.0, "trim_us": 12},
+    {"name": "p20_i0_t12", "enable": true, "kp": 20.0, "ki": 0.0, "trim_us": 12},
+    {"name": "p22_i0_t12", "enable": true, "kp": 22.0, "ki": 0.0, "trim_us": 12},
+    {"name": "p20_i0_t14", "enable": true, "kp": 20.0, "ki": 0.0, "trim_us": 14}
+  ],
+  "scoring": {
+    "mae_weight": 1.0,
+    "overshoot_weight": 0.4,
+    "std_weight": 0.05,
+    "reject_on_unstable_point": true
+  },
+  "current_default": {
+    "name": "p20_i0_t12",
+    "enable": true,
+    "kp": 20.0,
+    "ki": 0.0,
+    "trim_us": 12,
+    "source": "docs/test-records/2026-05-06-speed-pid-bench-summary.md"
+  },
+  "outputs": {
+    "raw_log_dir": "logs/YYYY-MM-DD-speed-pid-<scope>/",
+    "test_record_template": "tools/skills/ackermann-speed-pid-tuning/templates/bench-test.md",
+    "test_record_dir": "docs/test-records/"
+  }
+}

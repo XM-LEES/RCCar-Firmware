@@ -18,6 +18,12 @@
 YYYY-MM-DD-<scope>-<result>.md
 ```
 
+模板：
+
+```text
+tools/skills/ackermann-speed-pid-tuning/templates/bench-test.md
+```
+
 运动相关记录必须包含：
 
 - 仓库分支和 commit。
