@@ -107,7 +107,7 @@ Hall / servo estimate / battery / safety state
 当前已经实现并可作为代码事实核对的内容：
 
 - UART4 11 字节 Ackermann command 解析：帧头、帧尾、BCC、`cmd=0x01`、`ENABLE`、`BRAKE`、`CLEAR_FAULT`、`EMERGENCY_STOP`。
-- `speed_mmps + steering_mrad` 自动控制入口，旧 `vx/vy/wz` 不是当前正式自动入口。
+- 正式自动控制入口使用 `speed_mmps + steering_mrad`；旧 `vx/vy/wz` 作为历史协议事实保留。
 - RC 接管、RC guard/急停、上位机急停、刹车请求和通信超时停车仲裁。
 - 速度和转角执行端限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。
 - UART4 24 字节 telemetry：`hall_delta_count`、`speed_mmps`、`steering_mrad`、`yaw_rate_mradps`、`battery_mv`、`dt_ms`、`status_bits`。
@@ -122,7 +122,7 @@ Hall / servo estimate / battery / safety state
 - `SPEED_SATURATED`、`STEERING_SATURATED` telemetry 状态位；当前执行端存在速度/转角限幅，但尚未把限幅触发状态上报到对应位。
 - 加速度限幅、转角速度限幅，以及 `ACCEL_LIMITED`、`STEERING_RATE_LIMITED` 状态位。
 
-补齐上述项前，对应未实现位必须保持为 `0`，测试记录只能写“当前未实现/未验收”，不能通过删除协议位或改写子仓库文档把目标降级。
+补齐上述项前，对应未实现位必须保持为 `0`，测试记录状态为“当前未实现/未验收”。删除协议位或改写子仓库文档属于目标降级，需要同步修改根阶段契约并记录风险。
 
 ## RC 接管数据流
 
