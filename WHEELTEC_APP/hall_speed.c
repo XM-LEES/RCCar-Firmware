@@ -148,7 +148,7 @@ uint8_t HallSpeed_GetSignedSpeedMps(float *speed_mps)
 	const hall_speed_state_t snapshot = HallSpeed_GetState();
 	float speed = 0.0f;
 
-	if (snapshot.speed_valid == 0U || snapshot.direction == 0 || snapshot.last_period_us == 0U)
+	if (snapshot.speed_valid == 0U || snapshot.last_period_us == 0U)
 	{
 		if (speed_mps != NULL)
 		{

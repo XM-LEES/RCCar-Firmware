@@ -7,6 +7,7 @@ typedef struct
 {
     float voltage_v;
     uint8_t debug_level;
+    uint8_t uart4_rx_frame_error_seen;
     uint32_t uart4_tx_busy_count;
     uint32_t uart4_tx_error_count;
     uint32_t usart1_debug_tx_busy_count;

@@ -38,7 +38,6 @@ static servo_basic_state_t g_state = {
 #define ORIN_ACKERMANN_MAX_STEERING_DEFAULT_MRAD APP_ORIN_ACKERMANN_MAX_STEERING_MRAD
 #define ORIN_ACKERMANN_MIN_VX_DEFAULT_MMPS       APP_ORIN_ACKERMANN_MIN_VX_MMPS
 #define ORIN_VX_SCALE_DEFAULT_PERMILLE           APP_ORIN_VX_SCALE_PERMILLE
-#define ORIN_FEEDBACK_SCALE_DEFAULT_PERMILLE     APP_ORIN_FEEDBACK_SCALE_PERMILLE
 #define ORIN_VX_FORWARD_CAP_DEFAULT_MMPS         APP_ORIN_VX_FORWARD_CAP_MMPS
 #define ORIN_VX_REVERSE_CAP_DEFAULT_MMPS         APP_ORIN_VX_REVERSE_CAP_MMPS
 #define ORIN_VX_DEADBAND_DEFAULT_MMPS            APP_ORIN_VX_DEADBAND_MMPS
@@ -46,6 +45,17 @@ static servo_basic_state_t g_state = {
 #define ORIN_ESC_REVERSE_START_DEFAULT_US        APP_ORIN_ESC_REVERSE_START_US
 #define ORIN_ESC_FORWARD_MAX_DEFAULT_US          APP_ORIN_ESC_FORWARD_MAX_US
 #define ORIN_ESC_REVERSE_MAX_DEFAULT_US          APP_ORIN_ESC_REVERSE_MAX_US
+#define ORIN_MIN_FORWARD_VX_DEFAULT_MMPS         APP_ORIN_MIN_FORWARD_VX_MMPS
+#define ORIN_MIN_REVERSE_VX_DEFAULT_MMPS         APP_ORIN_MIN_REVERSE_VX_MMPS
+#define HALL_SPEED_LIMIT_DEFAULT_MMPS            APP_HALL_SPEED_LIMIT_MMPS
+#define HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS    APP_HALL_SPEED_LIMIT_RELEASE_MMPS
+#define SPEED_PI_ENABLE_DEFAULT                  APP_SPEED_PI_ENABLE_DEFAULT
+#define SPEED_PI_KP_DEFAULT_US_PER_MPS           APP_SPEED_PI_KP_DEFAULT_US_PER_MPS
+#define SPEED_PI_KI_DEFAULT_US_PER_MPS_S         APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S
+#define SPEED_PI_TRIM_LIMIT_DEFAULT_US           APP_SPEED_PI_TRIM_LIMIT_US
+#define SPEED_PI_KP_MAX_US_PER_MPS               120.0f
+#define SPEED_PI_KI_MAX_US_PER_MPS_S             40.0f
+#define SPEED_PI_TRIM_LIMIT_PARAM_MAX_US         60U
 #define RC_VALID_MIN_DEFAULT_US                  APP_RC_VALID_MIN_US
 #define RC_VALID_MAX_DEFAULT_US                  APP_RC_VALID_MAX_US
 #define RC_FRAME_MIN_DEFAULT_US                  APP_RC_FRAME_MIN_US
@@ -74,12 +84,10 @@ volatile uint32_t g_orin_ackermann_wheel_radius_mm = ORIN_ACKERMANN_WHEEL_RADIUS
 volatile uint32_t g_orin_ackermann_max_steering_millirad = ORIN_ACKERMANN_MAX_STEERING_DEFAULT_MRAD;
 volatile uint32_t g_orin_ackermann_min_vx_mmps = ORIN_ACKERMANN_MIN_VX_DEFAULT_MMPS;
 volatile uint32_t g_orin_vx_scale = ORIN_VX_SCALE_DEFAULT_PERMILLE;
-volatile uint32_t g_orin_feedback_scale = ORIN_FEEDBACK_SCALE_DEFAULT_PERMILLE;
 volatile uint32_t g_orin_vx_forward_cap_mmps = ORIN_VX_FORWARD_CAP_DEFAULT_MMPS;
 volatile uint32_t g_orin_vx_reverse_cap_mmps = ORIN_VX_REVERSE_CAP_DEFAULT_MMPS;
 volatile uint32_t g_orin_vx_deadband_mmps = ORIN_VX_DEADBAND_DEFAULT_MMPS;
 volatile uint32_t g_orin_vx_max_mmps = APP_ORIN_VX_MAX_DEFAULT_MMPS;
-volatile uint32_t g_orin_vz_max_millirad = APP_ORIN_VZ_MAX_DEFAULT_MRAD;
 volatile uint32_t g_orin_esc_center_us = APP_ORIN_ESC_CENTER_US;
 volatile uint32_t g_orin_esc_range_us = APP_ORIN_ESC_RANGE_US;
 volatile uint32_t g_orin_esc_forward_start_us = ORIN_ESC_FORWARD_START_DEFAULT_US;
@@ -88,6 +96,22 @@ volatile uint32_t g_orin_esc_forward_max_us = ORIN_ESC_FORWARD_MAX_DEFAULT_US;
 volatile uint32_t g_orin_esc_reverse_max_us = ORIN_ESC_REVERSE_MAX_DEFAULT_US;
 volatile uint32_t g_orin_servo_center_us = APP_ORIN_SERVO_CENTER_US;
 volatile uint32_t g_orin_servo_range_us = APP_ORIN_SERVO_RANGE_US;
+volatile uint32_t g_hall_speed_limit_mmps = HALL_SPEED_LIMIT_DEFAULT_MMPS;
+volatile uint32_t g_hall_speed_limit_release_mmps = HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS;
+volatile uint32_t g_hall_speed_limit_active = 0U;
+volatile uint32_t g_speed_pi_enable = SPEED_PI_ENABLE_DEFAULT;
+volatile float g_speed_pi_kp = SPEED_PI_KP_DEFAULT_US_PER_MPS;
+volatile float g_speed_pi_ki = SPEED_PI_KI_DEFAULT_US_PER_MPS_S;
+volatile uint32_t g_speed_pi_trim_limit_us = SPEED_PI_TRIM_LIMIT_DEFAULT_US;
+volatile float g_speed_pi_target_vx_mps = 0.0f;
+volatile float g_speed_pi_feedback_vx_mps = 0.0f;
+volatile float g_speed_pi_error_mps = 0.0f;
+volatile float g_speed_pi_integral = 0.0f;
+volatile int32_t g_speed_pi_base_us = ESC_PWM_NEUTRAL_PULSE_US;
+volatile int32_t g_speed_pi_trim_us = 0;
+volatile int32_t g_speed_pi_final_us = ESC_PWM_NEUTRAL_PULSE_US;
+volatile uint32_t g_speed_pi_feedback_valid = 0U;
+volatile uint32_t g_speed_pi_saturated = 0U;
 // RC debounce parameters (set from Keil Watch).
 volatile uint32_t g_rc_debounce_enable = APP_RC_DEBOUNCE_ENABLE_DEFAULT;
 volatile uint32_t g_rc_debounce_deadband_us = APP_RC_DEBOUNCE_DEADBAND_US;
@@ -119,14 +143,25 @@ volatile uint32_t g_rc_input_fault_active = 0U;
 
 typedef struct
 {
+	uint16_t speed_mmps;
+	uint16_t pulse_us;
+} orin_speed_ff_point_t;
+
+typedef struct
+{
 	uint16_t esc_pulse_us;
 	uint16_t servo_pulse_us;
 	uint32_t last_update_ms;
+	float target_speed_mps;
 	float feedback_vx_mps;
-	float feedback_vy_mps;
 	float feedback_vz_rad_s;
+	float target_steering_angle_rad;
+	float feedback_steering_angle_rad;
 	uint8_t active;
 	uint8_t stop;
+	uint8_t auto_enabled;
+	uint8_t brake_active;
+	uint8_t emergency_stop;
 } orin_pwm_state_t;
 
 typedef struct
@@ -148,6 +183,11 @@ static orin_pwm_state_t g_orin_state = {
 	0.0f,
 	0.0f,
 	0.0f,
+	0.0f,
+	0.0f,
+	0U,
+	0U,
+	0U,
 	0U,
 	0U
 };
@@ -164,9 +204,45 @@ static uint8_t g_rc_guard_present = 0U;
 static rc_channel_filter_state_t g_rc_throttle_state = {0U};
 static rc_channel_filter_state_t g_rc_steering_state = {0U};
 static uint8_t g_autonomous_target_valid = 0U;
+static uint32_t g_speed_pi_last_update_ms = 0U;
+static int8_t g_speed_pi_last_target_direction = 0;
+
+static const orin_speed_ff_point_t s_orin_forward_ff_table[] = {
+	{70U, 1546U},
+	{100U, 1547U},
+	{200U, 1548U},
+	{300U, 1550U},
+	{500U, 1554U},
+	{800U, 1559U},
+	{1000U, 1562U},
+	{1500U, 1568U},
+	{2000U, 1574U},
+	{2500U, 1580U},
+	{3000U, 1585U},
+	{3500U, 1590U},
+	{4000U, 1596U},
+	{4500U, 1601U},
+};
+
+static const orin_speed_ff_point_t s_orin_reverse_ff_table[] = {
+	{180U, 1444U},
+	{300U, 1442U},
+	{500U, 1438U},
+	{800U, 1433U},
+	{1000U, 1430U},
+	{1500U, 1423U},
+	{2000U, 1417U},
+	{2500U, 1412U},
+	{3000U, 1407U},
+	{3500U, 1402U},
+	{4000U, 1397U},
+	{4500U, 1391U},
+};
 
 static uint16_t limit_esc_safe_pulse(uint16_t pulse_us);
 static uint16_t limit_servo_safe_pulse(uint16_t pulse_us);
+static void apply_orin_esc_pulse(uint16_t pulse_us);
+static void speed_pi_reset_controller(void);
 static uint32_t get_rc_override_center_us(void);
 static uint8_t pulse_is_inside_center(uint16_t pulse_us, uint32_t center_us, uint32_t threshold_us);
 static uint8_t orin_pwm_is_active(void);
@@ -338,7 +414,7 @@ static uint32_t pulse_diff(uint16_t a, uint16_t b)
 
 static uint16_t finalize_rc_channel_pulse(rc_channel_filter_state_t *state, uint16_t pulse_us, uint8_t is_throttle)
 {
-	uint16_t filtered = pulse_us;
+	uint16_t filtered;
 
 	if (state == NULL || pulse_us == 0U)
 	{
@@ -555,6 +631,16 @@ static uint32_t get_orin_vx_deadband_mmps(void)
 	return (g_orin_vx_deadband_mmps == 0U) ? ORIN_VX_DEADBAND_DEFAULT_MMPS : g_orin_vx_deadband_mmps;
 }
 
+static uint32_t get_orin_min_forward_vx_mmps(void)
+{
+	return ORIN_MIN_FORWARD_VX_DEFAULT_MMPS;
+}
+
+static uint32_t get_orin_min_reverse_vx_mmps(void)
+{
+	return ORIN_MIN_REVERSE_VX_DEFAULT_MMPS;
+}
+
 static uint16_t get_orin_esc_center_pulse(void)
 {
 	uint32_t pulse = g_orin_esc_center_us;
@@ -640,23 +726,84 @@ static float scale_and_limit_orin_vx(float vx_mps)
 	return scaled_vx;
 }
 
-static float clamp_legacy_orin_vz(float vz_rad_s)
+static int8_t get_vx_direction(float vx_mps)
 {
-	float max_rad_s = (float)((g_orin_vz_max_millirad == 0U) ? 1000U : g_orin_vz_max_millirad) / 1000.0f;
+	if (vx_mps > 0.0f)
+	{
+		return 1;
+	}
+	if (vx_mps < 0.0f)
+	{
+		return -1;
+	}
+	return 0;
+}
 
-	if (max_rad_s <= 0.001f)
+static uint32_t speed_mps_abs_to_mmps(float speed_mps)
+{
+	float abs_speed_mps = fabsf(speed_mps);
+	float mmps = abs_speed_mps * 1000.0f;
+
+	if (mmps > 65535.0f)
 	{
-		return vz_rad_s;
+		mmps = 65535.0f;
 	}
-	if (vz_rad_s > max_rad_s)
+	return (uint32_t)(mmps + 0.5f);
+}
+
+static uint8_t orin_target_is_below_min_control(float vx_mps)
+{
+	if (vx_mps > 0.0f)
 	{
-		return max_rad_s;
+		return (speed_mps_abs_to_mmps(vx_mps) < get_orin_min_forward_vx_mmps()) ? 1U : 0U;
 	}
-	if (vz_rad_s < -max_rad_s)
+	if (vx_mps < 0.0f)
 	{
-		return -max_rad_s;
+		return (speed_mps_abs_to_mmps(vx_mps) < get_orin_min_reverse_vx_mmps()) ? 1U : 0U;
 	}
-	return vz_rad_s;
+	return 1U;
+}
+
+static uint16_t interpolate_speed_ff_table(const orin_speed_ff_point_t *table,
+										   uint32_t table_count,
+										   uint32_t speed_mmps)
+{
+	uint32_t i;
+
+	if (table == NULL || table_count == 0U)
+	{
+		return get_orin_esc_center_pulse();
+	}
+
+	if (speed_mmps <= table[0].speed_mmps)
+	{
+		return table[0].pulse_us;
+	}
+
+	for (i = 1U; i < table_count; ++i)
+	{
+		const uint32_t low_speed = table[i - 1U].speed_mmps;
+		const uint32_t high_speed = table[i].speed_mmps;
+
+		if (speed_mmps <= high_speed)
+		{
+			const int32_t low_pulse = (int32_t)table[i - 1U].pulse_us;
+			const int32_t high_pulse = (int32_t)table[i].pulse_us;
+			const int32_t delta_pulse = high_pulse - low_pulse;
+			const uint32_t delta_speed = high_speed - low_speed;
+			const uint32_t target_delta = speed_mmps - low_speed;
+			int32_t pulse = low_pulse;
+
+			if (delta_speed != 0U)
+			{
+				pulse += (int32_t)(((int64_t)delta_pulse * (int64_t)target_delta) /
+					(int64_t)delta_speed);
+			}
+			return clamp_esc_pulse((uint16_t)pulse);
+		}
+	}
+
+	return table[table_count - 1U].pulse_us;
 }
 
 static uint16_t limit_esc_safe_pulse(uint16_t pulse_us)
@@ -713,6 +860,50 @@ static uint16_t limit_servo_safe_pulse(uint16_t pulse_us)
 		return high;
 	}
 	return pulse_us;
+}
+
+static uint32_t get_hall_speed_limit_mmps(void)
+{
+	return (g_hall_speed_limit_mmps == 0U) ?
+		HALL_SPEED_LIMIT_DEFAULT_MMPS : g_hall_speed_limit_mmps;
+}
+
+static uint32_t get_hall_speed_limit_release_mmps(void)
+{
+	uint32_t limit_mmps = get_hall_speed_limit_mmps();
+	uint32_t release_mmps = (g_hall_speed_limit_release_mmps == 0U) ?
+		HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS : g_hall_speed_limit_release_mmps;
+
+	return (release_mmps > limit_mmps) ? limit_mmps : release_mmps;
+}
+
+static uint8_t hall_speed_limit_should_block(void)
+{
+	float feedback_vx_mps = 0.0f;
+	const float limit_mps = (float)get_hall_speed_limit_mmps() / 1000.0f;
+	const float release_mps = (float)get_hall_speed_limit_release_mmps() / 1000.0f;
+	float speed_abs_mps;
+
+	if (HallSpeed_GetSignedSpeedMps(&feedback_vx_mps) == 0U)
+	{
+		g_hall_speed_limit_active = 0U;
+		return 0U;
+	}
+
+	speed_abs_mps = fabsf(feedback_vx_mps);
+	if (g_hall_speed_limit_active != 0U)
+	{
+		if (speed_abs_mps <= release_mps)
+		{
+			g_hall_speed_limit_active = 0U;
+		}
+	}
+	else if (speed_abs_mps >= limit_mps)
+	{
+		g_hall_speed_limit_active = 1U;
+	}
+
+	return (g_hall_speed_limit_active != 0U) ? 1U : 0U;
 }
 
 static uint8_t pulse_is_outside_center(uint16_t pulse_us, uint32_t center_us, uint32_t threshold_us)
@@ -857,6 +1048,73 @@ static void apply_esc_pulse(uint16_t pulse_us)
 	ServoBasic_OutputEscPulse(pulse_us);
 }
 
+static void speed_pi_reset_controller(void)
+{
+	g_speed_pi_last_update_ms = 0U;
+	g_speed_pi_last_target_direction = 0;
+	g_speed_pi_feedback_valid = 0U;
+	g_speed_pi_saturated = 0U;
+	g_speed_pi_error_mps = 0.0f;
+	g_speed_pi_integral = 0.0f;
+	g_speed_pi_trim_us = 0;
+}
+
+static float clamp_speed_pi_param_float(float value, float max_value)
+{
+	if (value < 0.0f)
+	{
+		return 0.0f;
+	}
+	if (value > max_value)
+	{
+		return max_value;
+	}
+	return value;
+}
+
+void ServoBasic_ResetSpeedPi(void)
+{
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiEnable(uint8_t enable)
+{
+	g_speed_pi_enable = (enable != 0U) ? 1U : 0U;
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiKp(float kp_us_per_mps)
+{
+	g_speed_pi_kp = clamp_speed_pi_param_float(kp_us_per_mps, SPEED_PI_KP_MAX_US_PER_MPS);
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiKi(float ki_us_per_mps_s)
+{
+	g_speed_pi_ki = clamp_speed_pi_param_float(ki_us_per_mps_s, SPEED_PI_KI_MAX_US_PER_MPS_S);
+	speed_pi_reset_controller();
+}
+
+void ServoBasic_SetSpeedPiTrimLimitUs(uint32_t limit_us)
+{
+	if (limit_us > SPEED_PI_TRIM_LIMIT_PARAM_MAX_US)
+	{
+		limit_us = SPEED_PI_TRIM_LIMIT_PARAM_MAX_US;
+	}
+	g_speed_pi_trim_limit_us = limit_us;
+	speed_pi_reset_controller();
+}
+
+static void apply_orin_esc_pulse(uint16_t pulse_us)
+{
+	if (pulse_us != 0U && hall_speed_limit_should_block() != 0U)
+	{
+		pulse_us = get_orin_esc_center_pulse();
+		speed_pi_reset_controller();
+	}
+	apply_esc_pulse(pulse_us);
+}
+
 static void apply_servo_pulse(uint16_t pulse_us)
 {
 	g_state.servo_pulse_us = pulse_us;
@@ -892,11 +1150,21 @@ void ServoBasic_Init(void)
 	g_orin_state.esc_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_orin_state.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_orin_state.last_update_ms = 0U;
+	g_orin_state.target_speed_mps = 0.0f;
 	g_orin_state.feedback_vx_mps = 0.0f;
-	g_orin_state.feedback_vy_mps = 0.0f;
 	g_orin_state.feedback_vz_rad_s = 0.0f;
+	g_orin_state.target_steering_angle_rad = 0.0f;
+	g_orin_state.feedback_steering_angle_rad = 0.0f;
 	g_orin_state.active = 0U;
 	g_orin_state.stop = 0U;
+	g_orin_state.auto_enabled = 0U;
+	g_orin_state.brake_active = 0U;
+	g_orin_state.emergency_stop = 0U;
+	g_speed_pi_target_vx_mps = 0.0f;
+	g_speed_pi_feedback_vx_mps = 0.0f;
+	g_speed_pi_base_us = ESC_PWM_NEUTRAL_PULSE_US;
+	g_speed_pi_final_us = ESC_PWM_NEUTRAL_PULSE_US;
+	speed_pi_reset_controller();
 	ServoRC_Capture_Init();
 	apply_esc_pulse(get_orin_esc_center_pulse());
 	apply_servo_pulse(get_orin_servo_center_pulse());
@@ -905,81 +1173,197 @@ void ServoBasic_Init(void)
 static uint16_t orin_map_vx_to_esc(float vx_mps)
 {
 	float scaled_vx_mps = scale_and_limit_orin_vx(vx_mps);
-	float magnitude_mps;
-	float cap_mps;
-	float deadband_mps = (float)get_orin_vx_deadband_mmps() / 1000.0f;
-	float ratio;
-	float pulse;
+	uint32_t speed_mmps;
 
-	if (fabsf(scaled_vx_mps) <= deadband_mps)
+	if (orin_target_is_below_min_control(scaled_vx_mps) != 0U)
 	{
 		return get_orin_esc_center_pulse();
 	}
 
+	speed_mmps = speed_mps_abs_to_mmps(scaled_vx_mps);
 	if (scaled_vx_mps > 0.0f)
 	{
-		magnitude_mps = scaled_vx_mps;
-		cap_mps = (float)get_orin_vx_forward_cap_mmps() / 1000.0f;
-		ratio = (cap_mps <= deadband_mps) ? 1.0f : (magnitude_mps - deadband_mps) / (cap_mps - deadband_mps);
-		if (ratio > 1.0f)
-		{
-			ratio = 1.0f;
-		}
-		pulse = (float)get_orin_esc_forward_start_pulse() +
-			ratio * (float)(get_orin_esc_forward_limit_pulse() - get_orin_esc_forward_start_pulse());
+		return interpolate_speed_ff_table(s_orin_forward_ff_table,
+			(uint32_t)(sizeof(s_orin_forward_ff_table) / sizeof(s_orin_forward_ff_table[0])),
+			speed_mmps);
 	}
-	else
-	{
-		magnitude_mps = -scaled_vx_mps;
-		cap_mps = (float)get_orin_vx_reverse_cap_mmps() / 1000.0f;
-		ratio = (cap_mps <= deadband_mps) ? 1.0f : (magnitude_mps - deadband_mps) / (cap_mps - deadband_mps);
-		if (ratio > 1.0f)
-		{
-			ratio = 1.0f;
-		}
-		pulse = (float)get_orin_esc_reverse_start_pulse() +
-			ratio * (float)((int32_t)get_orin_esc_reverse_limit_pulse() - (int32_t)get_orin_esc_reverse_start_pulse());
-	}
-
-	return limit_esc_safe_pulse((uint16_t)pulse);
+	return interpolate_speed_ff_table(s_orin_reverse_ff_table,
+		(uint32_t)(sizeof(s_orin_reverse_ff_table) / sizeof(s_orin_reverse_ff_table[0])),
+		speed_mmps);
 }
 
-static uint16_t orin_map_vz_to_servo(float vx_mps, float vz_rad_s)
+static int32_t float_to_i32_nearest(float value)
 {
-	float scaled_vx_mps = scale_and_limit_orin_vx(vx_mps);
-	float abs_vx_mps = fabsf(scaled_vx_mps);
-	float min_vx_mps = (float)get_orin_ackermann_min_vx_mmps() / 1000.0f;
-	float max_steering_rad;
-	float wheelbase_m;
-	float delta_rad;
-	float ratio;
-	float limited_vz_rad_s;
-
-	if (abs_vx_mps < min_vx_mps)
+	if (value >= 0.0f)
 	{
-		return get_orin_servo_center_pulse();
+		return (int32_t)(value + 0.5f);
+	}
+	return (int32_t)(value - 0.5f);
+}
+
+static uint16_t clamp_esc_pulse_i32(int32_t pulse_us)
+{
+	if (pulse_us < (int32_t)ESC_PWM_MIN_PULSE_US)
+	{
+		return ESC_PWM_MIN_PULSE_US;
+	}
+	if (pulse_us > (int32_t)ESC_PWM_MAX_PULSE_US)
+	{
+		return ESC_PWM_MAX_PULSE_US;
+	}
+	return (uint16_t)pulse_us;
+}
+
+static uint32_t get_speed_pi_trim_limit_us(void)
+{
+	uint32_t limit_us = (g_speed_pi_trim_limit_us == 0U) ?
+		SPEED_PI_TRIM_LIMIT_DEFAULT_US : g_speed_pi_trim_limit_us;
+
+	if (limit_us > 100U)
+	{
+		limit_us = 100U;
+	}
+	return limit_us;
+}
+
+static uint16_t orin_compute_speed_control_esc(void)
+{
+	const float target_vx_mps = scale_and_limit_orin_vx(g_orin_state.target_speed_mps);
+	const uint16_t base_us = orin_map_vx_to_esc(target_vx_mps);
+	const int8_t target_direction = get_vx_direction(target_vx_mps);
+	const uint32_t now_ms = HAL_GetTick();
+	float feedback_vx_mps = 0.0f;
+	uint8_t feedback_valid = 0U;
+
+	g_speed_pi_target_vx_mps = target_vx_mps;
+	g_speed_pi_base_us = base_us;
+
+	if (orin_target_is_below_min_control(target_vx_mps) != 0U)
+	{
+		g_speed_pi_feedback_vx_mps = 0.0f;
+		g_speed_pi_final_us = get_orin_esc_center_pulse();
+		speed_pi_reset_controller();
+		return get_orin_esc_center_pulse();
 	}
 
-	max_steering_rad = (float)get_orin_ackermann_max_steering_millirad() / 1000.0f;
-	wheelbase_m = (float)get_orin_ackermann_wheelbase_mm() / 1000.0f;
-	limited_vz_rad_s = clamp_legacy_orin_vz(vz_rad_s);
-	delta_rad = atanf((wheelbase_m * limited_vz_rad_s) / scaled_vx_mps);
+	if (g_speed_pi_last_target_direction != 0 && target_direction != g_speed_pi_last_target_direction)
+	{
+		speed_pi_reset_controller();
+	}
+	g_speed_pi_last_target_direction = target_direction;
+
+	feedback_valid = HallSpeed_GetSignedSpeedMps(&feedback_vx_mps);
+	g_speed_pi_feedback_valid = feedback_valid;
+	g_speed_pi_feedback_vx_mps = feedback_vx_mps;
+
+	if (g_speed_pi_enable == 0U || feedback_valid == 0U)
+	{
+		g_speed_pi_error_mps = 0.0f;
+		g_speed_pi_trim_us = 0;
+		g_speed_pi_final_us = base_us;
+		if (feedback_valid == 0U)
+		{
+			g_speed_pi_last_update_ms = 0U;
+			g_speed_pi_integral = 0.0f;
+		}
+		return base_us;
+	}
+
+	{
+		float dt_s = 0.02f;
+		const float kp = g_speed_pi_kp;
+		const float ki = g_speed_pi_ki;
+		const float trim_limit = (float)get_speed_pi_trim_limit_us();
+		float error_mps;
+		float integral;
+		float trim_us;
+		int32_t trim_i32;
+		int32_t final_i32;
+
+		if (g_speed_pi_last_update_ms != 0U)
+		{
+			dt_s = (float)(now_ms - g_speed_pi_last_update_ms) / 1000.0f;
+			if (dt_s < 0.001f)
+			{
+				dt_s = 0.001f;
+			}
+			else if (dt_s > 0.100f)
+			{
+				dt_s = 0.100f;
+			}
+		}
+		g_speed_pi_last_update_ms = now_ms;
+
+		error_mps = target_vx_mps - feedback_vx_mps;
+		integral = g_speed_pi_integral + error_mps * dt_s;
+		trim_us = kp * error_mps + ki * integral;
+		g_speed_pi_saturated = 0U;
+
+		if (trim_us > trim_limit)
+		{
+			trim_us = trim_limit;
+			g_speed_pi_saturated = 1U;
+			if (ki > 0.001f)
+			{
+				integral = (trim_limit - kp * error_mps) / ki;
+			}
+		}
+		else if (trim_us < -trim_limit)
+		{
+			trim_us = -trim_limit;
+			g_speed_pi_saturated = 1U;
+			if (ki > 0.001f)
+			{
+				integral = (-trim_limit - kp * error_mps) / ki;
+			}
+		}
+
+		trim_i32 = float_to_i32_nearest(trim_us);
+		final_i32 = (int32_t)base_us + trim_i32;
+		if (final_i32 < (int32_t)ESC_PWM_MIN_PULSE_US || final_i32 > (int32_t)ESC_PWM_MAX_PULSE_US)
+		{
+			g_speed_pi_saturated = 1U;
+		}
+
+		g_speed_pi_error_mps = error_mps;
+		g_speed_pi_integral = integral;
+		g_speed_pi_trim_us = trim_i32;
+		g_speed_pi_final_us = clamp_esc_pulse_i32(final_i32);
+		return (uint16_t)g_speed_pi_final_us;
+	}
+}
+
+static float clamp_orin_steering_angle(float steering_angle_rad)
+{
+	const float max_steering_rad = (float)get_orin_ackermann_max_steering_millirad() / 1000.0f;
+
+	if (max_steering_rad <= 0.001f)
+	{
+		return 0.0f;
+	}
+	if (steering_angle_rad > max_steering_rad)
+	{
+		return max_steering_rad;
+	}
+	if (steering_angle_rad < -max_steering_rad)
+	{
+		return -max_steering_rad;
+	}
+	return steering_angle_rad;
+}
+
+static uint16_t orin_map_steering_to_servo(float steering_angle_rad)
+{
+	const float max_steering_rad = (float)get_orin_ackermann_max_steering_millirad() / 1000.0f;
+	float ratio;
 
 	if (max_steering_rad <= 0.001f)
 	{
 		return get_orin_servo_center_pulse();
 	}
 
-	if (delta_rad > max_steering_rad)
-	{
-		delta_rad = max_steering_rad;
-	}
-	else if (delta_rad < -max_steering_rad)
-	{
-		delta_rad = -max_steering_rad;
-	}
-
-	ratio = delta_rad / max_steering_rad;
+	steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
+	ratio = steering_angle_rad / max_steering_rad;
 	return limit_servo_safe_pulse((uint16_t)((int32_t)get_orin_servo_center_pulse() +
 		(int32_t)(ratio * (float)((g_orin_servo_range_us == 0U) ? 500U : g_orin_servo_range_us))));
 }
@@ -1022,62 +1406,85 @@ static float telemetry_estimate_vz_from_pwm(float vx_mps, uint16_t servo_pulse_u
 	return tanf(steering_rad) * vx_mps / wheelbase_m;
 }
 
-void ServoBasic_UpdateFromOrin(float vx_mps, float vy_mps, float vz_rad_s, uint8_t flag_stop)
+static void update_ackermann_from_orin(float speed_mps,
+									   float steering_angle_rad,
+									   uint8_t enable,
+									   uint8_t brake,
+									   uint8_t emergency_stop)
 {
-	float scaled_vx_mps;
-	float limited_vz_rad_s = clamp_legacy_orin_vz(vz_rad_s);
+	float scaled_speed_mps;
+	float feedback_speed_mps;
 	int8_t command_direction = 0;
+	uint8_t speed_below_min;
+	const uint8_t auto_enabled = (enable != 0U) ? 1U : 0U;
+	const uint8_t brake_active = (brake != 0U) ? 1U : 0U;
+	const uint8_t estop_active = (emergency_stop != 0U) ? 1U : 0U;
+	const uint8_t force_zero_speed = (auto_enabled == 0U || brake_active != 0U || estop_active != 0U) ? 1U : 0U;
 
-	(void)vy_mps;
 	(void)get_orin_ackermann_track_width_mm();
 	(void)get_orin_ackermann_wheel_radius_mm();
 	if (g_orin_pwm_enable == 0U)
 	{
 		HallSpeed_SetCommandDirection(0);
+		speed_pi_reset_controller();
 		return;
 	}
 
-	if (flag_stop == 0U)
+	steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
+	scaled_speed_mps = (force_zero_speed != 0U) ? 0.0f : scale_and_limit_orin_vx(speed_mps);
+	speed_below_min = orin_target_is_below_min_control(scaled_speed_mps);
+	feedback_speed_mps = (speed_below_min != 0U ||
+		fabsf(scaled_speed_mps) < get_orin_velocity_neutral_threshold_mps()) ? 0.0f : scaled_speed_mps;
+
+	if (force_zero_speed == 0U && speed_below_min == 0U)
 	{
-		if (vx_mps > 0.0f)
-		{
-			command_direction = 1;
-		}
-		else if (vx_mps < 0.0f)
-		{
-			command_direction = -1;
-		}
+		command_direction = get_vx_direction(scaled_speed_mps);
 	}
 	HallSpeed_SetCommandDirection(command_direction);
 
-	scaled_vx_mps = scale_and_limit_orin_vx(vx_mps);
-	if (fabsf(scaled_vx_mps) < get_orin_velocity_neutral_threshold_mps())
+	if (estop_active != 0U)
 	{
 		g_orin_state.esc_pulse_us = get_orin_esc_center_pulse();
 		g_orin_state.servo_pulse_us = get_orin_servo_center_pulse();
-		g_orin_state.feedback_vx_mps = 0.0f;
-		g_orin_state.feedback_vy_mps = 0.0f;
-		g_orin_state.feedback_vz_rad_s = 0.0f;
+		speed_pi_reset_controller();
 	}
 	else
 	{
-		g_orin_state.esc_pulse_us = orin_map_vx_to_esc(vx_mps);
-		g_orin_state.servo_pulse_us = orin_map_vz_to_servo(vx_mps, vz_rad_s);
-		g_orin_state.feedback_vx_mps = scaled_vx_mps;
-		g_orin_state.feedback_vy_mps = 0.0f;
-		g_orin_state.feedback_vz_rad_s = limited_vz_rad_s;
+		if (force_zero_speed != 0U || speed_below_min != 0U)
+		{
+			g_orin_state.esc_pulse_us = get_orin_esc_center_pulse();
+			speed_pi_reset_controller();
+		}
+		else
+		{
+			g_orin_state.esc_pulse_us = orin_map_vx_to_esc(speed_mps);
+		}
+		g_orin_state.servo_pulse_us = orin_map_steering_to_servo(steering_angle_rad);
 	}
 
-	if (flag_stop != 0U)
-	{
-		g_orin_state.feedback_vx_mps = 0.0f;
-		g_orin_state.feedback_vy_mps = 0.0f;
-		g_orin_state.feedback_vz_rad_s = 0.0f;
-	}
-
+	g_orin_state.target_speed_mps = (force_zero_speed != 0U) ? 0.0f : speed_mps;
+	g_orin_state.feedback_vx_mps = feedback_speed_mps;
+	g_orin_state.feedback_steering_angle_rad =
+		telemetry_estimate_steering_rad_from_servo_pulse(g_orin_state.servo_pulse_us);
+	g_orin_state.feedback_vz_rad_s = telemetry_estimate_vz_from_pwm(
+		feedback_speed_mps,
+		g_orin_state.servo_pulse_us);
+	g_orin_state.target_steering_angle_rad = steering_angle_rad;
 	g_orin_state.last_update_ms = HAL_GetTick();
 	g_orin_state.active = 1U;
-	g_orin_state.stop = (flag_stop != 0U) ? 1U : 0U;
+	g_orin_state.stop = estop_active;
+	g_orin_state.auto_enabled = auto_enabled;
+	g_orin_state.brake_active = brake_active;
+	g_orin_state.emergency_stop = estop_active;
+}
+
+void ServoBasic_UpdateAckermannFromOrin(float speed_mps,
+										float steering_angle_rad,
+										uint8_t enable,
+										uint8_t brake,
+										uint8_t emergency_stop)
+{
+	update_ackermann_from_orin(speed_mps, steering_angle_rad, enable, brake, emergency_stop);
 }
 
 static uint8_t orin_pwm_is_active(void)
@@ -1086,7 +1493,8 @@ static uint8_t orin_pwm_is_active(void)
 	{
 		return 0U;
 	}
-	const uint32_t timeout_ms = (g_orin_pwm_timeout_ms == 0U) ? 200U : g_orin_pwm_timeout_ms;
+	const uint32_t timeout_ms = (g_orin_pwm_timeout_ms == 0U) ? APP_ORIN_PWM_TIMEOUT_DEFAULT_MS :
+		g_orin_pwm_timeout_ms;
 	return (HAL_GetTick() - g_orin_state.last_update_ms) <= timeout_ms;
 }
 
@@ -1212,7 +1620,7 @@ static void apply_rc_passthrough_outputs(void)
 
 static void apply_autonomous_outputs(void)
 {
-	apply_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_state.esc_pulse_us)));
+	apply_orin_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_state.esc_pulse_us)));
 	apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_state.servo_pulse_us)));
 }
 
@@ -1226,10 +1634,12 @@ void ServoBasic_ProcessControl(void)
 	if (g_rc_override_active != 0U || orin_active == 0U)
 	{
 		HallSpeed_SetCommandDirection(0);
+		speed_pi_reset_controller();
 	}
 
 	if (g_state.emergency_stop != 0U)
 	{
+		speed_pi_reset_controller();
 		apply_esc_pulse(ESC_PWM_MIN_PULSE_US);
 		apply_servo_pulse(get_orin_servo_center_pulse());
 		return;
@@ -1242,12 +1652,13 @@ void ServoBasic_ProcessControl(void)
 	{
 		if (g_orin_state.stop != 0U)
 		{
+			speed_pi_reset_controller();
 			apply_esc_pulse(0U);
 			apply_servo_pulse(0U);
 		}
 		else
 		{
-			apply_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_orin_state.esc_pulse_us)));
+			apply_orin_esc_pulse(orin_compute_speed_control_esc());
 			apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_orin_state.servo_pulse_us)));
 		}
 	}
@@ -1337,30 +1748,75 @@ uint8_t ServoBasic_IsRcEmergencyActive(void)
 	return g_rc_guard_active;
 }
 
-uint8_t ServoBasic_GetOrinFeedback(float *vx_mps, float *vy_mps, float *vz_rad_s)
+uint8_t ServoBasic_IsOrinCommandTimeout(void)
 {
-	float feedback_vx = 0.0f;
-	float feedback_vz = 0.0f;
-
-	if (HallSpeed_GetSignedSpeedMps(&feedback_vx) == 0U)
+	if (g_orin_pwm_enable == 0U)
 	{
 		return 0U;
 	}
-
-	feedback_vz = telemetry_estimate_vz_from_pwm(feedback_vx, g_state.servo_pulse_us);
-
-	if (vx_mps != NULL)
+	if (g_orin_state.active == 0U)
 	{
-		*vx_mps = feedback_vx;
+		return 1U;
 	}
-	if (vy_mps != NULL)
+	return (orin_pwm_is_active() == 0U) ? 1U : 0U;
+}
+
+uint8_t ServoBasic_IsOrinAutoEnabled(void)
+{
+	if (g_orin_pwm_enable == 0U || orin_pwm_is_active() == 0U)
 	{
-		*vy_mps = 0.0f;
+		return 0U;
 	}
-	if (vz_rad_s != NULL)
+	if (g_rc_override_active != 0U || g_orin_state.emergency_stop != 0U)
 	{
-		*vz_rad_s = feedback_vz;
+		return 0U;
+	}
+	return (g_orin_state.auto_enabled != 0U) ? 1U : 0U;
+}
+
+uint8_t ServoBasic_IsOrinBrakeActive(void)
+{
+	if (orin_pwm_is_active() == 0U)
+	{
+		return 0U;
+	}
+	return (g_orin_state.brake_active != 0U) ? 1U : 0U;
+}
+
+uint8_t ServoBasic_IsOrinEmergencyActive(void)
+{
+	if (orin_pwm_is_active() == 0U)
+	{
+		return 0U;
+	}
+	return (g_orin_state.emergency_stop != 0U) ? 1U : 0U;
+}
+
+uint8_t ServoBasic_GetAckermannFeedback(float *speed_mps,
+										float *steering_angle_rad,
+										float *yaw_rate_rad_s)
+{
+	float feedback_speed = 0.0f;
+	const uint8_t speed_valid = HallSpeed_GetSignedSpeedMps(&feedback_speed);
+	const float steering_rad = telemetry_estimate_steering_rad_from_servo_pulse(g_state.servo_pulse_us);
+	const float yaw_rate = telemetry_estimate_vz_from_pwm(feedback_speed, g_state.servo_pulse_us);
+
+	if (speed_valid == 0U)
+	{
+		feedback_speed = 0.0f;
+	}
+	if (speed_mps != NULL)
+	{
+		*speed_mps = feedback_speed;
+	}
+	if (steering_angle_rad != NULL)
+	{
+		*steering_angle_rad = steering_rad;
+	}
+	if (yaw_rate_rad_s != NULL)
+	{
+		*yaw_rate_rad_s = yaw_rate;
 	}
 
-	return 1U;
+	return speed_valid;
 }

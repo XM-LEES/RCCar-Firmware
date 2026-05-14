@@ -10,7 +10,7 @@
  * are the single source for reset-time defaults when those variables are zero.
  */
 #define APP_ORIN_PWM_ENABLE_DEFAULT                 1U
-#define APP_ORIN_PWM_TIMEOUT_DEFAULT_MS           200U
+#define APP_ORIN_PWM_TIMEOUT_DEFAULT_MS           250U
 
 #define APP_ORIN_ACKERMANN_WHEELBASE_MM           540U
 #define APP_ORIN_ACKERMANN_TRACK_WIDTH_MM         480U
@@ -19,12 +19,21 @@
 #define APP_ORIN_ACKERMANN_MIN_VX_MMPS             50U
 
 #define APP_ORIN_VX_SCALE_PERMILLE               1000U
-#define APP_ORIN_FEEDBACK_SCALE_PERMILLE         1254U
-#define APP_ORIN_VX_FORWARD_CAP_MMPS             2000U
-#define APP_ORIN_VX_REVERSE_CAP_MMPS             2000U
+#define APP_ORIN_VX_FORWARD_CAP_MMPS              500U
+#define APP_ORIN_VX_REVERSE_CAP_MMPS              300U
 #define APP_ORIN_VX_DEADBAND_MMPS                  50U
-#define APP_ORIN_VX_MAX_DEFAULT_MMPS             1000U
-#define APP_ORIN_VZ_MAX_DEFAULT_MRAD             1000U
+#define APP_ORIN_VX_MAX_DEFAULT_MMPS              500U
+
+#define APP_ORIN_MIN_FORWARD_VX_MMPS               70U
+#define APP_ORIN_MIN_REVERSE_VX_MMPS              180U
+
+#define APP_HALL_SPEED_LIMIT_MMPS                5000U
+#define APP_HALL_SPEED_LIMIT_RELEASE_MMPS        4500U
+
+#define APP_SPEED_PI_ENABLE_DEFAULT                 1U
+#define APP_SPEED_PI_KP_DEFAULT_US_PER_MPS       10.0f
+#define APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S      3.0f
+#define APP_SPEED_PI_TRIM_LIMIT_US                 12U
 
 #define APP_ORIN_ESC_CENTER_US                   1500U
 #define APP_ORIN_ESC_RANGE_US                     500U

@@ -41,12 +41,12 @@ static void show_debug_status(void)
     const servo_basic_state_t *state = ServoBasic_GetState();
     const uint16_t adc_vol = USER_ADC_Get_AdcBufValue(userconfigADC_VOL_CHANNEL);
     hall_speed_state_t hall = HallSpeed_GetState();
-    float feedback_vx = 0.0f;
-    float feedback_vy = 0.0f;
-    float feedback_vz = 0.0f;
+    float speed_mps = 0.0f;
+    float steering_angle_rad = 0.0f;
+    float yaw_rate_rad_s = 0.0f;
 
-    (void)feedback_vy;
-    (void)ServoBasic_GetOrinFeedback(&feedback_vx, &feedback_vy, &feedback_vz);
+    (void)yaw_rate_rad_s;
+    (void)ServoBasic_GetAckermannFeedback(&speed_mps, &steering_angle_rad, &yaw_rate_rad_s);
 
     oled->ShowString(0, 0, "                ");
     oled->ShowString(0, 0, "M:");
@@ -69,10 +69,10 @@ static void show_debug_status(void)
     show_u4_zero_padded(72, 24, adc_vol);
 
     oled->ShowString(0, 36, "                ");
-    oled->ShowString(0, 36, "VX");
-    oled->ShowFloat(16, 36, feedback_vx, 1, 2);
-    oled->ShowString(64, 36, "VZ");
-    oled->ShowFloat(88, 36, feedback_vz, 1, 2);
+    oled->ShowString(0, 36, "SP");
+    oled->ShowFloat(16, 36, speed_mps, 1, 2);
+    oled->ShowString(64, 36, "ST");
+    oled->ShowFloat(88, 36, steering_angle_rad, 1, 2);
 
     oled->ShowString(0, 48, "                ");
     oled->ShowString(0, 48, "A");

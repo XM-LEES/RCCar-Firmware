@@ -4,6 +4,13 @@ This document records the extrinsic (geometric) parameters of the AutoRacer vehi
 
 Measured: 2026-01-29
 
+Review status: the chassis and sensor extrinsic values below still need manual
+verification. The confirmed wheel-size value in the STM32 firmware is the hall
+speed conversion diameter in `WHEELTEC_APP/hall_speed.c`:
+`HALL_WHEEL_DIAMETER_M = 0.235 m` (radius `0.1175 m`, circumference
+`0.738274 m`). Do not treat the URDF `wheel_radius = 0.11 m` entry below as
+manually verified until the vehicle geometry check is complete.
+
 ## Coordinate System Convention
 
 Following ROS REP-103:
@@ -48,7 +55,11 @@ All sensor positions are relative to `base_link` (rear axle center, at axle heig
 - Yaw=-90° transforms LiDAR frame to ROS convention (+X=front)
 - Cable exit at rear, LiDAR config `cable_position=180°`, so 0°=front
 
-### ZED X Depth Camera
+### ZED X Depth Camera (optional / not enabled)
+
+Current workspace hardware facts do not treat ZED X as an installed or enabled
+sensor. Keep the values below as an optional URDF/historical reference until a
+vehicle inspection confirms the camera hardware and launch/TF usage.
 
 | Axis | Value | Unit | Notes |
 |------|-------|------|-------|
@@ -87,7 +98,7 @@ odom
         ├── front_right_steering_link
         │   └── front_right_wheel_link
         ├── laser (LiDAR C32)
-        └── zed_camera_link
+        └── zed_camera_link (optional; not current enabled path)
             └── [ZED internal TF tree]
 ```
 
@@ -99,7 +110,7 @@ odom
             +---------+----------+
             |    ○         ○     |  ← Front wheels (X=+0.54m)
             |                    |
-            |      [ZED X]       |  ← ZED camera (X=+0.34m)
+            |   [optional ZED X] |  ← ZED camera (X=+0.34m, not enabled)
             |                    |
             |      [LiDAR]       |  ← LiDAR C32 (X=+0.24m)
             |                    |
@@ -120,6 +131,7 @@ ros2 run tf2_tools view_frames
 
 # Echo specific transform
 ros2 run tf2_ros tf2_echo base_link laser
+# Optional ZED reference only; not part of the current enabled sensor set.
 ros2 run tf2_ros tf2_echo base_link zed_camera_link
 
 # Monitor TF
