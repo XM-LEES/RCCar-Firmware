@@ -100,6 +100,30 @@ Hall / servo estimate / battery / safety state
 
 上行字段定义以根 `../../docs/接口与协议.md` 为准。代码里固定长度约束在 `data_task.c` 的 `BaseFRAME_LEN == 24`。任何向 UART4 混发调试帧的改动都会破坏上位机固定长度解析，必须先改根协议和上位机桥接。
 
+## 当前实现与阶段目标差异
+
+本节只说明 `RCCar-new/` 当前代码事实，不降低根目录阶段目标。完整协议目标、状态位定义和阶段验收门槛仍以根 `../../docs/接口与协议.md`、`../../docs/阶段路线图.md` 为准。
+
+当前已经实现并可作为代码事实核对的内容：
+
+- UART4 11 字节 Ackermann command 解析：帧头、帧尾、BCC、`cmd=0x01`、`ENABLE`、`BRAKE`、`CLEAR_FAULT`、`EMERGENCY_STOP`。
+- `speed_mmps + steering_mrad` 自动控制入口，旧 `vx/vy/wz` 不是当前正式自动入口。
+- RC 接管、RC guard/急停、上位机急停、刹车请求和通信超时停车仲裁。
+- 速度和转角执行端限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。
+- UART4 24 字节 telemetry：`hall_delta_count`、`speed_mmps`、`steering_mrad`、`yaw_rate_mradps`、`battery_mv`、`dt_ms`、`status_bits`。
+- 当前填充的状态：`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`ESTOP_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_FAULT`、`STEERING_FEEDBACK_VALID`、`BATTERY_VALID`、`FRAME_ERROR_SEEN`。
+- `CLEAR_FAULT` 当前只在安全条件满足时清除 UART4 frame-error 诊断。
+
+当前尚未实现但仍属于协议目标/阶段验收要求的内容：
+
+- 完整 `FAULT_LATCHED` 状态机：故障置位、锁存保持、源条件消失后的 `CLEAR_FAULT` 清除规则和测试记录。
+- 真实转角测量硬件接入后的 `STEERING_IS_MEASURED`；当前转角是舵机标定估算，不得把该位声明为实测。
+- `STEERING_FAULT`、`BATTERY_LOW`、`BATTERY_CRITICAL` 的判据、状态位填充和测试。
+- `SPEED_SATURATED`、`STEERING_SATURATED` telemetry 状态位；当前执行端存在速度/转角限幅，但尚未把限幅触发状态上报到对应位。
+- 加速度限幅、转角速度限幅，以及 `ACCEL_LIMITED`、`STEERING_RATE_LIMITED` 状态位。
+
+补齐上述项前，对应未实现位必须保持为 `0`，测试记录只能写“当前未实现/未验收”，不能通过删除协议位或改写子仓库文档把目标降级。
+
 ## RC 接管数据流
 
 ```text
