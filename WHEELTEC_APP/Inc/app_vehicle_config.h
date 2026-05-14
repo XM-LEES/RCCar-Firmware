@@ -31,8 +31,8 @@
 #define APP_HALL_SPEED_LIMIT_RELEASE_MMPS        4500U
 
 #define APP_SPEED_PI_ENABLE_DEFAULT                 1U
-#define APP_SPEED_PI_KP_DEFAULT_US_PER_MPS       10.0f
-#define APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S      3.0f
+#define APP_SPEED_PI_KP_DEFAULT_US_PER_MPS       20.0f
+#define APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S      0.0f
 #define APP_SPEED_PI_TRIM_LIMIT_US                 12U
 
 #define APP_ORIN_ESC_CENTER_US                   1500U
