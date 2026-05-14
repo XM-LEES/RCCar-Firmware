@@ -124,6 +124,20 @@ Hall / servo estimate / battery / safety state
 
 补齐上述项前，对应未实现位必须保持为 `0`，测试记录状态为“当前未实现/未验收”。删除协议位或改写子仓库文档属于目标降级，需要同步修改根阶段契约并记录风险。
 
+当前已落地的固件静态契约检查：
+
+```bash
+python3 tools/acceptance/check_firmware_contract.py --workspace-root .
+```
+
+该检查覆盖 UART4 Ackermann command 帧长、cmd/flags、BCC、RC override guard、24 字节 telemetry、当前已实现状态位赋值、UART4 `115200 8N1`。阶段 1 目标状态位检查使用：
+
+```bash
+python3 tools/acceptance/check_firmware_contract.py --workspace-root . --require-phase1-status-bits
+```
+
+PC 串口测试使用同一 UART4 Ackermann 正式协议。固件不增加 PC-only 自动入口；测试工具负责串口打开、正式帧收发、raw log 和 parsed telemetry 摘要。
+
 ## RC 接管数据流
 
 ```text

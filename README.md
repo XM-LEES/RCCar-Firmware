@@ -30,6 +30,7 @@
 - RC 输入捕获：`WHEELTEC_APP/servo_rc_capture.c`
 - 霍尔测速：`WHEELTEC_APP/hall_speed.c`
 - UART4 telemetry：`WHEELTEC_APP/data_task.c`
+- 固件契约静态检查：`tools/acceptance/check_firmware_contract.py`
 - 本地实现摘要：`docs/current-state.md`
 - 本地下位机流程：`docs/开发流程与验证规范.md`
 
@@ -48,4 +49,5 @@
 - `docs/开发流程与验证规范.md`：提交切分、必读范围、强制一致性收尾检查、测试记录和日志落点。
 - `docs/test-records/`：可提交的 Markdown 测试记录。
 - `docs/vendor/`：厂家原始资料。
+- `tools/acceptance/`：下位机静态契约检查和后续 PC 串口验收工具。
 - `logs/`：原始日志和临时调试产物，默认不提交。
