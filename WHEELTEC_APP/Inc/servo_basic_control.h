@@ -43,6 +43,15 @@ typedef struct
 	uint8_t emergency_stop;
 } servo_basic_state_t;
 
+typedef struct
+{
+	uint8_t speed_saturated;
+	uint8_t steering_saturated;
+	uint8_t accel_limited;
+	uint8_t steering_rate_limited;
+	uint8_t steering_fault;
+} servo_basic_diagnostics_t;
+
 void ServoBasic_Init(void);
 void ServoBasic_ProcessControl(void);
 const servo_basic_state_t *ServoBasic_GetState(void);
@@ -55,6 +64,7 @@ uint8_t ServoBasic_IsOrinEmergencyActive(void);
 uint8_t ServoBasic_GetAckermannFeedback(float *speed_mps,
                                         float *steering_angle_rad,
                                         float *yaw_rate_rad_s);
+servo_basic_diagnostics_t ServoBasic_GetDiagnostics(void);
 
 void ServoBasic_OutputEscPulse(uint16_t pulse_us);
 void ServoBasic_OutputServoPulse(uint16_t pulse_us);

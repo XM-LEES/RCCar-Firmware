@@ -49,6 +49,8 @@ static servo_basic_state_t g_state = {
 #define ORIN_MIN_REVERSE_VX_DEFAULT_MMPS         APP_ORIN_MIN_REVERSE_VX_MMPS
 #define HALL_SPEED_LIMIT_DEFAULT_MMPS            APP_HALL_SPEED_LIMIT_MMPS
 #define HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS    APP_HALL_SPEED_LIMIT_RELEASE_MMPS
+#define ORIN_ACCEL_LIMIT_DEFAULT_MMPS2           APP_ORIN_ACCEL_LIMIT_MMPS2
+#define ORIN_STEERING_RATE_LIMIT_DEFAULT_MRADPS  APP_ORIN_STEERING_RATE_LIMIT_MRADPS
 #define SPEED_PI_ENABLE_DEFAULT                  APP_SPEED_PI_ENABLE_DEFAULT
 #define SPEED_PI_KP_DEFAULT_US_PER_MPS           APP_SPEED_PI_KP_DEFAULT_US_PER_MPS
 #define SPEED_PI_KI_DEFAULT_US_PER_MPS_S         APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S
@@ -99,6 +101,8 @@ volatile uint32_t g_orin_servo_range_us = APP_ORIN_SERVO_RANGE_US;
 volatile uint32_t g_hall_speed_limit_mmps = HALL_SPEED_LIMIT_DEFAULT_MMPS;
 volatile uint32_t g_hall_speed_limit_release_mmps = HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS;
 volatile uint32_t g_hall_speed_limit_active = 0U;
+volatile uint32_t g_orin_accel_limit_mmps2 = ORIN_ACCEL_LIMIT_DEFAULT_MMPS2;
+volatile uint32_t g_orin_steering_rate_limit_mradps = ORIN_STEERING_RATE_LIMIT_DEFAULT_MRADPS;
 volatile uint32_t g_speed_pi_enable = SPEED_PI_ENABLE_DEFAULT;
 volatile float g_speed_pi_kp = SPEED_PI_KP_DEFAULT_US_PER_MPS;
 volatile float g_speed_pi_ki = SPEED_PI_KI_DEFAULT_US_PER_MPS_S;
@@ -162,6 +166,10 @@ typedef struct
 	uint8_t auto_enabled;
 	uint8_t brake_active;
 	uint8_t emergency_stop;
+	uint8_t speed_saturated;
+	uint8_t steering_saturated;
+	uint8_t accel_limited;
+	uint8_t steering_rate_limited;
 } orin_pwm_state_t;
 
 typedef struct
@@ -177,19 +185,23 @@ typedef struct
 } rc_channel_filter_state_t;
 
 static orin_pwm_state_t g_orin_state = {
-	ESC_PWM_NEUTRAL_PULSE_US,
-	ESC_PWM_NEUTRAL_PULSE_US,
-	0U,
-	0.0f,
-	0.0f,
-	0.0f,
-	0.0f,
-	0.0f,
-	0U,
-	0U,
-	0U,
-	0U,
-	0U
+	.esc_pulse_us = ESC_PWM_NEUTRAL_PULSE_US,
+	.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US,
+	.last_update_ms = 0U,
+	.target_speed_mps = 0.0f,
+	.feedback_vx_mps = 0.0f,
+	.feedback_vz_rad_s = 0.0f,
+	.target_steering_angle_rad = 0.0f,
+	.feedback_steering_angle_rad = 0.0f,
+	.active = 0U,
+	.stop = 0U,
+	.auto_enabled = 0U,
+	.brake_active = 0U,
+	.emergency_stop = 0U,
+	.speed_saturated = 0U,
+	.steering_saturated = 0U,
+	.accel_limited = 0U,
+	.steering_rate_limited = 0U
 };
 static volatile uint8_t g_rc_override_active = 0U;
 static volatile uint8_t g_rc_guard_active = 0U;
@@ -877,6 +889,67 @@ static uint32_t get_hall_speed_limit_release_mmps(void)
 	return (release_mmps > limit_mmps) ? limit_mmps : release_mmps;
 }
 
+static uint32_t get_orin_accel_limit_mmps2(void)
+{
+	return (g_orin_accel_limit_mmps2 == 0U) ?
+		ORIN_ACCEL_LIMIT_DEFAULT_MMPS2 : g_orin_accel_limit_mmps2;
+}
+
+static uint32_t get_orin_steering_rate_limit_mradps(void)
+{
+	return (g_orin_steering_rate_limit_mradps == 0U) ?
+		ORIN_STEERING_RATE_LIMIT_DEFAULT_MRADPS : g_orin_steering_rate_limit_mradps;
+}
+
+static uint8_t orin_vx_would_saturate(float vx_mps)
+{
+	const float scaled_vx = vx_mps * ((float)get_orin_vx_scale_permille() / 1000.0f);
+	const float forward_cap_mps = (float)get_orin_vx_forward_cap_mmps() / 1000.0f;
+	const float reverse_cap_mps = (float)get_orin_vx_reverse_cap_mmps() / 1000.0f;
+
+	if (scaled_vx > forward_cap_mps || scaled_vx < -reverse_cap_mps)
+	{
+		return 1U;
+	}
+	return 0U;
+}
+
+static float apply_rate_limit_float(float target,
+									float previous,
+									float limit_per_s,
+									float dt_s,
+									uint8_t *limited)
+{
+	const float max_delta = limit_per_s * dt_s;
+	float delta = target - previous;
+
+	if (limited != NULL)
+	{
+		*limited = 0U;
+	}
+	if (limit_per_s <= 0.001f || dt_s <= 0.0f)
+	{
+		return target;
+	}
+	if (delta > max_delta)
+	{
+		if (limited != NULL)
+		{
+			*limited = 1U;
+		}
+		return previous + max_delta;
+	}
+	if (delta < -max_delta)
+	{
+		if (limited != NULL)
+		{
+			*limited = 1U;
+		}
+		return previous - max_delta;
+	}
+	return target;
+}
+
 static uint8_t hall_speed_limit_should_block(void)
 {
 	float feedback_vx_mps = 0.0f;
@@ -1160,6 +1233,10 @@ void ServoBasic_Init(void)
 	g_orin_state.auto_enabled = 0U;
 	g_orin_state.brake_active = 0U;
 	g_orin_state.emergency_stop = 0U;
+	g_orin_state.speed_saturated = 0U;
+	g_orin_state.steering_saturated = 0U;
+	g_orin_state.accel_limited = 0U;
+	g_orin_state.steering_rate_limited = 0U;
 	g_speed_pi_target_vx_mps = 0.0f;
 	g_speed_pi_feedback_vx_mps = 0.0f;
 	g_speed_pi_base_us = ESC_PWM_NEUTRAL_PULSE_US;
@@ -1170,18 +1247,17 @@ void ServoBasic_Init(void)
 	apply_servo_pulse(get_orin_servo_center_pulse());
 }
 
-static uint16_t orin_map_vx_to_esc(float vx_mps)
+static uint16_t orin_map_limited_vx_to_esc(float vx_mps)
 {
-	float scaled_vx_mps = scale_and_limit_orin_vx(vx_mps);
 	uint32_t speed_mmps;
 
-	if (orin_target_is_below_min_control(scaled_vx_mps) != 0U)
+	if (orin_target_is_below_min_control(vx_mps) != 0U)
 	{
 		return get_orin_esc_center_pulse();
 	}
 
-	speed_mmps = speed_mps_abs_to_mmps(scaled_vx_mps);
-	if (scaled_vx_mps > 0.0f)
+	speed_mmps = speed_mps_abs_to_mmps(vx_mps);
+	if (vx_mps > 0.0f)
 	{
 		return interpolate_speed_ff_table(s_orin_forward_ff_table,
 			(uint32_t)(sizeof(s_orin_forward_ff_table) / sizeof(s_orin_forward_ff_table[0])),
@@ -1190,6 +1266,11 @@ static uint16_t orin_map_vx_to_esc(float vx_mps)
 	return interpolate_speed_ff_table(s_orin_reverse_ff_table,
 		(uint32_t)(sizeof(s_orin_reverse_ff_table) / sizeof(s_orin_reverse_ff_table[0])),
 		speed_mmps);
+}
+
+static uint16_t orin_map_vx_to_esc(float vx_mps)
+{
+	return orin_map_limited_vx_to_esc(scale_and_limit_orin_vx(vx_mps));
 }
 
 static int32_t float_to_i32_nearest(float value)
@@ -1228,8 +1309,8 @@ static uint32_t get_speed_pi_trim_limit_us(void)
 
 static uint16_t orin_compute_speed_control_esc(void)
 {
-	const float target_vx_mps = scale_and_limit_orin_vx(g_orin_state.target_speed_mps);
-	const uint16_t base_us = orin_map_vx_to_esc(target_vx_mps);
+	const float target_vx_mps = g_orin_state.target_speed_mps;
+	const uint16_t base_us = orin_map_limited_vx_to_esc(target_vx_mps);
 	const int8_t target_direction = get_vx_direction(target_vx_mps);
 	const uint32_t now_ms = HAL_GetTick();
 	float feedback_vx_mps = 0.0f;
@@ -1412,10 +1493,17 @@ static void update_ackermann_from_orin(float speed_mps,
 									   uint8_t brake,
 									   uint8_t emergency_stop)
 {
-	float scaled_speed_mps;
+	float requested_speed_mps;
+	float limited_speed_mps;
+	float clamped_steering_angle_rad;
 	float feedback_speed_mps;
+	float dt_s = 0.0f;
+	uint32_t now_ms;
 	int8_t command_direction = 0;
 	uint8_t speed_below_min;
+	uint8_t accel_limited = 0U;
+	uint8_t steering_saturated = 0U;
+	uint8_t steering_rate_limited = 0U;
 	const uint8_t auto_enabled = (enable != 0U) ? 1U : 0U;
 	const uint8_t brake_active = (brake != 0U) ? 1U : 0U;
 	const uint8_t estop_active = (emergency_stop != 0U) ? 1U : 0U;
@@ -1427,18 +1515,46 @@ static void update_ackermann_from_orin(float speed_mps,
 	{
 		HallSpeed_SetCommandDirection(0);
 		speed_pi_reset_controller();
-		return;
+			return;
+		}
+
+	now_ms = HAL_GetTick();
+	if (g_orin_state.active != 0U && now_ms >= g_orin_state.last_update_ms)
+	{
+		dt_s = (float)(now_ms - g_orin_state.last_update_ms) / 1000.0f;
+		if (dt_s > 0.250f)
+		{
+			dt_s = 0.250f;
+		}
 	}
 
-	steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
-	scaled_speed_mps = (force_zero_speed != 0U) ? 0.0f : scale_and_limit_orin_vx(speed_mps);
-	speed_below_min = orin_target_is_below_min_control(scaled_speed_mps);
+	clamped_steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
+	steering_saturated = (fabsf(clamped_steering_angle_rad - steering_angle_rad) > 0.0005f) ? 1U : 0U;
+	requested_speed_mps = (force_zero_speed != 0U) ? 0.0f : scale_and_limit_orin_vx(speed_mps);
+	limited_speed_mps = requested_speed_mps;
+	if (force_zero_speed == 0U && g_orin_state.active != 0U && dt_s > 0.0f)
+	{
+		limited_speed_mps = apply_rate_limit_float(
+			requested_speed_mps,
+			g_orin_state.target_speed_mps,
+			(float)get_orin_accel_limit_mmps2() / 1000.0f,
+			dt_s,
+			&accel_limited);
+		clamped_steering_angle_rad = apply_rate_limit_float(
+			clamped_steering_angle_rad,
+			g_orin_state.target_steering_angle_rad,
+			(float)get_orin_steering_rate_limit_mradps() / 1000.0f,
+			dt_s,
+			&steering_rate_limited);
+	}
+
+	speed_below_min = orin_target_is_below_min_control(limited_speed_mps);
 	feedback_speed_mps = (speed_below_min != 0U ||
-		fabsf(scaled_speed_mps) < get_orin_velocity_neutral_threshold_mps()) ? 0.0f : scaled_speed_mps;
+		fabsf(limited_speed_mps) < get_orin_velocity_neutral_threshold_mps()) ? 0.0f : limited_speed_mps;
 
 	if (force_zero_speed == 0U && speed_below_min == 0U)
 	{
-		command_direction = get_vx_direction(scaled_speed_mps);
+		command_direction = get_vx_direction(limited_speed_mps);
 	}
 	HallSpeed_SetCommandDirection(command_direction);
 
@@ -1448,34 +1564,38 @@ static void update_ackermann_from_orin(float speed_mps,
 		g_orin_state.servo_pulse_us = get_orin_servo_center_pulse();
 		speed_pi_reset_controller();
 	}
-	else
-	{
-		if (force_zero_speed != 0U || speed_below_min != 0U)
-		{
-			g_orin_state.esc_pulse_us = get_orin_esc_center_pulse();
-			speed_pi_reset_controller();
-		}
 		else
 		{
-			g_orin_state.esc_pulse_us = orin_map_vx_to_esc(speed_mps);
+			if (force_zero_speed != 0U || speed_below_min != 0U)
+			{
+				g_orin_state.esc_pulse_us = get_orin_esc_center_pulse();
+				speed_pi_reset_controller();
+			}
+			else
+			{
+				g_orin_state.esc_pulse_us = orin_map_limited_vx_to_esc(limited_speed_mps);
+			}
+			g_orin_state.servo_pulse_us = orin_map_steering_to_servo(clamped_steering_angle_rad);
 		}
-		g_orin_state.servo_pulse_us = orin_map_steering_to_servo(steering_angle_rad);
-	}
 
-	g_orin_state.target_speed_mps = (force_zero_speed != 0U) ? 0.0f : speed_mps;
+	g_orin_state.target_speed_mps = (force_zero_speed != 0U) ? 0.0f : limited_speed_mps;
 	g_orin_state.feedback_vx_mps = feedback_speed_mps;
 	g_orin_state.feedback_steering_angle_rad =
 		telemetry_estimate_steering_rad_from_servo_pulse(g_orin_state.servo_pulse_us);
 	g_orin_state.feedback_vz_rad_s = telemetry_estimate_vz_from_pwm(
 		feedback_speed_mps,
 		g_orin_state.servo_pulse_us);
-	g_orin_state.target_steering_angle_rad = steering_angle_rad;
-	g_orin_state.last_update_ms = HAL_GetTick();
+	g_orin_state.target_steering_angle_rad = clamped_steering_angle_rad;
+	g_orin_state.last_update_ms = now_ms;
 	g_orin_state.active = 1U;
 	g_orin_state.stop = estop_active;
 	g_orin_state.auto_enabled = auto_enabled;
 	g_orin_state.brake_active = brake_active;
 	g_orin_state.emergency_stop = estop_active;
+	g_orin_state.speed_saturated = (force_zero_speed == 0U && orin_vx_would_saturate(speed_mps) != 0U) ? 1U : 0U;
+	g_orin_state.steering_saturated = steering_saturated;
+	g_orin_state.accel_limited = accel_limited;
+	g_orin_state.steering_rate_limited = steering_rate_limited;
 }
 
 void ServoBasic_UpdateAckermannFromOrin(float speed_mps,
@@ -1819,4 +1939,20 @@ uint8_t ServoBasic_GetAckermannFeedback(float *speed_mps,
 	}
 
 	return speed_valid;
+}
+
+servo_basic_diagnostics_t ServoBasic_GetDiagnostics(void)
+{
+	servo_basic_diagnostics_t diagnostics;
+
+	diagnostics.speed_saturated = (g_orin_state.speed_saturated != 0U ||
+		g_speed_pi_saturated != 0U ||
+		g_hall_speed_limit_active != 0U) ? 1U : 0U;
+	diagnostics.steering_saturated = g_orin_state.steering_saturated;
+	diagnostics.accel_limited = g_orin_state.accel_limited;
+	diagnostics.steering_rate_limited = g_orin_state.steering_rate_limited;
+	diagnostics.steering_fault = (g_rc_steering_glitch_active != 0U ||
+		g_rc_input_fault_active != 0U) ? 1U : 0U;
+
+	return diagnostics;
 }

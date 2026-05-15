@@ -75,6 +75,7 @@ static void serial_control_try_clear_diagnostics(uint8_t enable,
 	}
 
 	g_app_runtime_state.uart4_rx_frame_error_seen = 0U;
+	AppRuntime_TryClearFaultLatch();
 }
 
 static void serial_control_check_reset(char uart_recv)

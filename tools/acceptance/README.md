@@ -7,6 +7,7 @@
 | 路径 | 作用 | 是否会让车运动 |
 | --- | --- | --- |
 | `check_firmware_contract.py` | 静态检查 UART4 Ackermann command、telemetry、状态位定义和串口配置。 | 不会 |
+| `serial_ackermann_check.py` | 通过 PC 串口收发 UART4 Ackermann 正式帧，解析 24 字节 telemetry。默认 listen/zero/stop；非零 command 必须加 `--arm-motion`。 | 默认不会；`--mode command --arm-motion` 会 |
 
 当前检查命令：
 
@@ -16,3 +17,10 @@ python3 tools/acceptance/check_firmware_contract.py --workspace-root . --require
 ```
 
 第一条命令用于日常契约漂移检查。第二条命令用于阶段 1 最终 PASS 前确认目标状态位符合当前硬件契约。
+
+PC 串口监听示例：
+
+```bash
+python3 tools/acceptance/serial_ackermann_check.py --port /dev/ttyUSB0 --mode listen
+python3 tools/acceptance/serial_ackermann_check.py --port /dev/ttyUSB0 --mode stop
+```
