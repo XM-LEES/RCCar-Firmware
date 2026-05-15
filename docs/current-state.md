@@ -175,6 +175,14 @@ PE13/PE14 Hall GPIO
 - 阶段 1 当前采用 `counts_per_meter = 10 / (pi * 0.235) = 13.545`。
 - 霍尔计数硬件不区分前进/后退方向；速度方向来自当前自动命令方向。命令方向未知、倒车、滑行、刹车后惯性移动或外力推动车时，不能当作独立方向测量。
 
+当前车辆标定默认值：
+
+- 轴距 `600 mm`，来源为前轮中心到后轮中心实测距离。
+- 车轮直径 `0.235 m`，对应半径 `117.5 mm`；固件整数默认 `APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM=118` 为四舍五入值。
+- 最大前轮转角左右均 `15°`，固件默认 `APP_ORIN_ACKERMANN_MAX_STEERING_MRAD=262`。
+- 舵机中位暂用 `1500 us`，两侧端点 `1105 us` / `1895 us`，固件默认 range `395 us`。
+- 左右转方向沿用既有 Ackermann 协议：正转角为左转。
+
 ## 配置和调试入口
 
 默认配置集中在 `WHEELTEC_APP/Inc/app_vehicle_config.h`。常用 Keil Watch 变量：

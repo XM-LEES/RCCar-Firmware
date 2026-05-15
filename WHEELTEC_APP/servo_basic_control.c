@@ -45,6 +45,7 @@ static servo_basic_state_t g_state = {
 #define ORIN_ESC_REVERSE_START_DEFAULT_US        APP_ORIN_ESC_REVERSE_START_US
 #define ORIN_ESC_FORWARD_MAX_DEFAULT_US          APP_ORIN_ESC_FORWARD_MAX_US
 #define ORIN_ESC_REVERSE_MAX_DEFAULT_US          APP_ORIN_ESC_REVERSE_MAX_US
+#define ORIN_SERVO_RANGE_DEFAULT_US              APP_ORIN_SERVO_RANGE_US
 #define ORIN_MIN_FORWARD_VX_DEFAULT_MMPS         APP_ORIN_MIN_FORWARD_VX_MMPS
 #define ORIN_MIN_REVERSE_VX_DEFAULT_MMPS         APP_ORIN_MIN_REVERSE_VX_MMPS
 #define HALL_SPEED_LIMIT_DEFAULT_MMPS            APP_HALL_SPEED_LIMIT_MMPS
@@ -97,7 +98,7 @@ volatile uint32_t g_orin_esc_reverse_start_us = ORIN_ESC_REVERSE_START_DEFAULT_U
 volatile uint32_t g_orin_esc_forward_max_us = ORIN_ESC_FORWARD_MAX_DEFAULT_US;
 volatile uint32_t g_orin_esc_reverse_max_us = ORIN_ESC_REVERSE_MAX_DEFAULT_US;
 volatile uint32_t g_orin_servo_center_us = APP_ORIN_SERVO_CENTER_US;
-volatile uint32_t g_orin_servo_range_us = APP_ORIN_SERVO_RANGE_US;
+volatile uint32_t g_orin_servo_range_us = ORIN_SERVO_RANGE_DEFAULT_US;
 volatile uint32_t g_hall_speed_limit_mmps = HALL_SPEED_LIMIT_DEFAULT_MMPS;
 volatile uint32_t g_hall_speed_limit_release_mmps = HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS;
 volatile uint32_t g_hall_speed_limit_active = 0U;
@@ -855,7 +856,7 @@ static uint16_t limit_servo_safe_pulse(uint16_t pulse_us)
 
 	pulse_us = clamp_servo_pulse(pulse_us);
 	center = get_orin_servo_center_pulse();
-	range = (g_orin_servo_range_us == 0U) ? 500U : g_orin_servo_range_us;
+	range = (g_orin_servo_range_us == 0U) ? ORIN_SERVO_RANGE_DEFAULT_US : g_orin_servo_range_us;
 	low = (center > range) ? (uint16_t)(center - range) : SERVO_MIN_PULSE_US;
 	high = (uint16_t)(center + range);
 	if (high > SERVO_MAX_PULSE_US)
@@ -1446,13 +1447,13 @@ static uint16_t orin_map_steering_to_servo(float steering_angle_rad)
 	steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
 	ratio = steering_angle_rad / max_steering_rad;
 	return limit_servo_safe_pulse((uint16_t)((int32_t)get_orin_servo_center_pulse() +
-		(int32_t)(ratio * (float)((g_orin_servo_range_us == 0U) ? 500U : g_orin_servo_range_us))));
+			(int32_t)(ratio * (float)((g_orin_servo_range_us == 0U) ? ORIN_SERVO_RANGE_DEFAULT_US : g_orin_servo_range_us))));
 }
 
 static float telemetry_estimate_steering_rad_from_servo_pulse(uint16_t pulse_us)
 {
 	const uint16_t center_pulse = get_orin_servo_center_pulse();
-	const uint16_t pulse_range = (g_orin_servo_range_us == 0U) ? 500U : (uint16_t)g_orin_servo_range_us;
+	const uint16_t pulse_range = (g_orin_servo_range_us == 0U) ? ORIN_SERVO_RANGE_DEFAULT_US : (uint16_t)g_orin_servo_range_us;
 	const float max_steering_rad = (float)get_orin_ackermann_max_steering_millirad() / 1000.0f;
 	float ratio;
 

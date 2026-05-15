@@ -14,8 +14,8 @@
 
 #define APP_ORIN_ACKERMANN_WHEELBASE_MM           600U
 #define APP_ORIN_ACKERMANN_TRACK_WIDTH_MM         480U
-#define APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM        110U
-#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      393U
+#define APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM        118U
+#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      262U
 #define APP_ORIN_ACKERMANN_MIN_VX_MMPS             50U
 
 #define APP_ORIN_VX_SCALE_PERMILLE               1000U
@@ -46,7 +46,7 @@
 #define APP_ORIN_ESC_REVERSE_MAX_US              1350U
 
 #define APP_ORIN_SERVO_CENTER_US                 1500U
-#define APP_ORIN_SERVO_RANGE_US                   500U
+#define APP_ORIN_SERVO_RANGE_US                   395U
 
 #define APP_RC_VALID_MIN_US                       900U
 #define APP_RC_VALID_MAX_US                      2100U
