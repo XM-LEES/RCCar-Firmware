@@ -182,6 +182,8 @@ PE13/PE14 Hall GPIO
 - 车轮直径 `0.235 m`，对应半径 `117.5 mm`；固件整数默认 `APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM=118` 为四舍五入值。
 - 最大前轮转角左右均 `15°`，固件默认 `APP_ORIN_ACKERMANN_MAX_STEERING_MRAD=262`。
 - 舵机中位暂用 `1500 us`，两侧端点 `1105 us` / `1895 us`，固件默认 range `395 us`。
+- 自动控制速度命令限幅：前进 `APP_ORIN_VX_FORWARD_CAP_MMPS=1000`，即 `1.00 m/s`；倒车 `APP_ORIN_VX_REVERSE_CAP_MMPS=600`，即 `0.60 m/s`；`APP_ORIN_VX_MAX_DEFAULT_MMPS=500` 只是旧变量回退值，当前显式前进/倒车 cap 非零时不作为有效自动命令上限。
+- 霍尔反馈超速保护阈值：`APP_HALL_SPEED_LIMIT_MMPS=5000`，释放阈值 `APP_HALL_SPEED_LIMIT_RELEASE_MMPS=4500`。这是异常保护，不是自动控制命令限速。
 - 左右转方向沿用既有 Ackermann 协议：正转角为左转。
 
 ## 配置和调试入口
