@@ -178,6 +178,7 @@ PE13/PE14 Hall GPIO
 当前车辆标定默认值：
 
 - 轴距 `600 mm`，来源为前轮中心到后轮中心实测距离。
+- 轮距 `470 mm`，来源为左/右轮中心平面实测距离。
 - 车轮直径 `0.235 m`，对应半径 `117.5 mm`；固件整数默认 `APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM=118` 为四舍五入值。
 - 最大前轮转角左右均 `15°`，固件默认 `APP_ORIN_ACKERMANN_MAX_STEERING_MRAD=262`。
 - 舵机中位暂用 `1500 us`，两侧端点 `1105 us` / `1895 us`，固件默认 range `395 us`。

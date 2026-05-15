@@ -2,14 +2,14 @@
 
 This document records the extrinsic (geometric) parameters of the AutoRacer vehicle, extracted from the URDF model (`urdf/autoracer.urdf.xacro`).
 
-Measured: 2026-01-29
+Measured: 2026-05-15
 
-Review status: the chassis and sensor extrinsic values below still need manual
-verification. The confirmed wheel-size value in the STM32 firmware is the hall
-speed conversion diameter in `WHEELTEC_APP/hall_speed.c`:
-`HALL_WHEEL_DIAMETER_M = 0.235 m` (radius `0.1175 m`, circumference
-`0.738274 m`). Do not treat the URDF `wheel_radius = 0.11 m` entry below as
-manually verified until the vehicle geometry check is complete.
+Review status: wheelbase, track width, wheel diameter, steering limits, body
+envelope width, front overhang, and rear overhang have been updated from the
+2026-05-15 measurements. Total height and sensor extrinsics still need physical
+recheck after the final LiDAR/camera/support installation. The confirmed wheel
+diameter in the STM32 firmware is `HALL_WHEEL_DIAMETER_M = 0.235 m` (radius
+`0.1175 m`, circumference `0.738274 m`).
 
 ## Coordinate System Convention
 
@@ -17,23 +17,23 @@ Following ROS REP-103:
 - **X** = Forward
 - **Y** = Left
 - **Z** = Up
-- **base_link** = Rear axle center, at axle height (Z=0.11m above ground)
+- **base_link** = Rear axle center, at axle height (Z=0.1175m above ground)
 
 ## Chassis Parameters
 
 | Parameter | Value | Unit | Description |
 |-----------|-------|------|-------------|
 | `wheelbase` | 0.60 | m | Front-to-rear axle distance |
-| `track_width` | 0.48 | m | Left-to-right wheel distance |
-| `wheel_radius` | 0.11 | m | Wheel radius |
+| `track_width` | 0.47 | m | Left-to-right wheel center distance |
+| `wheel_radius` | 0.1175 | m | Wheel radius from confirmed 0.235 m diameter |
 | `wheel_width` | 0.08 | m | Wheel width |
-| `max_steering_angle` | 0.393 | rad | Max steering angle (~22.5°) |
-| `chassis_length` | 0.85 | m | Vehicle total length |
-| `chassis_width` | 0.50 | m | Vehicle total width |
+| `max_steering_angle` | 0.262 | rad | Max steering angle (~15°) |
+| `chassis_length` | 0.8775 | m | Vehicle collision envelope length: 0.16 + 0.60 + 0.1175 |
+| `chassis_width` | 0.57 | m | Vehicle collision envelope width |
 | `chassis_height` | 0.20 | m | Chassis box height (URDF visual) |
-| `front_axle_to_front` | 0.15 | m | Front axle to front bumper |
+| `front_axle_to_front` | 0.1175 | m | Front axle to frontmost wheel point; front wheels extend beyond bumper |
 | `rear_axle_to_rear` | 0.16 | m | Rear axle to rear bumper |
-| `axle_height` | 0.11 | m | Axle center height above ground |
+| `axle_height` | 0.1175 | m | Axle center height above ground |
 
 ## Sensor Extrinsics
 
@@ -80,17 +80,17 @@ Relative to `base_link`:
 
 | Wheel | X (m) | Y (m) | Z (m) | Joint Type |
 |-------|-------|-------|-------|------------|
-| Rear Left | 0.00 | +0.24 | 0.00 | continuous |
-| Rear Right | 0.00 | -0.24 | 0.00 | continuous |
-| Front Left Steering | +0.60 | +0.24 | 0.00 | revolute (±22.5°) |
-| Front Right Steering | +0.60 | -0.24 | 0.00 | revolute (±22.5°) |
+| Rear Left | 0.00 | +0.235 | 0.00 | continuous |
+| Rear Right | 0.00 | -0.235 | 0.00 | continuous |
+| Front Left Steering | +0.60 | +0.235 | 0.00 | revolute (±15°) |
+| Front Right Steering | +0.60 | -0.235 | 0.00 | revolute (±15°) |
 
 ## TF Frame Hierarchy
 
 ```
 odom
 └── base_footprint (Z=0, ground level)
-    └── base_link (Z=+0.11m, rear axle center)
+    └── base_link (Z=+0.1175m, rear axle center)
         ├── rear_left_wheel_link
         ├── rear_right_wheel_link
         ├── front_left_steering_link
