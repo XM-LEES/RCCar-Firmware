@@ -19,8 +19,8 @@
 #define APP_ORIN_ACKERMANN_MIN_VX_MMPS             50U
 
 #define APP_ORIN_VX_SCALE_PERMILLE               1000U
-#define APP_ORIN_VX_FORWARD_CAP_MMPS              500U
-#define APP_ORIN_VX_REVERSE_CAP_MMPS              300U
+#define APP_ORIN_VX_FORWARD_CAP_MMPS             1000U
+#define APP_ORIN_VX_REVERSE_CAP_MMPS              600U
 #define APP_ORIN_VX_DEADBAND_MMPS                  50U
 #define APP_ORIN_VX_MAX_DEFAULT_MMPS              500U
 
