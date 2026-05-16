@@ -127,6 +127,29 @@ def check_telemetry(root: Path) -> list[Check]:
     return results
 
 
+def check_hall_direction_sources(root: Path) -> list[Check]:
+    text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    data_text = read_text(root, "WHEELTEC_APP/data_task.c")
+    results: list[Check] = []
+    add(results, "auto_hall_direction_source", all(needle in text for needle in [
+        "command_direction = get_vx_direction(limited_speed_mps)",
+        "HallSpeed_SetCommandDirection(command_direction)",
+    ]), "automatic Ackermann speed sets Hall direction")
+    add(results, "rc_hall_direction_source", all(needle in text for needle in [
+        "static int8_t get_rc_throttle_direction(void)",
+        "g_rc_throttle_current",
+        "center_us + neutral_hold_us",
+        "HallSpeed_SetCommandDirection(get_rc_throttle_direction())",
+    ]), "RC passthrough throttle sets Hall direction")
+    add(
+        results,
+        "unknown_direction_zero_delta_gate",
+        contains(data_text, "else if (snapshot->direction == 0)") and contains(data_text, "delta = 0"),
+        "unknown Hall direction keeps telemetry delta zero",
+    )
+    return results
+
+
 def check_uart(root: Path) -> list[Check]:
     text = read_text(root, "Core/Src/usart.c")
     results: list[Check] = []
@@ -190,7 +213,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     root = args.workspace_root.resolve()
-    results = check_command_parser(root) + check_telemetry(root) + check_uart(root)
+    results = check_command_parser(root) + check_telemetry(root) + check_hall_direction_sources(root) + check_uart(root)
     if args.require_phase1_status_bits:
         results += check_phase1_target_status_bits(root)
 

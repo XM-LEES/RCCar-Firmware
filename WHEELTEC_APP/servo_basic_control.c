@@ -752,6 +752,27 @@ static int8_t get_vx_direction(float vx_mps)
 	return 0;
 }
 
+static int8_t get_rc_throttle_direction(void)
+{
+	const uint32_t center_us = get_rc_override_center_us();
+	const uint32_t neutral_hold_us = get_rc_throttle_neutral_hold_us();
+	const uint32_t throttle_us = (uint32_t)g_rc_throttle_current;
+
+	if (g_rc_throttle_present == 0U || throttle_us == 0U)
+	{
+		return 0;
+	}
+	if (throttle_us > (center_us + neutral_hold_us))
+	{
+		return 1;
+	}
+	if ((throttle_us + neutral_hold_us) < center_us)
+	{
+		return -1;
+	}
+	return 0;
+}
+
 static uint32_t speed_mps_abs_to_mmps(float speed_mps)
 {
 	float abs_speed_mps = fabsf(speed_mps);
@@ -1112,7 +1133,7 @@ static void set_rc_override_state(uint8_t override_active, uint8_t guard_active)
 	g_rc_override_enter_count = 0U;
 	if (g_rc_override_active != 0U)
 	{
-		HallSpeed_SetCommandDirection(0);
+		HallSpeed_SetCommandDirection(get_rc_throttle_direction());
 	}
 }
 
@@ -1752,7 +1773,12 @@ void ServoBasic_ProcessControl(void)
 	refresh_rc_inputs();
 	update_control_mode_from_rc();
 	orin_active = orin_pwm_is_active();
-	if (g_rc_override_active != 0U || orin_active == 0U)
+	if (g_rc_override_active != 0U)
+	{
+		HallSpeed_SetCommandDirection(get_rc_throttle_direction());
+		speed_pi_reset_controller();
+	}
+	else if (orin_active == 0U)
 	{
 		HallSpeed_SetCommandDirection(0);
 		speed_pi_reset_controller();

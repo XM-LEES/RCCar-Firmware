@@ -143,6 +143,7 @@ TIM4 CH1/CH2/CH3 input capture
   -> ServoRC_IC_CaptureCallback()
   -> ServoBasic_Task()
       - throttle / steering 偏离中位触发 RC passthrough
+      - throttle 相对中位给霍尔 delta 提供前进/后退方向符号
       - guard 触发急停覆盖
       - 回中并保持释放时间后恢复 automatic
   -> TIM8 CH1/CH2 PWM
@@ -173,7 +174,11 @@ PE13/PE14 Hall GPIO
 - 霍尔速度换算常量在 `WHEELTEC_APP/hall_speed.c`。
 - `HALL_WHEEL_DIAMETER_M = 0.235 m` 和 `HALL_COUNT_EVENTS_PER_REV = 10` 是当前已确认代码事实。
 - 阶段 1 当前采用 `counts_per_meter = 10 / (pi * 0.235) = 13.545`。
-- 霍尔计数硬件不区分前进/后退方向；速度方向来自当前自动命令方向。命令方向未知、倒车、滑行、刹车后惯性移动或外力推动车时，不能当作独立方向测量。
+- 霍尔计数硬件不区分前进/后退方向；速度和 `hall_delta_count` 的符号来自当前执行控制方向。
+- 自动 Ackermann 模式下，方向来自上位机下发的 `speed_mps` 正负号。
+- RC passthrough/manual 模式下，方向来自 RC throttle PWM 相对 `1500 us` 中位和 `APP_RC_THROTTLE_NEUTRAL_HOLD_US` 死区的正负偏移。
+- throttle 中位、RC throttle 不可用、自动命令为零或方向未知时，方向为 `0`，telemetry `hall_delta_count` 保持 `0`；这类数据不能作为建图/导航 odom 位移证据。
+- 方向符号仍是命令方向代理，不是独立物理方向测量。倒车、滑行、刹车后惯性移动或外力推动车时，不能当作独立方向测量。
 
 当前车辆标定默认值：
 
