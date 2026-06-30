@@ -44,7 +44,7 @@
   - 仅在 `Hall B` 的下降沿记录一次有效事件
   - 速度方向来自 UART4 下行控制帧的原始 `vx` 正负
   - 当前默认 `HALL_COUNT_EVENTS_PER_REV = 10`，对应新轮子 `10` 个触发磁铁
-- 当前轮径按 `0.235 m` 计算，轮周长约 `0.738 m`
+- 当前轮径按 `0.230 m` 计算，轮周长约 `0.723 m`
 - 当前阶段不启用 `PID`，只做真实测速与反馈替换
 
 #### 霍尔输入电气前提
@@ -57,10 +57,11 @@
 
 ## Ackermann 几何参数
 当前几何参数以 `EXTRINSICS.md` 为准：
-- `wheelbase = 0.54 m`
-- `track_width = 0.48 m`
-- `wheel_radius = 0.11 m`
-- `max_steering_angle = 0.393 rad`
+- `wheelbase = 0.600 m`
+- `track_width = 0.470 m`
+- `wheel_radius = 0.115 m`
+- `wheel_diameter = 0.230 m`
+- `max_steering_angle = 0.262 rad`
 - `base_link = rear axle center`
 
 默认值集中在 `WHEELTEC_APP/Inc/app_vehicle_config.h`；代码中对应的

@@ -10,12 +10,13 @@
 旧的 WHEELTEC 通用底盘控制队列和多车型 `RobotControl_task` 兼容层已从当前 APP 中删除。
 
 ## 几何参数来源
-当前 Ackermann 几何以 `EXTRINSICS.md` 为准：
+当前 Ackermann 几何以 `WHEELTEC_APP/Inc/app_vehicle_config.h` 为准：
 
-- `wheelbase = 0.54 m`
-- `track_width = 0.48 m`
-- `wheel_radius = 0.11 m`
-- `max_steering_angle = 0.393 rad`
+- `wheelbase = 0.600 m`
+- `track_width = 0.470 m`
+- `wheel_radius = 0.115 m`
+- `wheel_diameter = 0.230 m`
+- `max_steering_angle = 0.262 rad`
 - `base_link = rear axle center`
 
 说明：
@@ -66,15 +67,15 @@ delta = atan(L * wz / vx)
 ```
 
 其中：
-- `L = 0.54 m`
+- `L = 0.600 m`
 - `wz = Vz`
 - `vx = Vx`
 - `delta` 为等效前轮转角
 
 约束：
-- `|delta| <= 0.393 rad`
+- `|delta| <= 0.262 rad`
 - `delta = 0` 映射到 `g_orin_servo_center_us`
-- `±0.393 rad` 映射到 `g_orin_servo_center_us ± g_orin_servo_range_us`
+- `±0.262 rad` 映射到 `g_orin_servo_center_us ± g_orin_servo_range_us`
 
 低速保护：
 - 当 `|vx| < 0.05 m/s` 时：
@@ -95,8 +96,8 @@ delta = atan(L * wz / vx)
 
 默认参数：
 - `g_orin_vx_scale = 1000`
-- `g_orin_vx_forward_cap_mmps = 2000`
-- `g_orin_vx_reverse_cap_mmps = 2000`
+- `g_orin_vx_forward_cap_mmps = 3000`
+- `g_orin_vx_reverse_cap_mmps = 3000`
 - `g_orin_vx_deadband_mmps = 50`
 - `g_orin_esc_forward_start_us = 1560`
 - `g_orin_esc_reverse_start_us = 1440`

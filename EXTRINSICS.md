@@ -2,7 +2,7 @@
 
 This document records the extrinsic (geometric) parameters of the AutoRacer vehicle, extracted from the URDF model (`urdf/autoracer.urdf.xacro`).
 
-Measured: 2026-01-29
+Measured/updated: 2026-06-22
 
 ## Coordinate System Convention
 
@@ -10,23 +10,24 @@ Following ROS REP-103:
 - **X** = Forward
 - **Y** = Left
 - **Z** = Up
-- **base_link** = Rear axle center, at axle height (Z=0.11m above ground)
+- **base_link** = Rear axle center, at axle height (Z=0.115m above ground)
 
 ## Chassis Parameters
 
 | Parameter | Value | Unit | Description |
 |-----------|-------|------|-------------|
-| `wheelbase` | 0.54 | m | Front-to-rear axle distance |
-| `track_width` | 0.48 | m | Left-to-right wheel distance |
-| `wheel_radius` | 0.11 | m | Wheel radius |
+| `wheelbase` | 0.600 | m | Front-to-rear axle distance |
+| `track_width` | 0.470 | m | Left-to-right wheel distance |
+| `wheel_radius` | 0.115 | m | Wheel radius |
+| `wheel_diameter` | 0.230 | m | Wheel diameter |
 | `wheel_width` | 0.08 | m | Wheel width |
-| `max_steering_angle` | 0.393 | rad | Max steering angle (~22.5°) |
-| `chassis_length` | 0.85 | m | Vehicle total length |
-| `chassis_width` | 0.50 | m | Vehicle total width |
-| `chassis_height` | 0.20 | m | Chassis box height (URDF visual) |
-| `front_axle_to_front` | 0.15 | m | Front axle to front bumper |
-| `rear_axle_to_rear` | 0.16 | m | Rear axle to rear bumper |
-| `axle_height` | 0.11 | m | Axle center height above ground |
+| `max_steering_angle` | 0.262 | rad | Max steering angle (~15.0°) |
+| `chassis_length` | 0.83 | m | Vehicle total length |
+| `chassis_width` | 0.58 | m | Vehicle total width |
+| `chassis_height` | 0.50 | m | Vehicle total height |
+| `front_axle_to_front` | 0.115 | m | Front axle to front bumper |
+| `rear_axle_to_rear` | 0.115 | m | Rear axle to rear bumper |
+| `axle_height` | 0.115 | m | Axle center height above ground |
 
 ## Sensor Extrinsics
 
@@ -48,20 +49,9 @@ All sensor positions are relative to `base_link` (rear axle center, at axle heig
 - Yaw=-90° transforms LiDAR frame to ROS convention (+X=front)
 - Cable exit at rear, LiDAR config `cable_position=180°`, so 0°=front
 
-### ZED X Depth Camera
+### Camera / Fixposition
 
-| Axis | Value | Unit | Notes |
-|------|-------|------|-------|
-| X | +0.34 | m | Forward from rear axle |
-| Y | 0.00 | m | Centered on vehicle |
-| Z | +0.29 | m | Above axle height |
-| Roll | 0 | rad | - |
-| Pitch | 0 | rad | - |
-| Yaw | 0 | rad | - |
-
-**ZED X Notes:**
-- ZED driver publishes internal TF tree from `zed_camera_link`
-- Child frames include: `camera_center`, `left_camera_frame`, `right_camera_frame`, `imu_link`, etc.
+The current RC validation profile has no ZED camera and no Fixposition device.
 
 ## Wheel Positions
 
@@ -69,26 +59,24 @@ Relative to `base_link`:
 
 | Wheel | X (m) | Y (m) | Z (m) | Joint Type |
 |-------|-------|-------|-------|------------|
-| Rear Left | 0.00 | +0.24 | 0.00 | continuous |
-| Rear Right | 0.00 | -0.24 | 0.00 | continuous |
-| Front Left Steering | +0.54 | +0.24 | 0.00 | revolute (±22.5°) |
-| Front Right Steering | +0.54 | -0.24 | 0.00 | revolute (±22.5°) |
+| Rear Left | 0.00 | +0.235 | 0.00 | continuous |
+| Rear Right | 0.00 | -0.235 | 0.00 | continuous |
+| Front Left Steering | +0.600 | +0.235 | 0.00 | revolute (±15.0°) |
+| Front Right Steering | +0.600 | -0.235 | 0.00 | revolute (±15.0°) |
 
 ## TF Frame Hierarchy
 
 ```
 odom
 └── base_footprint (Z=0, ground level)
-    └── base_link (Z=+0.11m, rear axle center)
+    └── base_link (Z=+0.115m, rear axle center)
         ├── rear_left_wheel_link
         ├── rear_right_wheel_link
         ├── front_left_steering_link
         │   └── front_left_wheel_link
         ├── front_right_steering_link
         │   └── front_right_wheel_link
-        ├── laser (LiDAR C32)
-        └── zed_camera_link
-            └── [ZED internal TF tree]
+        └── lidar_top (LiDAR C32)
 ```
 
 ## Diagram (Top View)
@@ -97,9 +85,7 @@ odom
                     Front
                       ↑ X
             +---------+----------+
-            |    ○         ○     |  ← Front wheels (X=+0.54m)
-            |                    |
-            |      [ZED X]       |  ← ZED camera (X=+0.34m)
+            |    ○         ○     |  ← Front wheels (X=+0.600m)
             |                    |
             |      [LiDAR]       |  ← LiDAR C32 (X=+0.24m)
             |                    |
@@ -119,8 +105,7 @@ To verify TF transforms at runtime:
 ros2 run tf2_tools view_frames
 
 # Echo specific transform
-ros2 run tf2_ros tf2_echo base_link laser
-ros2 run tf2_ros tf2_echo base_link zed_camera_link
+ros2 run tf2_ros tf2_echo base_link lidar_top
 
 # Monitor TF
 ros2 run tf2_ros tf2_monitor

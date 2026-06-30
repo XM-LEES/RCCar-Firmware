@@ -41,7 +41,9 @@
 当前上行速度反馈的边界：
 
 - `vx` 是唯一有直接传感器支撑的运动速度字段，来自 `HallSpeed_GetSignedSpeedMps()`。
+- `vx` 的符号由最近一次有效自动驾驶速度命令方向决定，霍尔测速本身只提供轮速大小。
 - `wz` 是运动学估算值，来自 `telemetry_estimate_vz_from_pwm(feedback_vx, g_state.servo_pulse_us)`。
+- `wz` 表示 Ackermann 模型下的底盘 yaw rate，不是 IMU gyro。
 - `vy` 和 IMU 字段只是为了保持 24 字节协议兼容，不代表真实测量。
 - 不允许在 `UART4` ROS 数据流里追加调试帧，否则旧上位机固定长度解析会错位。
 
@@ -75,6 +77,7 @@
 - `cmd1` 为其他值时，帧通过长度、帧尾和 BCC 检查后仍会被丢弃。
 - 任意 `UART4` 字节流中还会扫描文本命令 `reset` 和 `LOG0`..`LOG3`，它们不是 ROS 二进制帧的一部分。
 - RC 接管激活时，非零 ROS 运动命令会被阻断；零速度或 `flag_stop` 仍允许进入，用于释放/停车。
+- 当前 RC 几何/限速默认值：轴距 `600 mm`，轮径 `0.230 m`，轮半径 `115 mm`，最大转角 `262 mrad`，前进/后退速度 cap 均为 `3000 mm/s`，低速 deadband 为 `50 mm/s`。
 
 ---
 

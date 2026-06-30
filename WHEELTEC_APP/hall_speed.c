@@ -8,7 +8,7 @@
 #include "main.h"
 #include "bsp_dwt.h"
 
-#define HALL_WHEEL_DIAMETER_M            0.235f
+#define HALL_WHEEL_DIAMETER_M            0.230f
 #define HALL_WHEEL_CIRCUMFERENCE_M       (HALL_WHEEL_DIAMETER_M * 3.14159265358979f)
 #define HALL_COUNT_EVENTS_PER_REV        10U
 #define HALL_MIN_EVENT_INTERVAL_US       1500U
