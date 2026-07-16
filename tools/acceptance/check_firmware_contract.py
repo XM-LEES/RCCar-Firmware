@@ -45,9 +45,10 @@ def check_command_parser(root: Path) -> list[Check]:
         "ROS_CMD_FLAG_ENABLE",
         "ROS_CMD_FLAG_BRAKE",
         "ROS_CMD_FLAG_CLEAR_FAULT",
-        "ROS_CMD_FLAG_EMERGENCY_STOP",
-    ]), "enable/brake/clear_fault/emergency_stop flags")
-    add(results, "command_head_tail", contains(text, "recv == 0x7BU") and contains(text, "!= 0x7DU"), "0x7B head and 0x7D tail")
+        "ROS_CMD_FLAG_SOFTWARE_STOP",
+        "ROS_CMD_FLAG_ALLOWED_MASK",
+    ]), "enable/brake/clear_fault/software_stop flags and allowed mask")
+    add(results, "command_head_tail", contains(text, "recv != 0x7BU") and contains(text, "!= 0x7DU"), "0x7B head and 0x7D tail")
     add(results, "command_bcc", contains(text, "Calculate_BCC(roscmdBuf, cmdLen - 2U)"), "command BCC over len-2")
     add(results, "command_fields", all(needle in text for needle in [
         "serial_control_read_i16_be(&roscmdBuf[3])",
@@ -59,7 +60,33 @@ def check_command_parser(root: Path) -> list[Check]:
         "serial_control_send_zero_command",
         "allow_serial_motion",
     ]), "RC override blocks non-zero serial motion")
-    add(results, "clear_fault_guard", contains(text, "serial_control_try_clear_diagnostics"), "guarded CLEAR_FAULT path")
+    add(results, "rc_override_zero_refresh", all(needle in text for needle in [
+        "if (allow_serial_motion == 0U)",
+        "serial_control_send_zero_command()",
+        "ServoBasic_UpdateAckermannFromOrin(0.0f, 0.0f, 1U, 0U, 0U)",
+        "command timeout is 250 ms",
+    ]), "blocked non-zero serial commands refresh only an explicit zero target during RC override")
+    add(results, "clear_fault_guard", all(needle in text for needle in [
+        "serial_control_try_clear_diagnostics",
+        "speed_mmps != 0 || steering_mrad != 0",
+    ]), "CLEAR_FAULT requires a zero-motion frame")
+    add(results, "binary_only_uart4", all(needle not in text for needle in [
+        "serial_control_check_reset",
+        "serial_control_set_debug_level",
+        "NVIC_SystemReset",
+        "bsp_buzzer.h",
+    ]), "UART4 parser has no reset or LOG side channel")
+    add(results, "command_resynchronization", all(needle in text for needle in [
+        "serial_control_retain_next_header",
+        "roscmdCount = serial_control_retain_next_header(roscmdBuf, cmdLen)",
+    ]), "invalid frame retains the next possible 0x7B header")
+    add(results, "command_reserved_zero", all(needle in text for needle in [
+        "roscmdBuf[7] != 0U",
+        "roscmdBuf[8] != 0U",
+    ]), "command reserved bytes must remain zero")
+    add(results, "command_unknown_flags_rejected", contains(
+        text, "flags & (uint8_t)(~ROS_CMD_FLAG_ALLOWED_MASK)"
+    ), "undefined command flag bits are rejected")
     return results
 
 
@@ -70,19 +97,23 @@ def check_telemetry(root: Path) -> list[Check]:
     add(results, "telemetry_head_tail", contains(text, "#define BaseFRAME_HEAD 0x7B") and contains(text, "#define BaseFRAME_TAIL 0x7D"), "0x7B head and 0x7D tail")
     add(results, "telemetry_bcc", contains(text, "basebuffer[22] = Calculate_BCC(basebuffer, 22U)"), "telemetry BCC at byte 22 over first 22 bytes")
     add(results, "telemetry_transport", contains(text, "static UART_HandleTypeDef *serial = &huart4") and contains(text, "HAL_UART_Transmit_DMA(serial, basebuffer, BaseFRAME_LEN)"), "UART4 DMA telemetry transport")
+    add(results, "telemetry_protocol_id", all(needle in text for needle in [
+        "#define TELEMETRY_PROTOCOL_ID 0xA1U",
+        "basebuffer[21] = TELEMETRY_PROTOCOL_ID",
+    ]), "byte 21 carries Ackermann telemetry protocol id 0xA1")
 
     status_defs = [
         "STATUS_BIT_FAULT_LATCHED",
         "STATUS_BIT_COMMAND_TIMEOUT",
         "STATUS_BIT_RC_OVERRIDE_ACTIVE",
-        "STATUS_BIT_ESTOP_ACTIVE",
+        "STATUS_BIT_STOP_OVERRIDE_ACTIVE",
         "STATUS_BIT_BRAKE_ACTIVE",
         "STATUS_BIT_AUTO_ENABLED",
         "STATUS_BIT_HALL_FEEDBACK_VALID",
         "STATUS_BIT_HALL_FAULT",
-        "STATUS_BIT_STEERING_FEEDBACK_VALID",
+        "STATUS_BIT_STEERING_ESTIMATE_VALID",
         "STATUS_BIT_STEERING_IS_MEASURED",
-        "STATUS_BIT_STEERING_FAULT",
+        "STATUS_BIT_RC_INPUT_FAULT",
         "STATUS_BIT_BATTERY_VALID",
         "STATUS_BIT_BATTERY_LOW",
         "STATUS_BIT_BATTERY_CRITICAL",
@@ -97,12 +128,12 @@ def check_telemetry(root: Path) -> list[Check]:
     status_assignments = [
         "STATUS_BIT_COMMAND_TIMEOUT",
         "STATUS_BIT_RC_OVERRIDE_ACTIVE",
-        "STATUS_BIT_ESTOP_ACTIVE",
+        "STATUS_BIT_STOP_OVERRIDE_ACTIVE",
         "STATUS_BIT_BRAKE_ACTIVE",
         "STATUS_BIT_AUTO_ENABLED",
         "STATUS_BIT_HALL_FEEDBACK_VALID",
         "STATUS_BIT_HALL_FAULT",
-        "STATUS_BIT_STEERING_FEEDBACK_VALID",
+        "STATUS_BIT_STEERING_ESTIMATE_VALID",
         "STATUS_BIT_BATTERY_VALID",
         "STATUS_BIT_FRAME_ERROR_SEEN",
     ]
@@ -129,6 +160,7 @@ def check_telemetry(root: Path) -> list[Check]:
 
 def check_hall_direction_sources(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
     data_text = read_text(root, "WHEELTEC_APP/data_task.c")
     results: list[Check] = []
     add(results, "auto_hall_direction_source", all(needle in text for needle in [
@@ -147,6 +179,59 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
         contains(data_text, "else if (snapshot->direction == 0)") and contains(data_text, "delta = 0"),
         "unknown Hall direction keeps telemetry delta zero",
     )
+    add(results, "hall_geometry", contains(hall_text, "#define HALL_WHEEL_DIAMETER_M            0.230f"), "Hall wheel diameter is 0.230 m")
+    add(results, "unknown_direction_invalid_speed", contains(hall_text, "snapshot.direction == 0"), "unknown Hall direction cannot produce signed speed")
+    add(results, "signed_hall_status_requires_direction", all(needle in data_text for needle in [
+        "signed_speed_valid = ServoBasic_GetAckermannFeedback",
+        "if (signed_speed_valid != 0U)",
+        "status_bits |= STATUS_BIT_HALL_FEEDBACK_VALID",
+    ]) and contains(hall_text, "snapshot.direction == 0"), "signed Hall feedback is valid only when both magnitude and command-derived direction are known")
+    return results
+
+
+def check_vehicle_defaults(root: Path) -> list[Check]:
+    text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
+    results: list[Check] = []
+    expected = [
+        "#define APP_ORIN_PWM_TIMEOUT_DEFAULT_MS           250U",
+        "#define APP_ORIN_ACKERMANN_WHEELBASE_MM           600U",
+        "#define APP_ORIN_ACKERMANN_TRACK_WIDTH_MM         500U",
+        "#define APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM        115U",
+        "#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      262U",
+        "#define APP_ORIN_MIN_COMMAND_SPEED_MMPS            300U",
+        "#define APP_ORIN_VX_FORWARD_CAP_MMPS             3000U",
+        "#define APP_ORIN_VX_REVERSE_CAP_MMPS             3000U",
+        "#define APP_ORIN_VX_MAX_DEFAULT_MMPS             3000U",
+        "#define APP_ORIN_SERVO_CENTER_US                 1500U",
+        "#define APP_ORIN_SERVO_RANGE_US                   395U",
+        "#define APP_RC_GUARD_ENABLE_DEFAULT                 0U",
+    ]
+    add(results, "vehicle_defaults", all(needle in text for needle in expected), "confirmed geometry, speed bounds, 0.3 m/s minimum, servo calibration, timeout, and disabled unverified guard")
+    return results
+
+
+def check_control_output_fallbacks(root: Path) -> list[Check]:
+    text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    results: list[Check] = []
+    add(results, "no_zero_or_minimum_stop_pwm", all(needle not in text for needle in [
+        "apply_esc_pulse(0U)",
+        "apply_servo_pulse(0U)",
+        "apply_esc_pulse(ESC_PWM_MIN_PULSE_US)",
+    ]), "stop and timeout paths do not emit PWM 0 or ESC minimum")
+    add(results, "neutral_stop_and_timeout", text.count("apply_esc_pulse(get_orin_esc_center_pulse())") >= 3 and text.count("apply_servo_pulse(get_orin_servo_center_pulse())") >= 3, "guard, software stop, and timeout paths use configured centers")
+    add(results, "candidate_rc_arbitration_preserved", all(needle in text for needle in [
+        "const uint8_t manual_override = rc_manual_override_requested()",
+        "const uint8_t serial_active = orin_pwm_is_active()",
+        "const uint8_t rc_available = rc_passthrough_is_available()",
+        "if (serial_active == 0U)",
+        "get_rc_override_release_hold_ms()",
+    ]), "feature/ackermann-chassis RC arbitration remains present")
+    add(results, "rc_release_source_distinguished", all(needle in text for needle in [
+        "g_rc_override_release_hold_required",
+        "g_rc_override_release_hold_required == 0U && centered != 0U",
+        "set_rc_override_state(1U, 0U, 1U)",
+        "set_rc_override_state(1U, 0U, 0U)",
+    ]), "idle RC passthrough releases immediately, but a real manual override keeps the 500 ms hold")
     return results
 
 
@@ -168,7 +253,7 @@ def check_phase1_target_status_bits(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/data_task.c")
     required_assignments = [
         "STATUS_BIT_FAULT_LATCHED",
-        "STATUS_BIT_STEERING_FAULT",
+        "STATUS_BIT_RC_INPUT_FAULT",
         "STATUS_BIT_BATTERY_LOW",
         "STATUS_BIT_BATTERY_CRITICAL",
         "STATUS_BIT_SPEED_SATURATED",
@@ -213,7 +298,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     root = args.workspace_root.resolve()
-    results = check_command_parser(root) + check_telemetry(root) + check_hall_direction_sources(root) + check_uart(root)
+    results = (
+        check_command_parser(root)
+        + check_telemetry(root)
+        + check_hall_direction_sources(root)
+        + check_vehicle_defaults(root)
+        + check_control_output_fallbacks(root)
+        + check_uart(root)
+    )
     if args.require_phase1_status_bits:
         results += check_phase1_target_status_bits(root)
 

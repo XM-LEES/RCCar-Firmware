@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PC-side UART4 Ackermann smoke check for phase-1 firmware acceptance.
+"""PC-side UART4 Ackermann smoke check for the current firmware contract.
 
 Default mode is passive and never sends a motion command. Modes that can move
 the car require --arm-motion when speed or steering are non-zero.
@@ -8,6 +8,7 @@ the car require --arm-motion when speed or steering are non-zero.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import select
 import struct
@@ -23,11 +24,13 @@ FRAME_TAIL = 0x7D
 COMMAND_ACKERMANN = 0x01
 COMMAND_SIZE = 11
 TELEMETRY_SIZE = 24
+TELEMETRY_PROTOCOL_ID = 0xA1
+MIN_COMMAND_SPEED_MPS = 0.3
+MAX_COMMAND_SPEED_MPS = 3.0
+MAX_STEERING_ANGLE_RAD = 0.262
 
 FLAG_ENABLE = 1 << 0
-FLAG_BRAKE = 1 << 1
-FLAG_CLEAR_FAULT = 1 << 2
-FLAG_EMERGENCY_STOP = 1 << 7
+FLAG_SOFTWARE_STOP = 1 << 7
 
 
 @dataclass
@@ -41,6 +44,7 @@ class Telemetry:
     battery_v: float
     dt_ms: int
     status_bits: int
+    protocol_id: int
 
 
 def checksum(data: bytes | bytearray) -> int:
@@ -50,31 +54,42 @@ def checksum(data: bytes | bytearray) -> int:
     return value & 0xFF
 
 
+def quantize_milli(value: float) -> int:
+    """Match C/C++ round-to-nearest with half values away from zero."""
+    scaled = value * 1000.0
+    if scaled >= 0.0:
+        return math.floor(scaled + 0.5)
+    return math.ceil(scaled - 0.5)
+
+
 def build_command_frame(
     speed_mps: float,
     steering_angle_rad: float,
     *,
     enable: bool,
-    brake: bool,
-    clear_fault: bool,
-    emergency_stop: bool,
+    software_stop: bool,
 ) -> bytes:
+    if not math.isfinite(speed_mps) or not math.isfinite(steering_angle_rad):
+        raise ValueError("speed and steering must be finite")
+    if abs(speed_mps) > MAX_COMMAND_SPEED_MPS:
+        raise ValueError("speed exceeds the confirmed +/-3.0 m/s command boundary")
+    if abs(steering_angle_rad) > MAX_STEERING_ANGLE_RAD:
+        raise ValueError("steering exceeds the confirmed +/-0.262 rad boundary")
+
     flags = 0
     if enable:
         flags |= FLAG_ENABLE
-    if brake:
-        flags |= FLAG_BRAKE
+    if software_stop:
+        flags |= FLAG_SOFTWARE_STOP
         speed_mps = 0.0
-    if clear_fault:
-        flags |= FLAG_CLEAR_FAULT
-    if emergency_stop:
-        flags |= FLAG_EMERGENCY_STOP
-        speed_mps = 0.0
+        steering_angle_rad = 0.0
     if not enable:
         speed_mps = 0.0
+    if 0.0 < abs(speed_mps) < MIN_COMMAND_SPEED_MPS:
+        speed_mps = 0.0
 
-    speed_mmps = max(-32768, min(32767, round(speed_mps * 1000.0)))
-    steering_mrad = max(-32768, min(32767, round(steering_angle_rad * 1000.0)))
+    speed_mmps = quantize_milli(speed_mps)
+    steering_mrad = quantize_milli(steering_angle_rad)
     frame = bytearray(COMMAND_SIZE)
     frame[0] = FRAME_HEADER
     frame[1] = COMMAND_ACKERMANN
@@ -94,6 +109,10 @@ def parse_telemetry(frame: bytes) -> Telemetry:
         raise ValueError("bad telemetry header or tail")
     if checksum(frame[:22]) != frame[22]:
         raise ValueError("bad telemetry BCC")
+    if frame[21] != TELEMETRY_PROTOCOL_ID:
+        raise ValueError(
+            f"unexpected telemetry protocol id 0x{frame[21]:02X}; expected 0x{TELEMETRY_PROTOCOL_ID:02X}"
+        )
 
     return Telemetry(
         status_flags=frame[1],
@@ -105,6 +124,7 @@ def parse_telemetry(frame: bytes) -> Telemetry:
         battery_v=struct.unpack(">H", frame[13:15])[0] / 1000.0,
         dt_ms=struct.unpack(">H", frame[15:17])[0],
         status_bits=struct.unpack(">I", frame[17:21])[0],
+        protocol_id=frame[21],
     )
 
 
@@ -164,11 +184,12 @@ def read_frames(fd: int, duration_s: float) -> list[Telemetry]:
             if len(buffer) < TELEMETRY_SIZE:
                 break
             candidate = bytes(buffer[:TELEMETRY_SIZE])
-            del buffer[:TELEMETRY_SIZE]
             try:
                 frames.append(parse_telemetry(candidate))
+                del buffer[:TELEMETRY_SIZE]
             except ValueError as exc:
                 print(f"WARN rejected telemetry: {exc}", file=sys.stderr)
+                del buffer[0]
 
     return frames
 
@@ -184,26 +205,28 @@ def print_frames(frames: list[Telemetry]) -> None:
             f"steering_rad={frame.steering_angle_rad:.3f} "
             f"yaw_rate_radps={frame.yaw_rate_radps:.3f} "
             f"battery_v={frame.battery_v:.2f} dt_ms={frame.dt_ms} "
-            f"status_flags=0x{frame.status_flags:02X} status_bits=0x{frame.status_bits:08X}"
+            f"status_flags=0x{frame.status_flags:02X} status_bits=0x{frame.status_bits:08X} "
+            f"protocol_id=0x{frame.protocol_id:02X}"
         )
     print(f"PASS telemetry: received {len(frames)} valid frames")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", required=True, help="serial device, for example /dev/ttyUSB0")
+    parser.add_argument(
+        "--port", required=True, help="stable serial device, normally /dev/autoracer_rc_chassis"
+    )
     parser.add_argument("--baud", type=int, default=115200, help="UART baud rate")
     parser.add_argument("--duration", type=float, default=3.0, help="seconds to listen after sending")
     parser.add_argument(
         "--mode",
-        choices=("listen", "zero", "stop", "estop", "command"),
+        choices=("listen", "zero", "stop", "command"),
         default="listen",
-        help="listen sends nothing; zero/stop/estop send non-motion safety commands",
+        help="listen sends nothing; zero/stop send non-motion software commands",
     )
     parser.add_argument("--speed-mps", type=float, default=0.0, help="command mode speed")
     parser.add_argument("--steering-angle-rad", type=float, default=0.0, help="command mode steering")
     parser.add_argument("--arm-motion", action="store_true", help="required for non-zero command mode")
-    parser.add_argument("--clear-fault", action="store_true", help="set CLEAR_FAULT on the command frame")
     return parser.parse_args()
 
 
@@ -221,19 +244,15 @@ def main() -> int:
     try:
         if args.mode != "listen":
             if args.mode == "zero":
-                frame = build_command_frame(0.0, 0.0, enable=True, brake=False, clear_fault=args.clear_fault, emergency_stop=False)
+                frame = build_command_frame(0.0, 0.0, enable=True, software_stop=False)
             elif args.mode == "stop":
-                frame = build_command_frame(0.0, 0.0, enable=True, brake=True, clear_fault=args.clear_fault, emergency_stop=False)
-            elif args.mode == "estop":
-                frame = build_command_frame(0.0, 0.0, enable=False, brake=True, clear_fault=args.clear_fault, emergency_stop=True)
+                frame = build_command_frame(0.0, 0.0, enable=False, software_stop=True)
             else:
                 frame = build_command_frame(
                     args.speed_mps,
                     args.steering_angle_rad,
                     enable=True,
-                    brake=False,
-                    clear_fault=args.clear_fault,
-                    emergency_stop=False,
+                    software_stop=False,
                 )
             os.write(fd, frame)
             print(f"SENT {args.mode}: {frame.hex(' ')}")

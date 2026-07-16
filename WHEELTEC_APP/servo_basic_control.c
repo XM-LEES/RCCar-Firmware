@@ -208,6 +208,7 @@ static volatile uint8_t g_rc_override_active = 0U;
 static volatile uint8_t g_rc_guard_active = 0U;
 static uint8_t g_rc_override_enter_count = 0U;
 static uint32_t g_rc_override_release_start_ms = 0U;
+static uint8_t g_rc_override_release_hold_required = 0U;
 static uint16_t g_rc_throttle_current = 0U;
 static uint16_t g_rc_steering_current = 0U;
 static uint16_t g_rc_guard_current = 0U;
@@ -216,7 +217,6 @@ static uint8_t g_rc_steering_present = 0U;
 static uint8_t g_rc_guard_present = 0U;
 static rc_channel_filter_state_t g_rc_throttle_state = {0U};
 static rc_channel_filter_state_t g_rc_steering_state = {0U};
-static uint8_t g_autonomous_target_valid = 0U;
 static uint32_t g_speed_pi_last_update_ms = 0U;
 static int8_t g_speed_pi_last_target_direction = 0;
 
@@ -1121,10 +1121,13 @@ static uint8_t rc_passthrough_is_available(void)
 	return (g_rc_throttle_present != 0U || g_rc_steering_present != 0U) ? 1U : 0U;
 }
 
-static void set_rc_override_state(uint8_t override_active, uint8_t guard_active)
+static void set_rc_override_state(
+	uint8_t override_active, uint8_t guard_active, uint8_t release_hold_required)
 {
 	g_rc_override_active = (override_active != 0U) ? 1U : 0U;
 	g_rc_guard_active = (guard_active != 0U) ? 1U : 0U;
+	g_rc_override_release_hold_required =
+		(g_rc_override_active != 0U && release_hold_required != 0U) ? 1U : 0U;
 	g_state.control_mode = (g_rc_override_active != 0U) ? SERVO_CTRL_MODE_RC_PASSTHROUGH :
 		SERVO_CTRL_MODE_AUTONOMOUS;
 	g_state.rc_takeover_pending = 0U;
@@ -1219,13 +1222,11 @@ static void apply_servo_pulse(uint16_t pulse_us)
 static void set_esc_target(uint16_t pulse_us)
 {
 	g_state.esc_pulse_us = pulse_us;
-	g_autonomous_target_valid = 1U;
 }
 
 static void set_servo_target(uint16_t pulse_us)
 {
 	g_state.servo_pulse_us = pulse_us;
-	g_autonomous_target_valid = 1U;
 }
 
 void ServoBasic_Init(void)
@@ -1237,10 +1238,10 @@ void ServoBasic_Init(void)
 	g_rc_guard_active = 0U;
 	g_rc_override_enter_count = 0U;
 	g_rc_override_release_start_ms = 0U;
+	g_rc_override_release_hold_required = 0U;
 	g_rc_throttle_present = 0U;
 	g_rc_steering_present = 0U;
 	g_rc_guard_present = 0U;
-	g_autonomous_target_valid = 0U;
 	rc_debounce_reset();
 	g_orin_state.esc_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_orin_state.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
@@ -1652,7 +1653,7 @@ static void update_control_mode_from_rc(void)
 	{
 		if (g_rc_override_active == 0U || g_rc_guard_active == 0U)
 		{
-			set_rc_override_state(1U, 1U);
+			set_rc_override_state(1U, 1U, 1U);
 		}
 		return;
 	}
@@ -1671,12 +1672,12 @@ static void update_control_mode_from_rc(void)
 		{
 			if (g_rc_override_active == 0U || g_rc_guard_active != 0U)
 			{
-				set_rc_override_state(1U, 0U);
+				set_rc_override_state(1U, 0U, 0U);
 			}
 		}
 		else if (g_rc_override_active != 0U)
 		{
-			set_rc_override_state(0U, 0U);
+			set_rc_override_state(0U, 0U, 0U);
 		}
 		else
 		{
@@ -1692,9 +1693,15 @@ static void update_control_mode_from_rc(void)
 	 * take effect. From this point on, RC must exceed the configured threshold to
 	 * reclaim control.
 	 */
-	if (g_rc_override_active != 0U && g_rc_guard_active == 0U && centered != 0U)
+	if (g_rc_override_active != 0U && manual_override != 0U)
 	{
-		set_rc_override_state(0U, 0U);
+		g_rc_override_release_hold_required = 1U;
+	}
+
+	if (g_rc_override_active != 0U && g_rc_guard_active == 0U &&
+		g_rc_override_release_hold_required == 0U && centered != 0U)
+	{
+		set_rc_override_state(0U, 0U, 0U);
 	}
 
 	if (g_rc_override_active == 0U)
@@ -1708,7 +1715,7 @@ static void update_control_mode_from_rc(void)
 			}
 			if (g_rc_override_enter_count >= samples_req)
 			{
-				set_rc_override_state(1U, 0U);
+				set_rc_override_state(1U, 0U, 1U);
 			}
 		}
 		else
@@ -1722,7 +1729,7 @@ static void update_control_mode_from_rc(void)
 
 	if (g_rc_guard_active != 0U)
 	{
-		set_rc_override_state(1U, 0U);
+		set_rc_override_state(1U, 0U, 1U);
 	}
 
 	if (manual_override != 0U)
@@ -1745,7 +1752,7 @@ static void update_control_mode_from_rc(void)
 
 	if ((HAL_GetTick() - g_rc_override_release_start_ms) >= get_rc_override_release_hold_ms())
 	{
-		set_rc_override_state(0U, 0U);
+		set_rc_override_state(0U, 0U, 0U);
 	}
 }
 
@@ -1758,12 +1765,6 @@ static void apply_rc_passthrough_outputs(void)
 
 	apply_esc_pulse(esc_pulse);
 	apply_servo_pulse(servo_pulse);
-}
-
-static void apply_autonomous_outputs(void)
-{
-	apply_orin_esc_pulse(limit_esc_safe_pulse(clamp_esc_pulse(g_state.esc_pulse_us)));
-	apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_state.servo_pulse_us)));
 }
 
 void ServoBasic_ProcessControl(void)
@@ -1787,7 +1788,7 @@ void ServoBasic_ProcessControl(void)
 	if (g_state.emergency_stop != 0U)
 	{
 		speed_pi_reset_controller();
-		apply_esc_pulse(ESC_PWM_MIN_PULSE_US);
+		apply_esc_pulse(get_orin_esc_center_pulse());
 		apply_servo_pulse(get_orin_servo_center_pulse());
 		return;
 	}
@@ -1800,8 +1801,8 @@ void ServoBasic_ProcessControl(void)
 		if (g_orin_state.stop != 0U)
 		{
 			speed_pi_reset_controller();
-			apply_esc_pulse(0U);
-			apply_servo_pulse(0U);
+			apply_esc_pulse(get_orin_esc_center_pulse());
+			apply_servo_pulse(get_orin_servo_center_pulse());
 		}
 		else
 		{
@@ -1811,15 +1812,8 @@ void ServoBasic_ProcessControl(void)
 	}
 	else
 	{
-		if (g_autonomous_target_valid != 0U)
-		{
-			apply_autonomous_outputs();
-		}
-		else
-		{
-			apply_esc_pulse(get_orin_esc_center_pulse());
-			apply_servo_pulse(get_orin_servo_center_pulse());
-		}
+		apply_esc_pulse(get_orin_esc_center_pulse());
+		apply_servo_pulse(get_orin_servo_center_pulse());
 	}
 }
 

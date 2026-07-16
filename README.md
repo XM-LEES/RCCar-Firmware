@@ -17,7 +17,7 @@
 - 执行 `speed_mps + steering_angle_rad`。
 - 输出 ESC PWM 和前轮转向舵机 PWM。
 - 采集霍尔计数并提供速度反馈。
-- 提供轻量 speed PI trim、battery telemetry、RC 接管、急停、刹车和通信超时停车。
+- 提供轻量 speed PI trim、battery telemetry、RC 接管、软件停止和通信超时回中。
 
 ## 当前实现锚点
 
@@ -37,6 +37,8 @@
 ## 当前关键边界
 
 - 正式自动控制入口只接受 `cmd=0x01` 的 Ackermann command。
+- 自动控制命令直接使用 `speed_mmps + steering_mrad`；绝对速度小于 `300 mm/s` 时速度目标回零，但保留转向目标。
+- 遥控器在线本身不等于接管；串口控制活跃时沿用候选分支的摇杆偏移阈值、确认次数和回中释放保持逻辑。
 - UART4 下行/上行帧格式必须服从根 `docs/接口与协议.md`。
 - Ubuntu 开发环境只做静态检查；固件编译、烧录和 Keil 级调试由用户切换 Windows/Keil 后完成。
 - 历史 CAN、USART3/RS485、Bluetooth/App、USB HID、Ranger、AutoRecharge、ICM20948/IMU、RGB APP 等内容不属于当前主路径。

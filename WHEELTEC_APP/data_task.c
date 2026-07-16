@@ -15,26 +15,27 @@ static UART_HandleTypeDef *serial = &huart4;
 #define BaseFRAME_HEAD 0x7B
 #define BaseFRAME_TAIL 0x7D
 #define BaseFRAME_LEN  24U
+#define TELEMETRY_PROTOCOL_ID 0xA1U
 
 #define TELEMETRY_FLAG_AUTO_ENABLED        0x01U
 #define TELEMETRY_FLAG_RC_OVERRIDE_ACTIVE  0x02U
-#define TELEMETRY_FLAG_ESTOP_ACTIVE        0x04U
+#define TELEMETRY_FLAG_STOP_OVERRIDE_ACTIVE 0x04U
 #define TELEMETRY_FLAG_COMMAND_TIMEOUT     0x08U
 #define TELEMETRY_FLAG_BRAKE_ACTIVE        0x10U
 #define TELEMETRY_FLAG_FAULT_LATCHED       0x20U
-#define TELEMETRY_FLAG_STEERING_MEASURED   0x40U
+#define TELEMETRY_FLAG_STEERING_IS_MEASURED 0x40U
 
 #define STATUS_BIT_FAULT_LATCHED           (1UL << 0)
 #define STATUS_BIT_COMMAND_TIMEOUT         (1UL << 1)
 #define STATUS_BIT_RC_OVERRIDE_ACTIVE      (1UL << 2)
-#define STATUS_BIT_ESTOP_ACTIVE            (1UL << 3)
+#define STATUS_BIT_STOP_OVERRIDE_ACTIVE    (1UL << 3)
 #define STATUS_BIT_BRAKE_ACTIVE            (1UL << 4)
 #define STATUS_BIT_AUTO_ENABLED            (1UL << 5)
 #define STATUS_BIT_HALL_FEEDBACK_VALID     (1UL << 6)
 #define STATUS_BIT_HALL_FAULT              (1UL << 7)
-#define STATUS_BIT_STEERING_FEEDBACK_VALID (1UL << 8)
+#define STATUS_BIT_STEERING_ESTIMATE_VALID (1UL << 8)
 #define STATUS_BIT_STEERING_IS_MEASURED    (1UL << 9)
-#define STATUS_BIT_STEERING_FAULT          (1UL << 10)
+#define STATUS_BIT_RC_INPUT_FAULT          (1UL << 10)
 #define STATUS_BIT_BATTERY_VALID           (1UL << 11)
 #define STATUS_BIT_BATTERY_LOW             (1UL << 12)
 #define STATUS_BIT_BATTERY_CRITICAL        (1UL << 13)
@@ -181,10 +182,11 @@ void RobotDataTransmitTask(void* param)
         uint32_t status_bits = 0U;
         int32_t hall_delta_count;
         uint16_t battery_mv;
+        uint8_t signed_speed_valid;
         uint32_t active_fault_sources = 0U;
         servo_basic_diagnostics_t servo_diagnostics;
         const uint8_t rc_override_active = ServoBasic_IsRcOverrideActive();
-        const uint8_t estop_active = (ServoBasic_IsRcEmergencyActive() != 0U ||
+        const uint8_t stop_override_active = (ServoBasic_IsRcEmergencyActive() != 0U ||
             ServoBasic_IsOrinEmergencyActive() != 0U) ? 1U : 0U;
         const uint8_t command_timeout = ServoBasic_IsOrinCommandTimeout();
         const uint8_t brake_active = ServoBasic_IsOrinBrakeActive();
@@ -200,7 +202,8 @@ void RobotDataTransmitTask(void* param)
         }
         lastTelemetryTick = nowTick;
 
-        (void)ServoBasic_GetAckermannFeedback(&speed_mps, &steering_angle_rad, &yaw_rate_rad_s);
+        signed_speed_valid = ServoBasic_GetAckermannFeedback(
+            &speed_mps, &steering_angle_rad, &yaw_rate_rad_s);
         servo_diagnostics = ServoBasic_GetDiagnostics();
 
         if (hall_snapshot.fault_count != 0U) { active_fault_sources |= APP_FAULT_SOURCE_HALL; }
@@ -212,7 +215,7 @@ void RobotDataTransmitTask(void* param)
 
         if (auto_enabled != 0U) { status_flags |= TELEMETRY_FLAG_AUTO_ENABLED; }
         if (rc_override_active != 0U) { status_flags |= TELEMETRY_FLAG_RC_OVERRIDE_ACTIVE; }
-        if (estop_active != 0U) { status_flags |= TELEMETRY_FLAG_ESTOP_ACTIVE; }
+        if (stop_override_active != 0U) { status_flags |= TELEMETRY_FLAG_STOP_OVERRIDE_ACTIVE; }
         if (command_timeout != 0U) { status_flags |= TELEMETRY_FLAG_COMMAND_TIMEOUT; }
         if (brake_active != 0U) { status_flags |= TELEMETRY_FLAG_BRAKE_ACTIVE; }
         if (g_app_runtime_state.fault_latched != 0U) { status_flags |= TELEMETRY_FLAG_FAULT_LATCHED; }
@@ -220,13 +223,16 @@ void RobotDataTransmitTask(void* param)
         if (g_app_runtime_state.fault_latched != 0U) { status_bits |= STATUS_BIT_FAULT_LATCHED; }
         if (command_timeout != 0U) { status_bits |= STATUS_BIT_COMMAND_TIMEOUT; }
         if (rc_override_active != 0U) { status_bits |= STATUS_BIT_RC_OVERRIDE_ACTIVE; }
-        if (estop_active != 0U) { status_bits |= STATUS_BIT_ESTOP_ACTIVE; }
+        if (stop_override_active != 0U) { status_bits |= STATUS_BIT_STOP_OVERRIDE_ACTIVE; }
         if (brake_active != 0U) { status_bits |= STATUS_BIT_BRAKE_ACTIVE; }
         if (auto_enabled != 0U) { status_bits |= STATUS_BIT_AUTO_ENABLED; }
-        if (hall_snapshot.speed_valid != 0U) { status_bits |= STATUS_BIT_HALL_FEEDBACK_VALID; }
+        if (signed_speed_valid != 0U)
+        {
+            status_bits |= STATUS_BIT_HALL_FEEDBACK_VALID;
+        }
         if (hall_snapshot.fault_count != 0U) { status_bits |= STATUS_BIT_HALL_FAULT; }
-        status_bits |= STATUS_BIT_STEERING_FEEDBACK_VALID;
-        if (servo_diagnostics.steering_fault != 0U) { status_bits |= STATUS_BIT_STEERING_FAULT; }
+        status_bits |= STATUS_BIT_STEERING_ESTIMATE_VALID;
+        if (servo_diagnostics.steering_fault != 0U) { status_bits |= STATUS_BIT_RC_INPUT_FAULT; }
         if (g_app_runtime_state.voltage_v > 0.1f) { status_bits |= STATUS_BIT_BATTERY_VALID; }
         if (battery_mv_is_low(battery_mv) != 0U) { status_bits |= STATUS_BIT_BATTERY_LOW; }
         if (battery_mv_is_critical(battery_mv) != 0U) { status_bits |= STATUS_BIT_BATTERY_CRITICAL; }
@@ -246,7 +252,7 @@ void RobotDataTransmitTask(void* param)
         write_u16_be(&basebuffer[13], battery_mv);
         write_u16_be(&basebuffer[15], (dt_ms > 65535U) ? 65535U : (uint16_t)dt_ms);
         write_u32_be(&basebuffer[17], status_bits);
-        basebuffer[21] = 0U;
+        basebuffer[21] = TELEMETRY_PROTOCOL_ID;
         basebuffer[22] = Calculate_BCC(basebuffer, 22U);
         basebuffer[23] = BaseFRAME_TAIL;
 

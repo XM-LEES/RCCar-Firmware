@@ -8,7 +8,7 @@
 #include "main.h"
 #include "bsp_dwt.h"
 
-#define HALL_WHEEL_DIAMETER_M            0.235f
+#define HALL_WHEEL_DIAMETER_M            0.230f
 #define HALL_WHEEL_CIRCUMFERENCE_M       (HALL_WHEEL_DIAMETER_M * 3.14159265358979f)
 #define HALL_COUNT_EVENTS_PER_REV        10U
 #define HALL_MIN_EVENT_INTERVAL_US       1500U
@@ -148,7 +148,7 @@ uint8_t HallSpeed_GetSignedSpeedMps(float *speed_mps)
 	const hall_speed_state_t snapshot = HallSpeed_GetState();
 	float speed = 0.0f;
 
-	if (snapshot.speed_valid == 0U || snapshot.last_period_us == 0U)
+	if (snapshot.speed_valid == 0U || snapshot.direction == 0 || snapshot.last_period_us == 0U)
 	{
 		if (speed_mps != NULL)
 		{
