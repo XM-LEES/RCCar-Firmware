@@ -76,7 +76,4 @@
 #define APP_RC_GUARD_ACTIVE_LOW_THRESHOLD_US     1300U
 #define APP_RC_GUARD_ACTIVE_HIGH_THRESHOLD_US    1700U
 
-#define APP_BATTERY_LOW_MV                       7000U
-#define APP_BATTERY_CRITICAL_MV                  6600U
-
 #endif

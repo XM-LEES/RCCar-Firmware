@@ -92,6 +92,8 @@ def check_command_parser(root: Path) -> list[Check]:
 
 def check_telemetry(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/data_task.c")
+    vehicle_config_text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
+    runtime_state_text = read_text(root, "WHEELTEC_APP/Inc/app_runtime_state.h")
     results: list[Check] = []
     add(results, "telemetry_frame_len", contains(text, "#define BaseFRAME_LEN  24U"), "BaseFRAME_LEN 24U")
     add(results, "telemetry_head_tail", contains(text, "#define BaseFRAME_HEAD 0x7B") and contains(text, "#define BaseFRAME_TAIL 0x7D"), "0x7B head and 0x7D tail")
@@ -115,8 +117,6 @@ def check_telemetry(root: Path) -> list[Check]:
         "STATUS_BIT_STEERING_IS_MEASURED",
         "STATUS_BIT_RC_INPUT_FAULT",
         "STATUS_BIT_BATTERY_VALID",
-        "STATUS_BIT_BATTERY_LOW",
-        "STATUS_BIT_BATTERY_CRITICAL",
         "STATUS_BIT_SPEED_SATURATED",
         "STATUS_BIT_STEERING_SATURATED",
         "STATUS_BIT_ACCEL_LIMITED",
@@ -155,6 +155,20 @@ def check_telemetry(root: Path) -> list[Check]:
         or "write_u16_be(&basebuffer[13], clamp_float_to_u16(g_app_runtime_state.voltage_v * 1000.0f))" in text
     )
     add(results, "telemetry_layout", all(needle in text for needle in layout_needles) and battery_slot_ok, "24-byte telemetry layout")
+    add(results, "battery_raw_telemetry_only", all(needle not in text for needle in [
+        "STATUS_BIT_BATTERY_LOW",
+        "STATUS_BIT_BATTERY_CRITICAL",
+        "battery_mv_is_low",
+        "battery_mv_is_critical",
+        "APP_FAULT_SOURCE_BATTERY_LOW",
+        "APP_FAULT_SOURCE_BATTERY_CRITICAL",
+    ]) and all(needle not in vehicle_config_text for needle in [
+        "APP_BATTERY_LOW_MV",
+        "APP_BATTERY_CRITICAL_MV",
+    ]) and all(needle not in runtime_state_text for needle in [
+        "APP_FAULT_SOURCE_BATTERY_LOW",
+        "APP_FAULT_SOURCE_BATTERY_CRITICAL",
+    ]), "battery is raw mV telemetry only, without firmware low-voltage thresholds or faults")
     return results
 
 
@@ -254,8 +268,6 @@ def check_phase1_target_status_bits(root: Path) -> list[Check]:
     required_assignments = [
         "STATUS_BIT_FAULT_LATCHED",
         "STATUS_BIT_RC_INPUT_FAULT",
-        "STATUS_BIT_BATTERY_LOW",
-        "STATUS_BIT_BATTERY_CRITICAL",
         "STATUS_BIT_SPEED_SATURATED",
         "STATUS_BIT_STEERING_SATURATED",
         "STATUS_BIT_ACCEL_LIMITED",

@@ -131,7 +131,7 @@ Hall / servo estimate / battery / safety state
 
 byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVERRIDE_ACTIVE`，bit3 `COMMAND_TIMEOUT`，bit4 `BRAKE_ACTIVE`，bit5 `FAULT_LATCHED`，bit6 `STEERING_IS_MEASURED`，bit7 保留。当前没有转角传感器，因此 bit6 始终为零。
 
-`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit12 `BATTERY_LOW`，bit13 `BATTERY_CRITICAL`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit19..31 保留。
+`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit12..13 和 bit19..31 保留。`ACCEL_LIMITED` 仅表示固件内部速度目标变化斜坡生效，不表示车辆实际加速度受控或被测量。电池仅按原始 `battery_mv` 上报，不在固件内设置低压阈值、故障或控制动作。
 
 任何向 UART4 混发 ASCII、调试帧或其他长度数据的改动都会破坏固定长度解析；当前 UART4 只允许上述两个二进制帧。
 
@@ -144,15 +144,15 @@ byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVER
 - UART4 11 字节 Ackermann command 解析：帧头、帧尾、BCC、`cmd=0x01`、`ENABLE`、`BRAKE`、`CLEAR_FAULT`、`SOFTWARE_STOP`。其中停止相关 bit 只代表软件请求，不是物理急停或物理制动。
 - 正式自动控制入口使用 `speed_mmps + steering_mrad`；旧 `vx/vy/wz` 作为历史协议事实保留。
 - RC 接管、软件停止请求和通信超时回中仲裁；未经确认的 RC guard 默认关闭。
-- 速度和转角执行端限幅、加速度/转角速度限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。
+- 速度和转角执行端限幅、速度目标变化斜坡、转角速度限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。速度目标斜坡不是实际加速度控制。
 - UART4 24 字节 telemetry：`hall_delta_count`、`speed_mmps`、`steering_mrad`、`yaw_rate_mradps`、`battery_mv`、`dt_ms`、`status_bits`，byte 21 固定为协议标识 `0xA1`。
-- 当前填充的状态：`FAULT_LATCHED`、`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`STOP_OVERRIDE_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_FAULT`、`STEERING_ESTIMATE_VALID`、`RC_INPUT_FAULT`、`BATTERY_VALID`、`BATTERY_LOW`、`BATTERY_CRITICAL`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED`、`STEERING_RATE_LIMITED`、`FRAME_ERROR_SEEN`。
+- 当前填充的状态：`FAULT_LATCHED`、`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`STOP_OVERRIDE_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_FAULT`、`STEERING_ESTIMATE_VALID`、`RC_INPUT_FAULT`、`BATTERY_VALID`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED`、`STEERING_RATE_LIMITED`、`FRAME_ERROR_SEEN`。
 - `CLEAR_FAULT` 当前在安全条件满足时清除 UART4 frame-error 诊断，并在当前 fault source 已消失时清除 `FAULT_LATCHED`。
 
 当前尚未实现但仍属于协议目标/阶段验收要求的内容：
 
 - 真实转角测量硬件接入后的 `STEERING_IS_MEASURED`；当前转角是舵机标定估算，不得把该位声明为实测。
-- `FAULT_LATCHED`、`RC_INPUT_FAULT`、`BATTERY_LOW`、`BATTERY_CRITICAL`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED` 和 `STEERING_RATE_LIMITED` 已有代码路径和静态契约检查；仍需要 Windows/Keil 编译、烧录和实车/台架测试记录确认。
+- `FAULT_LATCHED`、`RC_INPUT_FAULT`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED` 和 `STEERING_RATE_LIMITED` 已有代码路径和静态契约检查；仍需要 Windows/Keil 编译、烧录和实车/台架测试记录确认。
 
 修改任何字段、位定义或单位时，必须同步修改上位机协议编解码和永久测试。
 

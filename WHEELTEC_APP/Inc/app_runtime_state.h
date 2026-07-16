@@ -5,8 +5,6 @@
 
 #define APP_FAULT_SOURCE_HALL             (1UL << 0)
 #define APP_FAULT_SOURCE_STEERING         (1UL << 1)
-#define APP_FAULT_SOURCE_BATTERY_LOW      (1UL << 2)
-#define APP_FAULT_SOURCE_BATTERY_CRITICAL (1UL << 3)
 #define APP_FAULT_SOURCE_FRAME_ERROR      (1UL << 4)
 
 typedef struct

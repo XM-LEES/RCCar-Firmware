@@ -37,8 +37,6 @@ static UART_HandleTypeDef *serial = &huart4;
 #define STATUS_BIT_STEERING_IS_MEASURED    (1UL << 9)
 #define STATUS_BIT_RC_INPUT_FAULT          (1UL << 10)
 #define STATUS_BIT_BATTERY_VALID           (1UL << 11)
-#define STATUS_BIT_BATTERY_LOW             (1UL << 12)
-#define STATUS_BIT_BATTERY_CRITICAL        (1UL << 13)
 #define STATUS_BIT_SPEED_SATURATED         (1UL << 14)
 #define STATUS_BIT_STEERING_SATURATED      (1UL << 15)
 #define STATUS_BIT_ACCEL_LIMITED           (1UL << 16)
@@ -52,16 +50,6 @@ static UART_HandleTypeDef *serial = &huart4;
 static void update_power_state(void)
 {
     g_app_runtime_state.voltage_v = (float)USER_ADC_Get_AdcBufValue(userconfigADC_VOL_CHANNEL) / 4095.0f * 3.3f * 11.0f;
-}
-
-static uint8_t battery_mv_is_low(uint16_t battery_mv)
-{
-    return (battery_mv > 0U && battery_mv <= APP_BATTERY_LOW_MV) ? 1U : 0U;
-}
-
-static uint8_t battery_mv_is_critical(uint16_t battery_mv)
-{
-    return (battery_mv > 0U && battery_mv <= APP_BATTERY_CRITICAL_MV) ? 1U : 0U;
 }
 
 static void record_uart_tx_status(HAL_StatusTypeDef status, uint32_t *busy_count, uint32_t *error_count)
@@ -208,8 +196,6 @@ void RobotDataTransmitTask(void* param)
 
         if (hall_snapshot.fault_count != 0U) { active_fault_sources |= APP_FAULT_SOURCE_HALL; }
         if (servo_diagnostics.steering_fault != 0U) { active_fault_sources |= APP_FAULT_SOURCE_STEERING; }
-        if (battery_mv_is_low(battery_mv) != 0U) { active_fault_sources |= APP_FAULT_SOURCE_BATTERY_LOW; }
-        if (battery_mv_is_critical(battery_mv) != 0U) { active_fault_sources |= APP_FAULT_SOURCE_BATTERY_CRITICAL; }
         if (g_app_runtime_state.uart4_rx_frame_error_seen != 0U) { active_fault_sources |= APP_FAULT_SOURCE_FRAME_ERROR; }
         AppRuntime_UpdateFaultSources(active_fault_sources);
 
@@ -234,8 +220,6 @@ void RobotDataTransmitTask(void* param)
         status_bits |= STATUS_BIT_STEERING_ESTIMATE_VALID;
         if (servo_diagnostics.steering_fault != 0U) { status_bits |= STATUS_BIT_RC_INPUT_FAULT; }
         if (g_app_runtime_state.voltage_v > 0.1f) { status_bits |= STATUS_BIT_BATTERY_VALID; }
-        if (battery_mv_is_low(battery_mv) != 0U) { status_bits |= STATUS_BIT_BATTERY_LOW; }
-        if (battery_mv_is_critical(battery_mv) != 0U) { status_bits |= STATUS_BIT_BATTERY_CRITICAL; }
         if (servo_diagnostics.speed_saturated != 0U) { status_bits |= STATUS_BIT_SPEED_SATURATED; }
         if (servo_diagnostics.steering_saturated != 0U) { status_bits |= STATUS_BIT_STEERING_SATURATED; }
         if (servo_diagnostics.accel_limited != 0U) { status_bits |= STATUS_BIT_ACCEL_LIMITED; }
