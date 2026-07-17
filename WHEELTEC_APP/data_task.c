@@ -37,6 +37,7 @@ static UART_HandleTypeDef *serial = &huart4;
 #define STATUS_BIT_STEERING_IS_MEASURED    (1UL << 9)
 #define STATUS_BIT_RC_INPUT_FAULT          (1UL << 10)
 #define STATUS_BIT_BATTERY_VALID           (1UL << 11)
+#define STATUS_BIT_HALL_STANDSTILL_CONFIRMED (1UL << 12)
 #define STATUS_BIT_SPEED_SATURATED         (1UL << 14)
 #define STATUS_BIT_STEERING_SATURATED      (1UL << 15)
 #define STATUS_BIT_ACCEL_LIMITED           (1UL << 16)
@@ -230,6 +231,15 @@ void RobotDataTransmitTask(void* param)
         if (signed_speed_valid != 0U)
         {
             status_bits |= STATUS_BIT_HALL_FEEDBACK_VALID;
+        }
+        else
+        {
+            /* Refresh after speed conversion and keep the two states exclusive. */
+            hall_snapshot = HallSpeed_GetState();
+            if (hall_snapshot.stationary_confirmed != 0U)
+            {
+                status_bits |= STATUS_BIT_HALL_STANDSTILL_CONFIRMED;
+            }
         }
         if (hall_snapshot.fault_count != 0U) { status_bits |= STATUS_BIT_HALL_FAULT; }
         status_bits |= STATUS_BIT_STEERING_ESTIMATE_VALID;

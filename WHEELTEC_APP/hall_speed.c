@@ -19,6 +19,7 @@
 volatile hall_speed_state_t g_hall_speed_state = {0};
 
 static uint16_t hall_count_pin = HallA_Pin;
+static volatile uint32_t g_hall_speed_started_us = 0U;
 
 static uint32_t hall_speed_get_time_us(void)
 {
@@ -60,6 +61,8 @@ static int8_t hall_speed_clamp_direction(int8_t direction)
 
 void HallSpeed_Init(void)
 {
+	const uint32_t now_us = hall_speed_get_time_us();
+
 	__disable_irq();
 	if (HALL_COUNT_USE_CHANNEL_B != 0U)
 	{
@@ -72,19 +75,60 @@ void HallSpeed_Init(void)
 	g_hall_speed_state.event_count_total = 0;
 	g_hall_speed_state.last_event_us = 0U;
 	g_hall_speed_state.last_period_us = 0U;
+	g_hall_speed_state.zero_command_since_us = now_us;
 	g_hall_speed_state.fault_count = 0U;
 	g_hall_speed_state.direction = 0;
+	g_hall_speed_state.command_direction = 0;
 	g_hall_speed_state.speed_valid = 0U;
-	g_hall_speed_state.timeout_active = 1U;
-	g_hall_speed_state.reserved0 = 0U;
-	g_hall_speed_state.reserved1 = 0U;
+	g_hall_speed_state.timeout_active = 0U;
+	g_hall_speed_state.stationary_confirmed = 0U;
+	g_hall_speed_state.period_origin_valid = 0U;
+	g_hall_speed_started_us = now_us;
 	__enable_irq();
 }
 
 void HallSpeed_SetCommandDirection(int8_t direction)
 {
+	const int8_t command_direction = hall_speed_clamp_direction(direction);
+	const uint32_t now_us = hall_speed_get_time_us();
+	int8_t previous_command_direction;
+	uint8_t previous_stationary_confirmed;
+
 	__disable_irq();
-	g_hall_speed_state.direction = hall_speed_clamp_direction(direction);
+	previous_command_direction = g_hall_speed_state.command_direction;
+	previous_stationary_confirmed = g_hall_speed_state.stationary_confirmed;
+	g_hall_speed_state.command_direction = command_direction;
+	if (command_direction == 0 && previous_command_direction != 0)
+	{
+		/* A stop request must earn a fresh no-pulse confirmation window. */
+		g_hall_speed_state.zero_command_since_us = now_us;
+	}
+	if (command_direction != 0)
+	{
+		const int8_t previous_measurement_direction =
+			g_hall_speed_state.direction;
+		/* A new motion request invalidates an earlier no-pulse standstill. */
+		g_hall_speed_state.direction = command_direction;
+		if (command_direction != previous_command_direction ||
+			g_hall_speed_state.stationary_confirmed != 0U)
+		{
+			g_hall_speed_state.speed_valid = 0U;
+			g_hall_speed_state.timeout_active = 0U;
+			g_hall_speed_state.stationary_confirmed = 0U;
+		}
+		if (previous_stationary_confirmed != 0U ||
+			(previous_measurement_direction != 0 &&
+			 previous_measurement_direction != command_direction))
+		{
+			g_hall_speed_state.last_period_us = 0U;
+			g_hall_speed_state.period_origin_valid = 0U;
+		}
+	}
+	/*
+	 * A zero request deliberately retains direction until Hall silence is
+	 * confirmed. This preserves the command-derived sign while the wheel
+	 * coasts; it is still not an independently measured direction.
+	 */
 	__enable_irq();
 }
 
@@ -93,7 +137,7 @@ void HallSpeed_OnCountEvent(void)
 	const uint32_t now_us = hall_speed_get_time_us();
 	const uint32_t last_event_us = g_hall_speed_state.last_event_us;
 
-	if (last_event_us != 0U)
+	if (g_hall_speed_state.period_origin_valid != 0U)
 	{
 		const uint32_t elapsed_us = now_us - last_event_us;
 		if (elapsed_us < HALL_MIN_EVENT_INTERVAL_US)
@@ -106,7 +150,9 @@ void HallSpeed_OnCountEvent(void)
 	}
 
 	g_hall_speed_state.last_event_us = now_us;
+	g_hall_speed_state.period_origin_valid = 1U;
 	g_hall_speed_state.timeout_active = 0U;
+	g_hall_speed_state.stationary_confirmed = 0U;
 	g_hall_speed_state.event_count_total++;
 }
 
@@ -120,34 +166,76 @@ void HallSpeed_ClearFaultCount(void)
 hall_speed_state_t HallSpeed_GetState(void)
 {
 	hall_speed_state_t snapshot;
-	const uint32_t now_us = hall_speed_get_time_us();
 
-	__disable_irq();
-	snapshot = g_hall_speed_state;
-	__enable_irq();
-
-	if (snapshot.last_period_us == 0U || snapshot.last_event_us == 0U)
+	for (;;)
 	{
-		snapshot.speed_valid = 0U;
-		snapshot.timeout_active = 1U;
-	}
-	else if ((now_us - snapshot.last_event_us) > hall_speed_get_timeout_us(snapshot.last_period_us))
-	{
-		snapshot.speed_valid = 0U;
-		snapshot.timeout_active = 1U;
-	}
-	else
-	{
-		snapshot.speed_valid = 1U;
-		snapshot.timeout_active = 0U;
-	}
+		uint32_t quiet_reference_us;
+		uint32_t quiet_timeout_us;
+		uint32_t now_us;
+		uint8_t zero_command_quiet;
+		uint8_t state_changed;
 
-	__disable_irq();
-	g_hall_speed_state.speed_valid = snapshot.speed_valid;
-	g_hall_speed_state.timeout_active = snapshot.timeout_active;
-	__enable_irq();
+		__disable_irq();
+		snapshot = g_hall_speed_state;
+		__enable_irq();
 
-	return snapshot;
+		now_us = hall_speed_get_time_us();
+		quiet_reference_us = (snapshot.event_count_total == 0) ?
+			g_hall_speed_started_us : snapshot.last_event_us;
+		quiet_timeout_us = (snapshot.last_period_us == 0U) ?
+			HALL_TIMEOUT_MIN_US : hall_speed_get_timeout_us(snapshot.last_period_us);
+		zero_command_quiet =
+			(snapshot.command_direction == 0 &&
+			 (now_us - snapshot.zero_command_since_us) >= quiet_timeout_us) ? 1U : 0U;
+
+		if (snapshot.stationary_confirmed != 0U && snapshot.command_direction == 0)
+		{
+			snapshot.direction = 0;
+			snapshot.speed_valid = 0U;
+			snapshot.timeout_active = 1U;
+		}
+		else if ((now_us - quiet_reference_us) >= quiet_timeout_us)
+		{
+			snapshot.speed_valid = 0U;
+			snapshot.timeout_active = 1U;
+			if (zero_command_quiet != 0U)
+			{
+				snapshot.direction = 0;
+				snapshot.stationary_confirmed = 1U;
+			}
+			else
+			{
+				/* No pulses under a non-zero request is unknown, not zero. */
+				snapshot.stationary_confirmed = 0U;
+			}
+		}
+		else
+		{
+			snapshot.speed_valid =
+				(snapshot.period_origin_valid != 0U && snapshot.last_period_us != 0U) ? 1U : 0U;
+			snapshot.timeout_active = 0U;
+			snapshot.stationary_confirmed = 0U;
+		}
+
+		__disable_irq();
+		state_changed =
+			(g_hall_speed_state.event_count_total != snapshot.event_count_total ||
+			 g_hall_speed_state.last_event_us != snapshot.last_event_us ||
+			 g_hall_speed_state.command_direction != snapshot.command_direction) ? 1U : 0U;
+		if (state_changed == 0U)
+		{
+			g_hall_speed_state.direction = snapshot.direction;
+			g_hall_speed_state.speed_valid = snapshot.speed_valid;
+			g_hall_speed_state.timeout_active = snapshot.timeout_active;
+			g_hall_speed_state.stationary_confirmed = snapshot.stationary_confirmed;
+		}
+		__enable_irq();
+
+		if (state_changed == 0U)
+		{
+			return snapshot;
+		}
+	}
 }
 
 uint8_t HallSpeed_GetSignedSpeedMps(float *speed_mps)

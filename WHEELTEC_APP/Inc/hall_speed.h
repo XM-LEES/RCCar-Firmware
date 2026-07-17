@@ -17,12 +17,19 @@ typedef struct
 	int32_t event_count_total;
 	uint32_t last_event_us;
 	uint32_t last_period_us;
+	/* Start of the current continuous zero-direction request. */
+	uint32_t zero_command_since_us;
 	uint32_t fault_count;
+	/* Last non-zero control direction retained while the wheel coasts. */
 	int8_t direction;
+	/* Current automatic/RC control direction; zero means no motion request. */
+	int8_t command_direction;
 	uint8_t speed_valid;
 	uint8_t timeout_active;
-	uint8_t reserved0;
-	uint8_t reserved1;
+	/* Hall no-pulse standstill inference; not an independent stop sensor. */
+	uint8_t stationary_confirmed;
+	/* A prior accepted edge exists for period measurement. */
+	uint8_t period_origin_valid;
 } hall_speed_state_t;
 
 extern volatile hall_speed_state_t g_hall_speed_state;

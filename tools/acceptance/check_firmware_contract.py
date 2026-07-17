@@ -123,6 +123,7 @@ def check_telemetry(root: Path) -> list[Check]:
         "STATUS_BIT_STEERING_IS_MEASURED",
         "STATUS_BIT_RC_INPUT_FAULT",
         "STATUS_BIT_BATTERY_VALID",
+        "STATUS_BIT_HALL_STANDSTILL_CONFIRMED",
         "STATUS_BIT_SPEED_SATURATED",
         "STATUS_BIT_STEERING_SATURATED",
         "STATUS_BIT_ACCEL_LIMITED",
@@ -138,6 +139,7 @@ def check_telemetry(root: Path) -> list[Check]:
         "STATUS_BIT_BRAKE_ACTIVE",
         "STATUS_BIT_AUTO_ENABLED",
         "STATUS_BIT_HALL_FEEDBACK_VALID",
+        "STATUS_BIT_HALL_STANDSTILL_CONFIRMED",
         "STATUS_BIT_HALL_FAULT",
         "STATUS_BIT_STEERING_ESTIMATE_VALID",
         "STATUS_BIT_BATTERY_VALID",
@@ -181,6 +183,7 @@ def check_telemetry(root: Path) -> list[Check]:
 def check_hall_direction_sources(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
     hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
+    hall_header_text = read_text(root, "WHEELTEC_APP/Inc/hall_speed.h")
     data_text = read_text(root, "WHEELTEC_APP/data_task.c")
     results: list[Check] = []
     add(results, "auto_hall_direction_source", all(needle in text for needle in [
@@ -206,6 +209,33 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
         "if (signed_speed_valid != 0U)",
         "status_bits |= STATUS_BIT_HALL_FEEDBACK_VALID",
     ]) and contains(hall_text, "snapshot.direction == 0"), "signed Hall feedback is valid only when both magnitude and command-derived direction are known")
+    add(results, "hall_direction_retained_during_coast", all(needle in hall_header_text for needle in [
+        "int8_t direction",
+        "int8_t command_direction",
+        "uint32_t zero_command_since_us",
+        "uint8_t stationary_confirmed",
+    ]) and all(needle in hall_text for needle in [
+        "g_hall_speed_state.command_direction = command_direction",
+        "g_hall_speed_state.zero_command_since_us = now_us",
+        "A zero request deliberately retains direction",
+        "snapshot.direction = 0",
+    ]), "zero command retains the last sign until Hall silence confirms standstill")
+    add(results, "hall_standstill_requires_zero_command", matches(
+        hall_text,
+        r"if\s*\(zero_command_quiet\s*!=\s*0U\)\s*\{"
+        r".*?snapshot\.direction\s*=\s*0;"
+        r".*?snapshot\.stationary_confirmed\s*=\s*1U;",
+    ) and contains(
+        hall_text, "No pulses under a non-zero request is unknown, not zero."
+    ), "Hall silence is publishable as standstill only without a current motion request")
+    add(results, "hall_motion_and_standstill_status_exclusive", matches(
+        data_text,
+        r"if\s*\(signed_speed_valid\s*!=\s*0U\)\s*\{"
+        r".*?STATUS_BIT_HALL_FEEDBACK_VALID;"
+        r".*?\}\s*else\s*\{"
+        r".*?stationary_confirmed\s*!=\s*0U"
+        r".*?STATUS_BIT_HALL_STANDSTILL_CONFIRMED;",
+    ), "telemetry cannot mark measured motion and Hall-confirmed standstill together")
     return results
 
 

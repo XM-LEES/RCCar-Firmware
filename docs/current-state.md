@@ -118,8 +118,8 @@ Hall / servo estimate / battery / safety state
 | 0 | 帧头 `0x7B` |
 | 1 | 紧凑状态 flags，定义见下表 |
 | 2 | 发送序号，8 位自然回绕 |
-| 3..6 | `hall_delta_count`，有符号 32 位；计数由 Hall 直接测量，符号来自当前自动命令或 RC 油门方向 |
-| 7..8 | `speed_mmps`，有符号 16 位；大小来自 Hall 周期，符号来自当前控制方向；方向未知时为零且 valid 位清零 |
+| 3..6 | `hall_delta_count`，有符号 32 位；计数由 Hall 直接测量，符号来自当前自动命令或 RC 油门方向；零命令后的滑行阶段保留最后方向 |
+| 7..8 | `speed_mmps`，有符号 16 位；大小来自 Hall 周期，符号来自当前控制方向或滑行期间保留的最后方向；方向未知时为零且 valid 位清零 |
 | 9..10 | `steering_mrad`，有符号 16 位；由实际输出 PWM 和舵机标定估算，不是转角传感器测量 |
 | 11..12 | `yaw_rate_mradps`，有符号 16 位；由 Hall 速度、PWM 转角估算和轴距运动学计算，不是陀螺仪测量 |
 | 13..14 | `battery_mv`，无符号 16 位，来自电池 ADC 换算 |
@@ -131,7 +131,7 @@ Hall / servo estimate / battery / safety state
 
 byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVERRIDE_ACTIVE`，bit3 `COMMAND_TIMEOUT`，bit4 `BRAKE_ACTIVE`，bit5 `FAULT_LATCHED`，bit6 `STEERING_IS_MEASURED`，bit7 保留。当前没有转角传感器，因此 bit6 始终为零。
 
-`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit12..13 和 bit19..31 保留。bit7 表示上次被接受的 `CLEAR_FAULT` 请求后累计过被拒绝的过短 Hall 脉冲，是可清除的历史诊断，不是当前瞬时 Hall 失效。bit10 只表示 throttle/steering 捕获异常持续超过 `APP_RC_GLITCH_FREEZE_MS=100 ms`，或已启用 guard 后 guard 输入异常；默认关闭的 guard 不参与该位。bit18 是上次被接受的 `CLEAR_FAULT` 请求后的 UART4 错帧历史诊断。`ACCEL_LIMITED` 仅表示固件内部速度目标变化斜坡生效，不表示车辆实际加速度受控或被测量。电池仅按原始 `battery_mv` 上报，不在固件内设置低压阈值、故障或控制动作。
+`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit12 `HALL_STANDSTILL_CONFIRMED`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit13 和 bit19..31 保留。bit6 表示当前速度幅值和控制派生方向均可用；bit12 表示当前控制方向为零，并且从最后一个有效 Hall 脉冲和最近一次进入零方向请求两者中较晚的时刻起，已经经过自适应无脉冲窗口。bit6 和 bit12 互斥。bit12 是 Hall 可观测范围内的静止推定，不是独立物理停止传感器。bit7 表示上次被接受的 `CLEAR_FAULT` 请求后累计过被拒绝的过短 Hall 脉冲，是可清除的历史诊断，不是当前瞬时 Hall 失效。bit10 只表示 throttle/steering 捕获异常持续超过 `APP_RC_GLITCH_FREEZE_MS=100 ms`，或已启用 guard 后 guard 输入异常；默认关闭的 guard 不参与该位。bit18 是上次被接受的 `CLEAR_FAULT` 请求后的 UART4 错帧历史诊断。`ACCEL_LIMITED` 仅表示固件内部速度目标变化斜坡生效，不表示车辆实际加速度受控或被测量。电池仅按原始 `battery_mv` 上报，不在固件内设置低压阈值、故障或控制动作。
 
 任何向 UART4 混发 ASCII、调试帧或其他长度数据的改动都会破坏固定长度解析；当前 UART4 只允许上述两个二进制帧。
 
@@ -146,7 +146,7 @@ byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVER
 - RC 接管、软件停止请求和通信超时回中仲裁；未经确认的 RC guard 默认关闭。
 - 速度和转角执行端限幅、速度目标变化斜坡、转角速度限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。速度目标斜坡不是实际加速度控制。
 - UART4 24 字节 telemetry：`hall_delta_count`、`speed_mmps`、`steering_mrad`、`yaw_rate_mradps`、`battery_mv`、`dt_ms`、`status_bits`，byte 21 固定为协议标识 `0xA1`。
-- 当前填充的状态：`FAULT_LATCHED`、`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`STOP_OVERRIDE_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_FAULT`、`STEERING_ESTIMATE_VALID`、`RC_INPUT_FAULT`、`BATTERY_VALID`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED`、`STEERING_RATE_LIMITED`、`FRAME_ERROR_SEEN`。
+- 当前填充的状态：`FAULT_LATCHED`、`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`STOP_OVERRIDE_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_STANDSTILL_CONFIRMED`、`HALL_FAULT`、`STEERING_ESTIMATE_VALID`、`RC_INPUT_FAULT`、`BATTERY_VALID`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED`、`STEERING_RATE_LIMITED`、`FRAME_ERROR_SEEN`。
 - `CLEAR_FAULT` 当前通过跨任务请求计数交给 telemetry 任务结算：清除 Hall fault count 和 UART4 frame-error 历史诊断，随后重新计算当前 fault source；持续 RC 输入故障仍在时不会清除 `FAULT_LATCHED`。
 
 当前尚未实现但仍属于协议目标/阶段验收要求的内容：
@@ -214,7 +214,9 @@ PE13/PE14 Hall GPIO
 - 霍尔计数硬件不区分前进/后退方向；速度和 `hall_delta_count` 的符号来自当前执行控制方向。
 - 自动 Ackermann 模式下，方向来自上位机下发的 `speed_mps` 正负号。
 - RC passthrough/manual 模式下，方向来自 RC throttle PWM 相对 `1500 us` 中位和 `APP_RC_THROTTLE_NEUTRAL_HOLD_US` 死区的正负偏移。
-- throttle 中位、RC throttle 不可用、自动命令为零或方向未知时，方向为 `0`，telemetry `hall_delta_count` 保持 `0`；这类数据不能作为建图/导航 odom 位移证据。
+- 非零命令结束后，测速方向保留到 Hall 无脉冲窗口确认静止，因此滑行阶段仍可上报带最近控制方向符号的速度和 `hall_delta_count`。确认静止后方向清零。
+- 启动后无脉冲至少 `0.5 s`；或进入零方向请求后，并且最后一个脉冲后，两段时间都超过 `clamp(2 * last_period, 0.5 s, 4.0 s)` 时，bit12 `HALL_STANDSTILL_CONFIRMED` 才置位。非零运动命令期间没有 Hall 脉冲属于未知反馈，不得置位；停止请求必须重新完成静默确认窗口。
+- throttle 中位、RC throttle 不可用、自动命令为零且没有可保留的最近方向，或外力推动车辆时方向未知，telemetry 不能提供带符号位移；这类数据不能作为独立方向测量证据。
 - 方向符号仍是命令方向代理，不是独立物理方向测量。倒车、滑行、刹车后惯性移动或外力推动车时，不能当作独立方向测量。
 
 当前车辆标定默认值：
@@ -245,6 +247,8 @@ PE13/PE14 Hall GPIO
 - `g_hall_speed_state.event_count_total`
 - `g_hall_speed_state.last_period_us`
 - `g_hall_speed_state.direction`
+- `g_hall_speed_state.command_direction`
+- `g_hall_speed_state.stationary_confirmed`
 - `g_hall_speed_state.fault_count`
 - `g_speed_pi_enable`
 - `g_speed_pi_feedback_valid`

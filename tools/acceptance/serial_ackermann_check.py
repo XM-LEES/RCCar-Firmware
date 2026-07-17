@@ -31,6 +31,8 @@ MAX_STEERING_ANGLE_RAD = 0.262
 
 FLAG_ENABLE = 1 << 0
 FLAG_SOFTWARE_STOP = 1 << 7
+STATUS_HALL_FEEDBACK_VALID = 1 << 6
+STATUS_HALL_STANDSTILL_CONFIRMED = 1 << 12
 
 
 @dataclass
@@ -114,16 +116,25 @@ def parse_telemetry(frame: bytes) -> Telemetry:
             f"unexpected telemetry protocol id 0x{frame[21]:02X}; expected 0x{TELEMETRY_PROTOCOL_ID:02X}"
         )
 
+    speed_mps = struct.unpack(">h", frame[7:9])[0] / 1000.0
+    status_bits = struct.unpack(">I", frame[17:21])[0]
+    hall_valid = bool(status_bits & STATUS_HALL_FEEDBACK_VALID)
+    hall_standstill = bool(status_bits & STATUS_HALL_STANDSTILL_CONFIRMED)
+    if hall_valid and hall_standstill:
+        raise ValueError("Hall motion-valid and standstill-confirmed bits are both set")
+    if hall_standstill and speed_mps != 0.0:
+        raise ValueError("Hall-confirmed standstill carries a non-zero speed")
+
     return Telemetry(
         status_flags=frame[1],
         seq=frame[2],
         hall_delta_count=struct.unpack(">i", frame[3:7])[0],
-        speed_mps=struct.unpack(">h", frame[7:9])[0] / 1000.0,
+        speed_mps=speed_mps,
         steering_angle_rad=struct.unpack(">h", frame[9:11])[0] / 1000.0,
         yaw_rate_radps=struct.unpack(">h", frame[11:13])[0] / 1000.0,
         battery_v=struct.unpack(">H", frame[13:15])[0] / 1000.0,
         dt_ms=struct.unpack(">H", frame[15:17])[0],
-        status_bits=struct.unpack(">I", frame[17:21])[0],
+        status_bits=status_bits,
         protocol_id=frame[21],
     )
 
@@ -205,6 +216,8 @@ def print_frames(frames: list[Telemetry]) -> None:
             f"steering_rad={frame.steering_angle_rad:.3f} "
             f"yaw_rate_radps={frame.yaw_rate_radps:.3f} "
             f"battery_v={frame.battery_v:.2f} dt_ms={frame.dt_ms} "
+            f"hall_valid={bool(frame.status_bits & STATUS_HALL_FEEDBACK_VALID)} "
+            f"hall_standstill={bool(frame.status_bits & STATUS_HALL_STANDSTILL_CONFIRMED)} "
             f"status_flags=0x{frame.status_flags:02X} status_bits=0x{frame.status_bits:08X} "
             f"protocol_id=0x{frame.protocol_id:02X}"
         )
