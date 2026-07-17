@@ -15,10 +15,11 @@ extern "C" {
 typedef struct
 {
 	int32_t event_count_total;
-	uint32_t last_event_us;
+	/* Raw DWT timestamp; subtract before converting to handle 32-bit rollover. */
+	uint32_t last_event_cycles;
 	uint32_t last_period_us;
 	/* Start of the current continuous zero-direction request. */
-	uint32_t zero_command_since_us;
+	uint32_t zero_command_since_cycles;
 	uint32_t fault_count;
 	/* Last non-zero control direction retained while the wheel coasts. */
 	int8_t direction;

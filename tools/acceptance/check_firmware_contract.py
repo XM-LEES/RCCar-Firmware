@@ -203,6 +203,15 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
         "unknown Hall direction keeps telemetry delta zero",
     )
     add(results, "hall_geometry", contains(hall_text, "#define HALL_WHEEL_DIAMETER_M            0.230f"), "Hall wheel diameter is 0.230 m")
+    add(results, "hall_dwt_rollover_safe", all(needle in hall_header_text for needle in [
+        "uint32_t last_event_cycles",
+        "uint32_t zero_command_since_cycles",
+    ]) and all(needle in hall_text for needle in [
+        "const uint32_t elapsed_cycles = now_cycles - start_cycles",
+        "return elapsed_cycles / cycles_per_us",
+        "g_hall_speed_started_cycles",
+    ]) and "DWT_CYCCNT / cycles_per_us" not in hall_text,
+        "raw DWT cycles are subtracted before conversion so the 32-bit rollover is safe")
     add(results, "unknown_direction_invalid_speed", contains(hall_text, "snapshot.direction == 0"), "unknown Hall direction cannot produce signed speed")
     add(results, "signed_hall_status_requires_direction", all(needle in data_text for needle in [
         "signed_speed_valid = ServoBasic_GetAckermannFeedback",
@@ -212,14 +221,20 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
     add(results, "hall_direction_retained_during_coast", all(needle in hall_header_text for needle in [
         "int8_t direction",
         "int8_t command_direction",
-        "uint32_t zero_command_since_us",
+        "uint32_t zero_command_since_cycles",
         "uint8_t stationary_confirmed",
     ]) and all(needle in hall_text for needle in [
         "g_hall_speed_state.command_direction = command_direction",
-        "g_hall_speed_state.zero_command_since_us = now_us",
+        "g_hall_speed_state.zero_command_since_cycles = now_cycles",
         "A zero request deliberately retains direction",
         "snapshot.direction = 0",
     ]), "zero command retains the last sign until Hall silence confirms standstill")
+    add(results, "hall_timeout_requires_fresh_period", all(needle in hall_text for needle in [
+        "g_hall_speed_state.timeout_active == 0U",
+        "if (period_accepted == 0U)",
+        "A first edge after acquisition or timeout only establishes an origin.",
+        "A timed-out measurement stays unavailable until a fresh Hall edge.",
+    ]), "timed-out Hall feedback cannot revive a stale period across a later counter rollover")
     add(results, "hall_standstill_requires_zero_command", matches(
         hall_text,
         r"if\s*\(zero_command_quiet\s*!=\s*0U\)\s*\{"

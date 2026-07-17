@@ -19,16 +19,22 @@
 volatile hall_speed_state_t g_hall_speed_state = {0};
 
 static uint16_t hall_count_pin = HallA_Pin;
-static volatile uint32_t g_hall_speed_started_us = 0U;
+static volatile uint32_t g_hall_speed_started_cycles = 0U;
 
-static uint32_t hall_speed_get_time_us(void)
+static uint32_t hall_speed_get_cycles(void)
 {
+	return DWT_CYCCNT;
+}
+
+static uint32_t hall_speed_elapsed_us(uint32_t now_cycles, uint32_t start_cycles)
+{
+	const uint32_t elapsed_cycles = now_cycles - start_cycles;
 	const uint32_t cycles_per_us = SystemCoreClock / 1000000U;
 	if (cycles_per_us == 0U)
 	{
 		return 0U;
 	}
-	return DWT_CYCCNT / cycles_per_us;
+	return elapsed_cycles / cycles_per_us;
 }
 
 static uint32_t hall_speed_get_timeout_us(uint32_t last_period_us)
@@ -61,7 +67,7 @@ static int8_t hall_speed_clamp_direction(int8_t direction)
 
 void HallSpeed_Init(void)
 {
-	const uint32_t now_us = hall_speed_get_time_us();
+	const uint32_t now_cycles = hall_speed_get_cycles();
 
 	__disable_irq();
 	if (HALL_COUNT_USE_CHANNEL_B != 0U)
@@ -73,9 +79,9 @@ void HallSpeed_Init(void)
 		hall_count_pin = HallA_Pin;
 	}
 	g_hall_speed_state.event_count_total = 0;
-	g_hall_speed_state.last_event_us = 0U;
+	g_hall_speed_state.last_event_cycles = 0U;
 	g_hall_speed_state.last_period_us = 0U;
-	g_hall_speed_state.zero_command_since_us = now_us;
+	g_hall_speed_state.zero_command_since_cycles = now_cycles;
 	g_hall_speed_state.fault_count = 0U;
 	g_hall_speed_state.direction = 0;
 	g_hall_speed_state.command_direction = 0;
@@ -83,14 +89,14 @@ void HallSpeed_Init(void)
 	g_hall_speed_state.timeout_active = 0U;
 	g_hall_speed_state.stationary_confirmed = 0U;
 	g_hall_speed_state.period_origin_valid = 0U;
-	g_hall_speed_started_us = now_us;
+	g_hall_speed_started_cycles = now_cycles;
 	__enable_irq();
 }
 
 void HallSpeed_SetCommandDirection(int8_t direction)
 {
 	const int8_t command_direction = hall_speed_clamp_direction(direction);
-	const uint32_t now_us = hall_speed_get_time_us();
+	const uint32_t now_cycles = hall_speed_get_cycles();
 	int8_t previous_command_direction;
 	uint8_t previous_stationary_confirmed;
 
@@ -101,7 +107,7 @@ void HallSpeed_SetCommandDirection(int8_t direction)
 	if (command_direction == 0 && previous_command_direction != 0)
 	{
 		/* A stop request must earn a fresh no-pulse confirmation window. */
-		g_hall_speed_state.zero_command_since_us = now_us;
+		g_hall_speed_state.zero_command_since_cycles = now_cycles;
 	}
 	if (command_direction != 0)
 	{
@@ -134,22 +140,35 @@ void HallSpeed_SetCommandDirection(int8_t direction)
 
 void HallSpeed_OnCountEvent(void)
 {
-	const uint32_t now_us = hall_speed_get_time_us();
-	const uint32_t last_event_us = g_hall_speed_state.last_event_us;
+	const uint32_t now_cycles = hall_speed_get_cycles();
+	const uint32_t last_event_cycles = g_hall_speed_state.last_event_cycles;
+	uint8_t period_accepted = 0U;
 
-	if (g_hall_speed_state.period_origin_valid != 0U)
+	if (g_hall_speed_state.period_origin_valid != 0U &&
+		g_hall_speed_state.timeout_active == 0U)
 	{
-		const uint32_t elapsed_us = now_us - last_event_us;
+		const uint32_t elapsed_us =
+			hall_speed_elapsed_us(now_cycles, last_event_cycles);
 		if (elapsed_us < HALL_MIN_EVENT_INTERVAL_US)
 		{
 			g_hall_speed_state.fault_count++;
 			return;
 		}
-		g_hall_speed_state.last_period_us = elapsed_us;
-		g_hall_speed_state.speed_valid = 1U;
+		if (elapsed_us <= HALL_TIMEOUT_MAX_US)
+		{
+			g_hall_speed_state.last_period_us = elapsed_us;
+			g_hall_speed_state.speed_valid = 1U;
+			period_accepted = 1U;
+		}
 	}
 
-	g_hall_speed_state.last_event_us = now_us;
+	if (period_accepted == 0U)
+	{
+		/* A first edge after acquisition or timeout only establishes an origin. */
+		g_hall_speed_state.last_period_us = 0U;
+		g_hall_speed_state.speed_valid = 0U;
+	}
+	g_hall_speed_state.last_event_cycles = now_cycles;
 	g_hall_speed_state.period_origin_valid = 1U;
 	g_hall_speed_state.timeout_active = 0U;
 	g_hall_speed_state.stationary_confirmed = 0U;
@@ -169,9 +188,11 @@ hall_speed_state_t HallSpeed_GetState(void)
 
 	for (;;)
 	{
-		uint32_t quiet_reference_us;
+		uint32_t quiet_reference_cycles;
 		uint32_t quiet_timeout_us;
-		uint32_t now_us;
+		uint32_t now_cycles;
+		uint32_t quiet_elapsed_us;
+		uint32_t zero_command_elapsed_us;
 		uint8_t zero_command_quiet;
 		uint8_t state_changed;
 
@@ -179,14 +200,17 @@ hall_speed_state_t HallSpeed_GetState(void)
 		snapshot = g_hall_speed_state;
 		__enable_irq();
 
-		now_us = hall_speed_get_time_us();
-		quiet_reference_us = (snapshot.event_count_total == 0) ?
-			g_hall_speed_started_us : snapshot.last_event_us;
+		now_cycles = hall_speed_get_cycles();
+		quiet_reference_cycles = (snapshot.event_count_total == 0) ?
+			g_hall_speed_started_cycles : snapshot.last_event_cycles;
 		quiet_timeout_us = (snapshot.last_period_us == 0U) ?
 			HALL_TIMEOUT_MIN_US : hall_speed_get_timeout_us(snapshot.last_period_us);
+		quiet_elapsed_us = hall_speed_elapsed_us(now_cycles, quiet_reference_cycles);
+		zero_command_elapsed_us = hall_speed_elapsed_us(
+			now_cycles, snapshot.zero_command_since_cycles);
 		zero_command_quiet =
 			(snapshot.command_direction == 0 &&
-			 (now_us - snapshot.zero_command_since_us) >= quiet_timeout_us) ? 1U : 0U;
+			 zero_command_elapsed_us >= quiet_timeout_us) ? 1U : 0U;
 
 		if (snapshot.stationary_confirmed != 0U && snapshot.command_direction == 0)
 		{
@@ -194,7 +218,14 @@ hall_speed_state_t HallSpeed_GetState(void)
 			snapshot.speed_valid = 0U;
 			snapshot.timeout_active = 1U;
 		}
-		else if ((now_us - quiet_reference_us) >= quiet_timeout_us)
+		else if (snapshot.timeout_active != 0U && snapshot.command_direction != 0)
+		{
+			/* A timed-out measurement stays unavailable until a fresh Hall edge. */
+			snapshot.speed_valid = 0U;
+			snapshot.timeout_active = 1U;
+			snapshot.stationary_confirmed = 0U;
+		}
+		else if (quiet_elapsed_us >= quiet_timeout_us)
 		{
 			snapshot.speed_valid = 0U;
 			snapshot.timeout_active = 1U;
@@ -220,7 +251,7 @@ hall_speed_state_t HallSpeed_GetState(void)
 		__disable_irq();
 		state_changed =
 			(g_hall_speed_state.event_count_total != snapshot.event_count_total ||
-			 g_hall_speed_state.last_event_us != snapshot.last_event_us ||
+			 g_hall_speed_state.last_event_cycles != snapshot.last_event_cycles ||
 			 g_hall_speed_state.command_direction != snapshot.command_direction) ? 1U : 0U;
 		if (state_changed == 0U)
 		{

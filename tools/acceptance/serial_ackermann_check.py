@@ -49,6 +49,10 @@ class Telemetry:
     protocol_id: int
 
 
+class TelemetryContractError(ValueError):
+    """A structurally valid telemetry frame violates the firmware contract."""
+
+
 def checksum(data: bytes | bytearray) -> int:
     value = 0
     for byte in data:
@@ -121,9 +125,15 @@ def parse_telemetry(frame: bytes) -> Telemetry:
     hall_valid = bool(status_bits & STATUS_HALL_FEEDBACK_VALID)
     hall_standstill = bool(status_bits & STATUS_HALL_STANDSTILL_CONFIRMED)
     if hall_valid and hall_standstill:
-        raise ValueError("Hall motion-valid and standstill-confirmed bits are both set")
-    if hall_standstill and speed_mps != 0.0:
-        raise ValueError("Hall-confirmed standstill carries a non-zero speed")
+        raise TelemetryContractError(
+            "Hall motion-valid and standstill-confirmed bits are both set"
+        )
+    if hall_valid and speed_mps == 0.0:
+        raise TelemetryContractError("Hall motion-valid status carries a zero speed")
+    if not hall_valid and speed_mps != 0.0:
+        raise TelemetryContractError(
+            "Hall speed is non-zero without motion-valid status"
+        )
 
     return Telemetry(
         status_flags=frame[1],
@@ -166,10 +176,11 @@ def configure_serial(fd: int, baud: int) -> list[int | bytes]:
     return old_attrs
 
 
-def read_frames(fd: int, duration_s: float) -> list[Telemetry]:
+def read_frames(fd: int, duration_s: float) -> tuple[list[Telemetry], int]:
     deadline = time.monotonic() + duration_s
     buffer = bytearray()
     frames: list[Telemetry] = []
+    contract_errors = 0
 
     while time.monotonic() < deadline:
         timeout = max(0.0, min(0.2, deadline - time.monotonic()))
@@ -198,14 +209,19 @@ def read_frames(fd: int, duration_s: float) -> list[Telemetry]:
             try:
                 frames.append(parse_telemetry(candidate))
                 del buffer[:TELEMETRY_SIZE]
+            except TelemetryContractError as exc:
+                contract_errors += 1
+                print(f"ERROR rejected telemetry contract: {exc}", file=sys.stderr)
+                # Header, tail, BCC, and protocol id were already valid.
+                del buffer[:TELEMETRY_SIZE]
             except ValueError as exc:
                 print(f"WARN rejected telemetry: {exc}", file=sys.stderr)
                 del buffer[0]
 
-    return frames
+    return frames, contract_errors
 
 
-def print_frames(frames: list[Telemetry]) -> None:
+def print_frames(frames: list[Telemetry], contract_errors: int) -> None:
     if not frames:
         print("FAIL telemetry: no valid 24-byte telemetry frames received")
         return
@@ -221,7 +237,12 @@ def print_frames(frames: list[Telemetry]) -> None:
             f"status_flags=0x{frame.status_flags:02X} status_bits=0x{frame.status_bits:08X} "
             f"protocol_id=0x{frame.protocol_id:02X}"
         )
-    print(f"PASS telemetry: received {len(frames)} valid frames")
+    if contract_errors:
+        print(
+            f"FAIL telemetry contract: rejected {contract_errors} inconsistent frame(s)"
+        )
+    else:
+        print(f"PASS telemetry: received {len(frames)} valid frames")
 
 
 def parse_args() -> argparse.Namespace:
@@ -270,9 +291,9 @@ def main() -> int:
             os.write(fd, frame)
             print(f"SENT {args.mode}: {frame.hex(' ')}")
 
-        frames = read_frames(fd, args.duration)
-        print_frames(frames)
-        return 0 if frames else 1
+        frames, contract_errors = read_frames(fd, args.duration)
+        print_frames(frames, contract_errors)
+        return 0 if frames and contract_errors == 0 else 1
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, old_attrs)
         os.close(fd)
