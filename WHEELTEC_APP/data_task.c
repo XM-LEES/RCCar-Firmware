@@ -155,6 +155,7 @@ void RobotDataTransmitTask(void* param)
     const uint16_t TaskFreq = 20U;
     uint8_t basebuffer[BaseFRAME_LEN];
     uint8_t seq = 0U;
+    uint32_t handled_clear_request_count = 0U;
 
     (void)param;
 
@@ -172,6 +173,7 @@ void RobotDataTransmitTask(void* param)
         uint16_t battery_mv;
         uint8_t signed_speed_valid;
         uint32_t active_fault_sources = 0U;
+        uint8_t clear_fault_requested = 0U;
         servo_basic_diagnostics_t servo_diagnostics;
         const uint8_t rc_override_active = ServoBasic_IsRcOverrideActive();
         const uint8_t stop_override_active = (ServoBasic_IsRcEmergencyActive() != 0U ||
@@ -179,6 +181,15 @@ void RobotDataTransmitTask(void* param)
         const uint8_t command_timeout = ServoBasic_IsOrinCommandTimeout();
         const uint8_t brake_active = ServoBasic_IsOrinBrakeActive();
         const uint8_t auto_enabled = ServoBasic_IsOrinAutoEnabled();
+
+        const uint32_t clear_request_count = AppRuntime_GetFaultClearRequestCount();
+        if (clear_request_count != handled_clear_request_count)
+        {
+            HallSpeed_ClearFaultCount();
+            g_app_runtime_state.uart4_rx_frame_error_seen = 0U;
+            handled_clear_request_count = clear_request_count;
+            clear_fault_requested = 1U;
+        }
 
         update_power_state();
         battery_mv = clamp_float_to_u16(g_app_runtime_state.voltage_v * 1000.0f);
@@ -198,6 +209,10 @@ void RobotDataTransmitTask(void* param)
         if (servo_diagnostics.steering_fault != 0U) { active_fault_sources |= APP_FAULT_SOURCE_STEERING; }
         if (g_app_runtime_state.uart4_rx_frame_error_seen != 0U) { active_fault_sources |= APP_FAULT_SOURCE_FRAME_ERROR; }
         AppRuntime_UpdateFaultSources(active_fault_sources);
+        if (clear_fault_requested != 0U)
+        {
+            AppRuntime_TryClearFaultLatch();
+        }
 
         if (auto_enabled != 0U) { status_flags |= TELEMETRY_FLAG_AUTO_ENABLED; }
         if (rc_override_active != 0U) { status_flags |= TELEMETRY_FLAG_RC_OVERRIDE_ACTIVE; }

@@ -70,6 +70,12 @@ def check_command_parser(root: Path) -> list[Check]:
         "serial_control_try_clear_diagnostics",
         "speed_mmps != 0 || steering_mrad != 0",
     ]), "CLEAR_FAULT requires a zero-motion frame")
+    add(results, "clear_fault_request_handoff", contains(
+        text, "AppRuntime_RequestFaultClear()"
+    ) and all(needle not in text for needle in [
+        "g_app_runtime_state.uart4_rx_frame_error_seen = 0U",
+        "AppRuntime_TryClearFaultLatch()",
+    ]), "UART parser requests diagnostic clearing without racing telemetry-owned state")
     add(results, "binary_only_uart4", all(needle not in text for needle in [
         "serial_control_check_reset",
         "serial_control_set_debug_level",
@@ -249,6 +255,68 @@ def check_control_output_fallbacks(root: Path) -> list[Check]:
     return results
 
 
+def check_fault_recovery(root: Path) -> list[Check]:
+    servo_text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    serial_text = read_text(root, "WHEELTEC_APP/SerialControl_task.c")
+    data_text = read_text(root, "WHEELTEC_APP/data_task.c")
+    hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
+    hall_header_text = read_text(root, "WHEELTEC_APP/Inc/hall_speed.h")
+    runtime_text = read_text(root, "WHEELTEC_APP/app_runtime_state.c")
+    runtime_header_text = read_text(root, "WHEELTEC_APP/Inc/app_runtime_state.h")
+    results: list[Check] = []
+
+    add(results, "fault_clear_request_counter", all(needle in runtime_header_text for needle in [
+        "volatile uint8_t uart4_rx_frame_error_seen",
+        "volatile uint32_t fault_clear_request_count",
+        "void AppRuntime_RequestFaultClear(void)",
+        "uint32_t AppRuntime_GetFaultClearRequestCount(void)",
+    ]) and all(needle in runtime_text for needle in [
+        "g_app_runtime_state.fault_clear_request_count++",
+        "return g_app_runtime_state.fault_clear_request_count",
+    ]) and contains(serial_text, "AppRuntime_RequestFaultClear()"),
+        "cross-task fault-clear request sequence counter")
+
+    add(results, "hall_fault_diagnostic_clear", contains(
+        hall_header_text, "void HallSpeed_ClearFaultCount(void)"
+    ) and matches(
+        hall_text,
+        r"void\s+HallSpeed_ClearFaultCount\s*\(void\)\s*\{"
+        r".*?__disable_irq\(\).*?g_hall_speed_state\.fault_count\s*=\s*0U"
+        r".*?__enable_irq\(\).*?\}",
+    ), "Hall fault history has an interrupt-safe explicit clear")
+
+    add(results, "telemetry_owned_fault_clear", matches(
+        data_text,
+        r"if\s*\(clear_request_count\s*!=\s*handled_clear_request_count\)\s*\{"
+        r".*?HallSpeed_ClearFaultCount\(\);"
+        r".*?uart4_rx_frame_error_seen\s*=\s*0U;"
+        r".*?clear_fault_requested\s*=\s*1U;"
+        r".*?HallSpeed_GetState\(\)"
+        r".*?AppRuntime_UpdateFaultSources\(active_fault_sources\);"
+        r".*?if\s*\(clear_fault_requested\s*!=\s*0U\)\s*\{"
+        r".*?AppRuntime_TryClearFaultLatch\(\);",
+    ), "telemetry task clears historical sources, recomputes live sources, then clears the aggregate latch")
+
+    fault_branch = servo_text.find("if (fault_active != 0U)")
+    absent_branch = servo_text.find("if (raw_present == 0U || raw == 0U)")
+    add(results, "rc_capture_fault_survives_signal_timeout",
+        fault_branch >= 0 and absent_branch > fault_branch,
+        "capture fault tracking is evaluated before clean signal absence")
+    add(results, "rc_fault_freeze_window", all(needle in servo_text for needle in [
+        "rc_channel_fault_is_persistent",
+        "(now_ms - state->invalid_since_ms) >= get_rc_glitch_freeze_ms()",
+        "throttle_fault_persistent",
+        "steering_fault_persistent",
+    ]), "RC capture faults become live only after the configured glitch-freeze interval")
+    add(results, "disabled_guard_not_fault_source", contains(
+        servo_text, "(g_rc_guard_enable != 0U && guard_fault != 0U)"
+    ), "disabled unverified guard input cannot assert RC_INPUT_FAULT")
+    add(results, "transient_rc_glitch_not_reported_live", contains(
+        servo_text, "diagnostics.steering_fault = (g_rc_input_fault_active != 0U) ? 1U : 0U;"
+    ), "diagnostics report the persistent RC input fault, not the immediate glitch watch value")
+    return results
+
+
 def check_uart(root: Path) -> list[Check]:
     text = read_text(root, "Core/Src/usart.c")
     results: list[Check] = []
@@ -316,6 +384,7 @@ def main() -> int:
         + check_hall_direction_sources(root)
         + check_vehicle_defaults(root)
         + check_control_output_fallbacks(root)
+        + check_fault_recovery(root)
         + check_uart(root)
     )
     if args.require_phase1_status_bits:

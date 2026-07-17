@@ -99,8 +99,7 @@ static void serial_control_try_clear_diagnostics(uint8_t enable,
 		return;
 	}
 
-	g_app_runtime_state.uart4_rx_frame_error_seen = 0U;
-	AppRuntime_TryClearFaultLatch();
+	AppRuntime_RequestFaultClear();
 }
 
 void SerialControlTask(void *param)

@@ -110,6 +110,13 @@ void HallSpeed_OnCountEvent(void)
 	g_hall_speed_state.event_count_total++;
 }
 
+void HallSpeed_ClearFaultCount(void)
+{
+	__disable_irq();
+	g_hall_speed_state.fault_count = 0U;
+	__enable_irq();
+}
+
 hall_speed_state_t HallSpeed_GetState(void)
 {
 	hall_speed_state_t snapshot;

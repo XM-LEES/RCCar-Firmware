@@ -5,6 +5,7 @@ AppRuntimeState_t g_app_runtime_state = {
     .debug_level = 0U,
     .uart4_rx_frame_error_seen = 0U,
     .fault_latched = 0U,
+    .fault_clear_request_count = 0U,
     .active_fault_sources = 0U,
     .uart4_tx_busy_count = 0U,
     .uart4_tx_error_count = 0U,
@@ -27,4 +28,14 @@ void AppRuntime_TryClearFaultLatch(void)
     {
         g_app_runtime_state.fault_latched = 0U;
     }
+}
+
+void AppRuntime_RequestFaultClear(void)
+{
+    g_app_runtime_state.fault_clear_request_count++;
+}
+
+uint32_t AppRuntime_GetFaultClearRequestCount(void)
+{
+    return g_app_runtime_state.fault_clear_request_count;
 }

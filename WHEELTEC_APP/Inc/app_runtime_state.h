@@ -11,8 +11,9 @@ typedef struct
 {
     float voltage_v;
     uint8_t debug_level;
-    uint8_t uart4_rx_frame_error_seen;
+    volatile uint8_t uart4_rx_frame_error_seen;
     uint8_t fault_latched;
+    volatile uint32_t fault_clear_request_count;
     uint32_t active_fault_sources;
     uint32_t uart4_tx_busy_count;
     uint32_t uart4_tx_error_count;
@@ -24,5 +25,7 @@ extern AppRuntimeState_t g_app_runtime_state;
 
 void AppRuntime_UpdateFaultSources(uint32_t active_sources);
 void AppRuntime_TryClearFaultLatch(void);
+void AppRuntime_RequestFaultClear(void);
+uint32_t AppRuntime_GetFaultClearRequestCount(void);
 
 #endif

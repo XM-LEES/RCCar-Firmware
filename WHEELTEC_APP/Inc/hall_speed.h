@@ -30,6 +30,7 @@ extern volatile hall_speed_state_t g_hall_speed_state;
 void HallSpeed_Init(void);
 void HallSpeed_SetCommandDirection(int8_t direction);
 void HallSpeed_OnCountEvent(void);
+void HallSpeed_ClearFaultCount(void);
 uint8_t HallSpeed_GetSignedSpeedMps(float *speed_mps);
 hall_speed_state_t HallSpeed_GetState(void);
 

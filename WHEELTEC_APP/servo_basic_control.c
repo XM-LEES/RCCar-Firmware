@@ -469,17 +469,6 @@ static void update_rc_channel_state(rc_channel_filter_state_t *state,
 
 	state->stable_present = 0U;
 
-	if (raw_present == 0U || raw == 0U)
-	{
-		state->filter_state = 0U;
-		state->candidate_us = 0U;
-		state->candidate_count = 0U;
-		state->output_us = 0U;
-		state->invalid_since_ms = 0U;
-		state->glitch_active = 0U;
-		return;
-	}
-
 	if (fault_active != 0U)
 	{
 		state->candidate_us = 0U;
@@ -501,6 +490,17 @@ static void update_rc_channel_state(rc_channel_filter_state_t *state,
 			state->output_us = 0U;
 			state->stable_present = 0U;
 		}
+		return;
+	}
+
+	if (raw_present == 0U || raw == 0U)
+	{
+		state->filter_state = 0U;
+		state->candidate_us = 0U;
+		state->candidate_count = 0U;
+		state->output_us = 0U;
+		state->invalid_since_ms = 0U;
+		state->glitch_active = 0U;
 		return;
 	}
 
@@ -558,6 +558,17 @@ static void update_rc_channel_state(rc_channel_filter_state_t *state,
 	state->glitch_active = 0U;
 	state->output_us = finalize_rc_channel_pulse(state, raw, is_throttle);
 	state->stable_present = 1U;
+}
+
+static uint8_t rc_channel_fault_is_persistent(const rc_channel_filter_state_t *state,
+											  uint32_t now_ms)
+{
+	if (state == NULL || state->invalid_since_ms == 0U)
+	{
+		return 0U;
+	}
+
+	return ((now_ms - state->invalid_since_ms) >= get_rc_glitch_freeze_ms()) ? 1U : 0U;
 }
 
 static uint32_t get_rc_signal_timeout_ms(void)
@@ -1038,11 +1049,15 @@ static void refresh_rc_inputs(void)
 	const uint8_t throttle_fault = ServoRC_HasThrottleFault();
 	const uint8_t steering_fault = ServoRC_HasSteeringFault();
 	const uint8_t guard_fault = ServoRC_HasGuardFault();
+	uint8_t throttle_fault_persistent;
+	uint8_t steering_fault_persistent;
 
 	g_rc_guard_present = ServoRC_IsGuardActive(timeout_ms);
 
 	update_rc_channel_state(&g_rc_throttle_state, raw_throttle, raw_throttle_present, throttle_fault, now_ms, 1U);
 	update_rc_channel_state(&g_rc_steering_state, raw_steering, raw_steering_present, steering_fault, now_ms, 0U);
+	throttle_fault_persistent = rc_channel_fault_is_persistent(&g_rc_throttle_state, now_ms);
+	steering_fault_persistent = rc_channel_fault_is_persistent(&g_rc_steering_state, now_ms);
 
 	g_rc_throttle_present = g_rc_throttle_state.stable_present;
 	g_rc_steering_present = g_rc_steering_state.stable_present;
@@ -1054,11 +1069,9 @@ static void refresh_rc_inputs(void)
 		g_rc_steering_state.last_good_us : ESC_PWM_NEUTRAL_PULSE_US;
 	g_rc_throttle_glitch_active = g_rc_throttle_state.glitch_active;
 	g_rc_steering_glitch_active = g_rc_steering_state.glitch_active;
-	g_rc_input_fault_active = (g_rc_throttle_state.invalid_since_ms != 0U ||
-		g_rc_steering_state.invalid_since_ms != 0U ||
-		throttle_fault != 0U ||
-		steering_fault != 0U ||
-		guard_fault != 0U) ? 1U : 0U;
+	g_rc_input_fault_active = (throttle_fault_persistent != 0U ||
+		steering_fault_persistent != 0U ||
+		(g_rc_guard_enable != 0U && guard_fault != 0U)) ? 1U : 0U;
 
 	g_rc_guard_current = (g_rc_guard_present != 0U) ? ServoRC_GetGuardPulse() : 0U;
 }
@@ -1972,8 +1985,7 @@ servo_basic_diagnostics_t ServoBasic_GetDiagnostics(void)
 	diagnostics.steering_saturated = g_orin_state.steering_saturated;
 	diagnostics.accel_limited = g_orin_state.accel_limited;
 	diagnostics.steering_rate_limited = g_orin_state.steering_rate_limited;
-	diagnostics.steering_fault = (g_rc_steering_glitch_active != 0U ||
-		g_rc_input_fault_active != 0U) ? 1U : 0U;
+	diagnostics.steering_fault = (g_rc_input_fault_active != 0U) ? 1U : 0U;
 
 	return diagnostics;
 }

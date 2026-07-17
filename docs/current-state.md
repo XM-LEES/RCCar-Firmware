@@ -95,7 +95,7 @@ UART4 RX IRQ
 | 9 | 字节 0..8 的逐字节 XOR BCC |
 | 10 | 帧尾 `0x7D` |
 
-`SOFTWARE_STOP` 会立即把 ESC 和转向输出都置为配置中位；它不是物理急停。`BRAKE` 只是软件零速请求，不代表车辆有独立物理制动器。`CLEAR_FAULT` 只有在速度和转角字段都为零、没有停止覆盖且满足现有诊断条件时才会生效。
+`SOFTWARE_STOP` 会立即把 ESC 和转向输出都置为配置中位；它不是物理急停。`BRAKE` 只是软件零速请求，不代表车辆有独立物理制动器。`CLEAR_FAULT` 只有在速度和转角字段都为零、没有停止覆盖、RC 没有接管且 RC emergency 未激活时才会被接受。串口任务只登记一次清除请求；20 Hz telemetry 任务在同一周期内清除 Hall/frame 历史诊断、重新计算当前 fault source，并且只在持续故障已经消失时清除 `FAULT_LATCHED`。
 
 ## 上行 telemetry 数据流
 
@@ -131,7 +131,7 @@ Hall / servo estimate / battery / safety state
 
 byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVERRIDE_ACTIVE`，bit3 `COMMAND_TIMEOUT`，bit4 `BRAKE_ACTIVE`，bit5 `FAULT_LATCHED`，bit6 `STEERING_IS_MEASURED`，bit7 保留。当前没有转角传感器，因此 bit6 始终为零。
 
-`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit12..13 和 bit19..31 保留。`ACCEL_LIMITED` 仅表示固件内部速度目标变化斜坡生效，不表示车辆实际加速度受控或被测量。电池仅按原始 `battery_mv` 上报，不在固件内设置低压阈值、故障或控制动作。
+`status_bits`：bit0 `FAULT_LATCHED`，bit1 `COMMAND_TIMEOUT`，bit2 `RC_OVERRIDE_ACTIVE`，bit3 `STOP_OVERRIDE_ACTIVE`，bit4 `BRAKE_ACTIVE`，bit5 `AUTO_ENABLED`，bit6 `HALL_FEEDBACK_VALID`，bit7 `HALL_FAULT`，bit8 `STEERING_ESTIMATE_VALID`，bit9 `STEERING_IS_MEASURED`，bit10 `RC_INPUT_FAULT`，bit11 `BATTERY_VALID`，bit14 `SPEED_SATURATED`，bit15 `STEERING_SATURATED`，bit16 `ACCEL_LIMITED`，bit17 `STEERING_RATE_LIMITED`，bit18 `FRAME_ERROR_SEEN`；bit12..13 和 bit19..31 保留。bit7 表示上次被接受的 `CLEAR_FAULT` 请求后累计过被拒绝的过短 Hall 脉冲，是可清除的历史诊断，不是当前瞬时 Hall 失效。bit10 只表示 throttle/steering 捕获异常持续超过 `APP_RC_GLITCH_FREEZE_MS=100 ms`，或已启用 guard 后 guard 输入异常；默认关闭的 guard 不参与该位。bit18 是上次被接受的 `CLEAR_FAULT` 请求后的 UART4 错帧历史诊断。`ACCEL_LIMITED` 仅表示固件内部速度目标变化斜坡生效，不表示车辆实际加速度受控或被测量。电池仅按原始 `battery_mv` 上报，不在固件内设置低压阈值、故障或控制动作。
 
 任何向 UART4 混发 ASCII、调试帧或其他长度数据的改动都会破坏固定长度解析；当前 UART4 只允许上述两个二进制帧。
 
@@ -147,7 +147,7 @@ byte 1 flags：bit0 `AUTO_ENABLED`，bit1 `RC_OVERRIDE_ACTIVE`，bit2 `STOP_OVER
 - 速度和转角执行端限幅、速度目标变化斜坡、转角速度限幅、ESC/舵机 PWM 映射、霍尔速度反馈和 speed PI trim。速度目标斜坡不是实际加速度控制。
 - UART4 24 字节 telemetry：`hall_delta_count`、`speed_mmps`、`steering_mrad`、`yaw_rate_mradps`、`battery_mv`、`dt_ms`、`status_bits`，byte 21 固定为协议标识 `0xA1`。
 - 当前填充的状态：`FAULT_LATCHED`、`AUTO_ENABLED`、`RC_OVERRIDE_ACTIVE`、`STOP_OVERRIDE_ACTIVE`、`COMMAND_TIMEOUT`、`BRAKE_ACTIVE`、`HALL_FEEDBACK_VALID`、`HALL_FAULT`、`STEERING_ESTIMATE_VALID`、`RC_INPUT_FAULT`、`BATTERY_VALID`、`SPEED_SATURATED`、`STEERING_SATURATED`、`ACCEL_LIMITED`、`STEERING_RATE_LIMITED`、`FRAME_ERROR_SEEN`。
-- `CLEAR_FAULT` 当前在安全条件满足时清除 UART4 frame-error 诊断，并在当前 fault source 已消失时清除 `FAULT_LATCHED`。
+- `CLEAR_FAULT` 当前通过跨任务请求计数交给 telemetry 任务结算：清除 Hall fault count 和 UART4 frame-error 历史诊断，随后重新计算当前 fault source；持续 RC 输入故障仍在时不会清除 `FAULT_LATCHED`。
 
 当前尚未实现但仍属于协议目标/阶段验收要求的内容：
 
@@ -181,6 +181,7 @@ TIM4 CH1/CH2/CH3 input capture
       - throttle 相对中位给霍尔 delta 提供前进/后退方向符号
       - RC 接管期间阻断非零串口目标，并用零速/中位目标刷新串口新鲜度，避免 `250 ms` 命令超时阻塞 `500 ms` 回中释放保持
       - 区分“无串口时的空闲 RC 直通”和“摇杆真实接管”：前者在串口恢复且摇杆居中时立即释放，后者必须完成 `500 ms` 回中保持
+      - 单个非法捕获先冻结在最后一次有效值；只有连续超过 `100 ms` 才上报 `RC_INPUT_FAULT`，默认关闭的 guard 捕获不会触发该故障
       - 回中并保持释放时间后恢复 automatic
   -> TIM8 CH1/CH2 PWM
 ```
@@ -253,6 +254,7 @@ PE13/PE14 Hall GPIO
 - `g_app_runtime_state.voltage_v`
 - `g_app_runtime_state.debug_level`
 - `g_app_runtime_state.uart4_rx_frame_error_seen`
+- `g_app_runtime_state.fault_clear_request_count`
 - `g_app_runtime_state.uart4_tx_busy_count`
 - `g_app_runtime_state.uart4_tx_error_count`
 - `TIM8->CCR1`
