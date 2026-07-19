@@ -27,7 +27,7 @@ Following ROS REP-103:
 | `track_width` | 0.47 | m | Left-to-right wheel center distance |
 | `wheel_radius` | 0.1175 | m | Wheel radius from confirmed 0.235 m diameter |
 | `wheel_width` | 0.08 | m | Wheel width |
-| `max_steering_angle` | 0.262 | rad | Max steering angle (~15°) |
+| `max_steering_angle` | 0.349 | rad | Max steering angle (~20°) |
 | `chassis_length` | 0.8775 | m | Vehicle collision envelope length: 0.16 + 0.60 + 0.1175 |
 | `chassis_width` | 0.57 | m | Vehicle collision envelope width |
 | `chassis_height` | 0.20 | m | Chassis box height (URDF visual) |
@@ -82,8 +82,8 @@ Relative to `base_link`:
 |-------|-------|-------|-------|------------|
 | Rear Left | 0.00 | +0.235 | 0.00 | continuous |
 | Rear Right | 0.00 | -0.235 | 0.00 | continuous |
-| Front Left Steering | +0.60 | +0.235 | 0.00 | revolute (±15°) |
-| Front Right Steering | +0.60 | -0.235 | 0.00 | revolute (±15°) |
+| Front Left Steering | +0.60 | +0.235 | 0.00 | revolute (±20°) |
+| Front Right Steering | +0.60 | -0.235 | 0.00 | revolute (±20°) |
 
 ## TF Frame Hierarchy
 

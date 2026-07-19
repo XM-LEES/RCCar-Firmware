@@ -262,7 +262,7 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ORIN_ACKERMANN_WHEELBASE_MM           600U",
         "#define APP_ORIN_ACKERMANN_TRACK_WIDTH_MM         500U",
         "#define APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM        115U",
-        "#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      262U",
+        "#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      349U",
         "#define APP_ORIN_MIN_COMMAND_SPEED_MMPS            300U",
         "#define APP_ORIN_VX_FORWARD_CAP_MMPS             3000U",
         "#define APP_ORIN_VX_REVERSE_CAP_MMPS             3000U",

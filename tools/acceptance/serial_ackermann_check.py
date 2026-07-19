@@ -27,7 +27,7 @@ TELEMETRY_SIZE = 24
 TELEMETRY_PROTOCOL_ID = 0xA1
 MIN_COMMAND_SPEED_MPS = 0.3
 MAX_COMMAND_SPEED_MPS = 3.0
-MAX_STEERING_ANGLE_RAD = 0.262
+MAX_STEERING_ANGLE_RAD = 0.349
 
 FLAG_ENABLE = 1 << 0
 FLAG_SOFTWARE_STOP = 1 << 7
@@ -80,7 +80,7 @@ def build_command_frame(
     if abs(speed_mps) > MAX_COMMAND_SPEED_MPS:
         raise ValueError("speed exceeds the confirmed +/-3.0 m/s command boundary")
     if abs(steering_angle_rad) > MAX_STEERING_ANGLE_RAD:
-        raise ValueError("steering exceeds the confirmed +/-0.262 rad boundary")
+        raise ValueError("steering exceeds the confirmed +/-0.349 rad boundary")
 
     flags = 0
     if enable:
