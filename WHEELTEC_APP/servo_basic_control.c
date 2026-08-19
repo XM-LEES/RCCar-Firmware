@@ -50,6 +50,7 @@ static servo_basic_state_t g_state = {
 #define ORIN_MIN_REVERSE_VX_DEFAULT_MMPS         APP_ORIN_MIN_REVERSE_VX_MMPS
 #define HALL_SPEED_LIMIT_DEFAULT_MMPS            APP_HALL_SPEED_LIMIT_MMPS
 #define HALL_SPEED_LIMIT_RELEASE_DEFAULT_MMPS    APP_HALL_SPEED_LIMIT_RELEASE_MMPS
+#define HALL_SPEED_LIMIT_CONFIRM_SAMPLES         APP_HALL_SPEED_LIMIT_CONFIRM_SAMPLES
 #define ORIN_ACCEL_LIMIT_DEFAULT_MMPS2           APP_ORIN_ACCEL_LIMIT_MMPS2
 #define ORIN_STEERING_RATE_LIMIT_DEFAULT_MRADPS  APP_ORIN_STEERING_RATE_LIMIT_MRADPS
 #define SPEED_PI_ENABLE_DEFAULT                  APP_SPEED_PI_ENABLE_DEFAULT
@@ -219,6 +220,7 @@ static rc_channel_filter_state_t g_rc_throttle_state = {0U};
 static rc_channel_filter_state_t g_rc_steering_state = {0U};
 static uint32_t g_speed_pi_last_update_ms = 0U;
 static int8_t g_speed_pi_last_target_direction = 0;
+static uint32_t s_hall_speed_limit_over_count = 0U;
 
 static const orin_speed_ff_point_t s_orin_forward_ff_table[] = {
 	{70U, 1546U},
@@ -235,6 +237,7 @@ static const orin_speed_ff_point_t s_orin_forward_ff_table[] = {
 	{3500U, 1590U},
 	{4000U, 1596U},
 	{4500U, 1601U},
+	{10000U, APP_ORIN_ESC_FORWARD_MAX_US},
 };
 
 static const orin_speed_ff_point_t s_orin_reverse_ff_table[] = {
@@ -988,11 +991,13 @@ static uint8_t hall_speed_limit_should_block(void)
 	float feedback_vx_mps = 0.0f;
 	const float limit_mps = (float)get_hall_speed_limit_mmps() / 1000.0f;
 	const float release_mps = (float)get_hall_speed_limit_release_mmps() / 1000.0f;
+	const uint32_t confirm_samples = HALL_SPEED_LIMIT_CONFIRM_SAMPLES;
 	float speed_abs_mps;
 
 	if (HallSpeed_GetSignedSpeedMps(&feedback_vx_mps) == 0U)
 	{
 		g_hall_speed_limit_active = 0U;
+		s_hall_speed_limit_over_count = 0U;
 		return 0U;
 	}
 
@@ -1002,11 +1007,23 @@ static uint8_t hall_speed_limit_should_block(void)
 		if (speed_abs_mps <= release_mps)
 		{
 			g_hall_speed_limit_active = 0U;
+			s_hall_speed_limit_over_count = 0U;
 		}
 	}
 	else if (speed_abs_mps >= limit_mps)
 	{
-		g_hall_speed_limit_active = 1U;
+		if (s_hall_speed_limit_over_count < confirm_samples)
+		{
+			s_hall_speed_limit_over_count++;
+		}
+		if (s_hall_speed_limit_over_count >= confirm_samples)
+		{
+			g_hall_speed_limit_active = 1U;
+		}
+	}
+	else
+	{
+		s_hall_speed_limit_over_count = 0U;
 	}
 
 	return (g_hall_speed_limit_active != 0U) ? 1U : 0U;

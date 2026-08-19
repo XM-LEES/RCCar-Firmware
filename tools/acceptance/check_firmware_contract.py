@@ -256,6 +256,7 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
 
 def check_vehicle_defaults(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
+    control_text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
     results: list[Check] = []
     expected = [
         "#define APP_ORIN_PWM_TIMEOUT_DEFAULT_MS           250U",
@@ -264,14 +265,34 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM        115U",
         "#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      349U",
         "#define APP_ORIN_MIN_COMMAND_SPEED_MMPS            300U",
-        "#define APP_ORIN_VX_FORWARD_CAP_MMPS             3000U",
+        "#define APP_ORIN_VX_FORWARD_CAP_MMPS            10000U",
         "#define APP_ORIN_VX_REVERSE_CAP_MMPS             3000U",
-        "#define APP_ORIN_VX_MAX_DEFAULT_MMPS             3000U",
+        "#define APP_ORIN_VX_MAX_DEFAULT_MMPS            10000U",
+        "#define APP_HALL_SPEED_LIMIT_MMPS               12000U",
+        "#define APP_HALL_SPEED_LIMIT_RELEASE_MMPS       10500U",
+        "#define APP_HALL_SPEED_LIMIT_CONFIRM_SAMPLES        3U",
+        "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
         "#define APP_RC_GUARD_ENABLE_DEFAULT                 0U",
     ]
     add(results, "vehicle_defaults", all(needle in text for needle in expected), "confirmed geometry, speed bounds, 0.3 m/s minimum, servo calibration, timeout, and disabled unverified guard")
+    add(
+        results,
+        "forward_speed_envelope",
+        "{10000U, APP_ORIN_ESC_FORWARD_MAX_US}" in control_text,
+        "10 m/s forward endpoint reaches the existing configured ESC limit",
+    )
+    add(
+        results,
+        "hall_overspeed_confirmation",
+        all(needle in control_text for needle in [
+            "s_hall_speed_limit_over_count",
+            "s_hall_speed_limit_over_count++",
+            "s_hall_speed_limit_over_count >= confirm_samples",
+        ]),
+        "Hall overspeed requires consecutive confirmations before neutral output",
+    )
     return results
 
 
