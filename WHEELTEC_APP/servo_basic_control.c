@@ -1497,7 +1497,8 @@ static uint16_t orin_map_steering_to_servo(float steering_angle_rad)
 	}
 
 	steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
-	ratio = steering_angle_rad / max_steering_rad;
+	ratio = (steering_angle_rad / max_steering_rad) *
+		(float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN;
 	return limit_servo_safe_pulse((uint16_t)((int32_t)get_orin_servo_center_pulse() +
 			(int32_t)(ratio * (float)((g_orin_servo_range_us == 0U) ? ORIN_SERVO_RANGE_DEFAULT_US : g_orin_servo_range_us))));
 }
@@ -1523,7 +1524,8 @@ static float telemetry_estimate_steering_rad_from_servo_pulse(uint16_t pulse_us)
 	{
 		ratio = -1.0f;
 	}
-	return ratio * max_steering_rad;
+	return ratio * (float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN *
+		max_steering_rad;
 }
 
 static float telemetry_estimate_vz_from_pwm(float vx_mps, uint16_t servo_pulse_us)

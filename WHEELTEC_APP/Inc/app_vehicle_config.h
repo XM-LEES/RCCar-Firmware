@@ -31,6 +31,7 @@
 #define APP_HALL_SPEED_LIMIT_MMPS               12000U
 #define APP_HALL_SPEED_LIMIT_RELEASE_MMPS       10500U
 #define APP_HALL_SPEED_LIMIT_CONFIRM_SAMPLES        3U
+#define APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS         3U
 
 #define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U
 #define APP_ORIN_STEERING_RATE_LIMIT_MRADPS       900U
@@ -49,6 +50,17 @@
 
 #define APP_ORIN_SERVO_CENTER_US                 1500U
 #define APP_ORIN_SERVO_RANGE_US                   395U
+/* Standard positive tire angle is left; this chassis needs decreasing PWM. */
+#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (-1)
+
+#if (APP_ORIN_STEERING_PWM_DIRECTION_SIGN != 1) && \
+	(APP_ORIN_STEERING_PWM_DIRECTION_SIGN != -1)
+#error "APP_ORIN_STEERING_PWM_DIRECTION_SIGN must be +1 or -1"
+#endif
+
+#if APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS < 2U
+#error "APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS must reject a single glitch"
+#endif
 
 #define APP_RC_VALID_MIN_US                       900U
 #define APP_RC_VALID_MAX_US                      2100U

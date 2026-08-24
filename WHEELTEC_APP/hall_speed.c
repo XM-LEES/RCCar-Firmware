@@ -6,6 +6,7 @@
 #include "hall_speed.h"
 
 #include "main.h"
+#include "app_vehicle_config.h"
 #include "bsp_dwt.h"
 
 #define HALL_WHEEL_DIAMETER_M            0.230f
@@ -80,6 +81,7 @@ void HallSpeed_Init(void)
 	}
 	g_hall_speed_state.event_count_total = 0;
 	g_hall_speed_state.last_event_cycles = 0U;
+	g_hall_speed_state.last_raw_event_cycles = 0U;
 	g_hall_speed_state.last_period_us = 0U;
 	g_hall_speed_state.zero_command_since_cycles = now_cycles;
 	g_hall_speed_state.fault_count = 0U;
@@ -89,6 +91,8 @@ void HallSpeed_Init(void)
 	g_hall_speed_state.timeout_active = 0U;
 	g_hall_speed_state.stationary_confirmed = 0U;
 	g_hall_speed_state.period_origin_valid = 0U;
+	g_hall_speed_state.raw_event_origin_valid = 0U;
+	g_hall_speed_state.consecutive_short_event_count = 0U;
 	g_hall_speed_started_cycles = now_cycles;
 	__enable_irq();
 }
@@ -144,16 +148,39 @@ void HallSpeed_OnCountEvent(void)
 	const uint32_t last_event_cycles = g_hall_speed_state.last_event_cycles;
 	uint8_t period_accepted = 0U;
 
+	if (g_hall_speed_state.raw_event_origin_valid != 0U)
+	{
+		const uint32_t raw_elapsed_us = hall_speed_elapsed_us(
+			now_cycles, g_hall_speed_state.last_raw_event_cycles);
+
+		g_hall_speed_state.last_raw_event_cycles = now_cycles;
+		if (raw_elapsed_us < HALL_MIN_EVENT_INTERVAL_US)
+		{
+			if (g_hall_speed_state.consecutive_short_event_count <
+				APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS)
+			{
+				g_hall_speed_state.consecutive_short_event_count++;
+				if (g_hall_speed_state.consecutive_short_event_count ==
+					APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS)
+				{
+					g_hall_speed_state.fault_count++;
+				}
+			}
+			return;
+		}
+	}
+	else
+	{
+		g_hall_speed_state.last_raw_event_cycles = now_cycles;
+		g_hall_speed_state.raw_event_origin_valid = 1U;
+	}
+	g_hall_speed_state.consecutive_short_event_count = 0U;
+
 	if (g_hall_speed_state.period_origin_valid != 0U &&
 		g_hall_speed_state.timeout_active == 0U)
 	{
 		const uint32_t elapsed_us =
 			hall_speed_elapsed_us(now_cycles, last_event_cycles);
-		if (elapsed_us < HALL_MIN_EVENT_INTERVAL_US)
-		{
-			g_hall_speed_state.fault_count++;
-			return;
-		}
 		if (elapsed_us <= HALL_TIMEOUT_MAX_US)
 		{
 			g_hall_speed_state.last_period_us = elapsed_us;
@@ -179,6 +206,7 @@ void HallSpeed_ClearFaultCount(void)
 {
 	__disable_irq();
 	g_hall_speed_state.fault_count = 0U;
+	g_hall_speed_state.consecutive_short_event_count = 0U;
 	__enable_irq();
 }
 

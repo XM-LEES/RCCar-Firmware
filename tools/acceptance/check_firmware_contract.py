@@ -184,6 +184,7 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
     hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
     hall_header_text = read_text(root, "WHEELTEC_APP/Inc/hall_speed.h")
+    vehicle_config_text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
     data_text = read_text(root, "WHEELTEC_APP/data_task.c")
     results: list[Check] = []
     add(results, "auto_hall_direction_source", all(needle in text for needle in [
@@ -205,6 +206,7 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
     add(results, "hall_geometry", contains(hall_text, "#define HALL_WHEEL_DIAMETER_M            0.230f"), "Hall wheel diameter is 0.230 m")
     add(results, "hall_dwt_rollover_safe", all(needle in hall_header_text for needle in [
         "uint32_t last_event_cycles",
+        "uint32_t last_raw_event_cycles",
         "uint32_t zero_command_since_cycles",
     ]) and all(needle in hall_text for needle in [
         "const uint32_t elapsed_cycles = now_cycles - start_cycles",
@@ -212,6 +214,24 @@ def check_hall_direction_sources(root: Path) -> list[Check]:
         "g_hall_speed_started_cycles",
     ]) and "DWT_CYCCNT / cycles_per_us" not in hall_text,
         "raw DWT cycles are subtracted before conversion so the 32-bit rollover is safe")
+    add(results, "hall_glitch_burst_confirmation", all(needle in hall_header_text for needle in [
+        "uint32_t last_raw_event_cycles",
+        "uint8_t raw_event_origin_valid",
+        "uint8_t consecutive_short_event_count",
+    ]) and contains(
+        vehicle_config_text, "#define APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS         3U"
+    ) and matches(
+        hall_text,
+        r"if\s*\(raw_elapsed_us\s*<\s*HALL_MIN_EVENT_INTERVAL_US\)\s*\{"
+        r".*?consecutive_short_event_count\s*<"
+        r".*?APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS"
+        r".*?consecutive_short_event_count\+\+;"
+        r".*?consecutive_short_event_count\s*=="
+        r".*?APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS"
+        r".*?fault_count\+\+;"
+        r".*?return;"
+        r".*?consecutive_short_event_count\s*=\s*0U;",
+    ), "one or two impossible raw intervals are rejected, while three consecutive intervals latch a Hall fault")
     add(results, "unknown_direction_invalid_speed", contains(hall_text, "snapshot.direction == 0"), "unknown Hall direction cannot produce signed speed")
     add(results, "signed_hall_status_requires_direction", all(needle in data_text for needle in [
         "signed_speed_valid = ServoBasic_GetAckermannFeedback",
@@ -271,9 +291,11 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_HALL_SPEED_LIMIT_MMPS               12000U",
         "#define APP_HALL_SPEED_LIMIT_RELEASE_MMPS       10500U",
         "#define APP_HALL_SPEED_LIMIT_CONFIRM_SAMPLES        3U",
+        "#define APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS         3U",
         "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
+        "#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (-1)",
         "#define APP_RC_GUARD_ENABLE_DEFAULT                 0U",
     ]
     add(results, "vehicle_defaults", all(needle in text for needle in expected), "confirmed geometry, speed bounds, 0.3 m/s minimum, servo calibration, timeout, and disabled unverified guard")
@@ -292,6 +314,16 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
             "s_hall_speed_limit_over_count >= confirm_samples",
         ]),
         "Hall overspeed requires consecutive confirmations before neutral output",
+    )
+    add(
+        results,
+        "orin_steering_direction_and_feedback",
+        all(needle in control_text for needle in [
+            "(steering_angle_rad / max_steering_rad) *",
+            "(float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN",
+            "return ratio * (float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN *",
+        ]),
+        "Orin steering PWM is reversed for this chassis and telemetry converts it back to the standard logical sign",
     )
     return results
 
@@ -348,8 +380,9 @@ def check_fault_recovery(root: Path) -> list[Check]:
         hall_text,
         r"void\s+HallSpeed_ClearFaultCount\s*\(void\)\s*\{"
         r".*?__disable_irq\(\).*?g_hall_speed_state\.fault_count\s*=\s*0U"
+        r".*?g_hall_speed_state\.consecutive_short_event_count\s*=\s*0U"
         r".*?__enable_irq\(\).*?\}",
-    ), "Hall fault history has an interrupt-safe explicit clear")
+    ), "Hall fault history and pending glitch streak have an interrupt-safe explicit clear")
 
     add(results, "telemetry_owned_fault_clear", matches(
         data_text,

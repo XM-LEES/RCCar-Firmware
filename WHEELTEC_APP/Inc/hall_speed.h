@@ -15,8 +15,10 @@ extern "C" {
 typedef struct
 {
 	int32_t event_count_total;
-	/* Raw DWT timestamp; subtract before converting to handle 32-bit rollover. */
+	/* Last accepted edge; subtract before converting to handle DWT rollover. */
 	uint32_t last_event_cycles;
+	/* Last raw edge, including rejected glitches, for burst confirmation. */
+	uint32_t last_raw_event_cycles;
 	uint32_t last_period_us;
 	/* Start of the current continuous zero-direction request. */
 	uint32_t zero_command_since_cycles;
@@ -31,6 +33,9 @@ typedef struct
 	uint8_t stationary_confirmed;
 	/* A prior accepted edge exists for period measurement. */
 	uint8_t period_origin_valid;
+	/* A prior raw edge exists for consecutive short-interval detection. */
+	uint8_t raw_event_origin_valid;
+	uint8_t consecutive_short_event_count;
 } hall_speed_state_t;
 
 extern volatile hall_speed_state_t g_hall_speed_state;
