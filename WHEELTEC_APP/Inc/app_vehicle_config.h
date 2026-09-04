@@ -50,8 +50,8 @@
 
 #define APP_ORIN_SERVO_CENTER_US                 1500U
 #define APP_ORIN_SERVO_RANGE_US                   395U
-/* Standard positive tire angle is left; this chassis needs decreasing PWM. */
-#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (-1)
+/* Standard positive tire angle is left; this chassis needs increasing PWM. */
+#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (+1)
 
 #if (APP_ORIN_STEERING_PWM_DIRECTION_SIGN != 1) && \
 	(APP_ORIN_STEERING_PWM_DIRECTION_SIGN != -1)

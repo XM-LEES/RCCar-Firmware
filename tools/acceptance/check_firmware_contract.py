@@ -295,7 +295,7 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
-        "#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (-1)",
+        "#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (+1)",
         "#define APP_RC_GUARD_ENABLE_DEFAULT                 0U",
     ]
     add(results, "vehicle_defaults", all(needle in text for needle in expected), "confirmed geometry, speed bounds, 0.3 m/s minimum, servo calibration, timeout, and disabled unverified guard")
@@ -323,7 +323,7 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
             "(float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN",
             "return ratio * (float)APP_ORIN_STEERING_PWM_DIRECTION_SIGN *",
         ]),
-        "Orin steering PWM is reversed for this chassis and telemetry converts it back to the standard logical sign",
+        "Orin steering PWM follows the field-observed chassis direction and telemetry preserves the standard logical sign",
     )
     return results
 
