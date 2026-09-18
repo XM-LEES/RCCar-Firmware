@@ -314,7 +314,9 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
     ]) and all(needle in show_text for needle in [
         "servo_basic_control_snapshot_t control_snapshot",
         "ServoBasic_GetControlSnapshot(&control_snapshot)",
-        "control_snapshot.esc_uplink_speed_mps",
+        "show_runtime_page(&control_snapshot, &hall)",
+        "show_diagnostic_page(&control_snapshot, &hall)",
+        "control_snapshot->esc_uplink_speed_mps",
     ]) and all(needle not in data_text for needle in [
         "ServoBasic_GetState(",
         "ServoBasic_GetAckermannFeedback(",
@@ -581,12 +583,14 @@ def check_fault_recovery(root: Path) -> list[Check]:
 
 def check_uart(root: Path) -> list[Check]:
     text = read_text(root, "Core/Src/usart.c")
+    main_header_text = read_text(root, "Core/Inc/main.h")
     main_text = read_text(root, "Core/Src/main.c")
     dma_text = read_text(root, "Core/Src/dma.c")
     gpio_text = read_text(root, "Core/Src/gpio.c")
     irq_text = read_text(root, "Core/Src/stm32f4xx_it.c")
     soft_uart_text = read_text(root, "WHEELTEC_APP/esc_soft_uart_stm32.c")
     telemetry_stm32_text = read_text(root, "WHEELTEC_APP/esc_telemetry_stm32.c")
+    show_text = read_text(root, "WHEELTEC_APP/show_task.c")
     ioc_text = read_text(root, "WHEELTEC.ioc")
     results: list[Check] = []
     add(results, "uart4_instance", contains(text, "huart4.Instance = UART4"), "UART4 instance")
@@ -648,6 +652,26 @@ def check_uart(root: Path) -> list[Check]:
         "EscSoftUartStm32_ReadByte",
         "EscTelemetry_RecordBytes",
     ]), "soft UART faults invalidate epoch and bytes enter existing parser pending queue")
+    add(results, "oled_pd3_level_selected_pages", all(needle in main_header_text for needle in [
+        "#define UserKey_Pin GPIO_PIN_3",
+        "#define UserKey_GPIO_Port GPIOD",
+    ]) and all(needle in gpio_text for needle in [
+        "GPIO_InitStruct.Pin = UserKey_Pin",
+        "GPIO_InitStruct.Mode = GPIO_MODE_INPUT",
+        "HAL_GPIO_Init(UserKey_GPIO_Port, &GPIO_InitStruct)",
+    ]) and all(needle in ioc_text for needle in [
+        "PD3.GPIO_Label=UserKey",
+        "PD3.GPIO_PuPd=GPIO_PULLUP",
+        "PD3.Signal=GPIO_Input",
+    ]) and all(needle in show_text for needle in [
+        "#define SHOW_KEY_POLL_MS       20U",
+        "#define SHOW_KEY_DEBOUNCE_MS   40U",
+        "show_runtime_page",
+        "show_diagnostic_page",
+        "HAL_GPIO_ReadPin(UserKey_GPIO_Port, UserKey_Pin)",
+        "(stable_level == 0U) ?",
+        "SHOW_PAGE_RUNTIME : SHOW_PAGE_DIAGNOSTIC",
+    ]), "PD3 maintained switch selects debounced runtime/diagnostic OLED pages without EXTI")
     return results
 
 

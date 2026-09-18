@@ -86,6 +86,12 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : UserKey_Pin */
+  GPIO_InitStruct.Pin = UserKey_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(UserKey_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : UserBuzzer_Pin */
   GPIO_InitStruct.Pin = UserBuzzer_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;

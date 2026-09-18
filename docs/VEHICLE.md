@@ -57,11 +57,12 @@
 | OTA 刹车 / 倒车 / 拖刹比例（%） | | |
 | 上位机 UART | UART4：PC10 TX、PC11 RX；115200 / 8N1 | `Core/Src/usart.c` |
 | 原调试 UART | USART1：PA9 TX；115200 / 8N1 | 基线仅配置发送 |
-| ESC 扩展 RX（待实板验证） | PD15 GPIO/EXTI + TIM5；115200 / 8N1 | A3 实测持续 FE/NE；PD15 软件 UART 不改动 TIM4 遥控捕获，连续帧能力已纳入离线测试 |
+| ESC 扩展 RX | PD15 GPIO/EXTI + TIM5；115200 / 8N1 | 实板已观察合法FE32与raw RPM随油门更新；伪起始位非致命过滤 |
 | ESC 信号电平（V） | | |
 | ESC / 转向 PWM | PC6 / TIM8 CH1；PC7 / TIM8 CH2 | `servo_basic_output.c` |
 | RC 油门 / 转向 | PD12 / TIM4 CH1；PD13 / TIM4 CH2 | 既有输入捕获路径 |
 | RC guard | PD14 / TIM4 CH3；默认关闭 | `APP_RC_GUARD_ENABLE_DEFAULT=0` |
+| OLED页面开关 | PD3；输入上拉 | 拨动开关，低电平运行页、高电平诊断页；40 ms消抖，不使用EXTI |
 | 电池 ADC | PC2 / ADC1_IN12 | 原上行电压来源 |
 | ADC 换算 | `raw / 4095 × 3.3 × 11` V | 原参考电压与换算倍率，不代表电池额定电压 |
 | Hall A / B | PE13 / PE14；上拉、下降沿 | 基线计数选择 B 通道 |

@@ -6,6 +6,8 @@
 
 低档上行速度采用实测`0.14115轮轴RPM/rpm_raw`和现有115 mm轮胎半径；停稳、制动和模式二参数仍未标定，自动推进保持禁用。不能把可观测车速已经工作理解为闭环控制已经完成实车标定。
 
+板载PD3拨动开关选择OLED页面：低电平为运行页，显示控制模式、`E/S`、`SP/ST`、电压和Hall；高电平为诊断页，显示FE32帧/raw RPM、`U/X`、有效性位及ESC/Hall速度对比。开关轮询不占用EXTI。
+
 ## 架构
 
 [![系统架构](docs/diagrams/system.svg)](docs/ARCHITECTURE.md)

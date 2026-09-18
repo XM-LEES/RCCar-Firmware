@@ -73,6 +73,8 @@ void Error_Handler(void);
 #define VersionBit1_GPIO_Port GPIOD
 #define VersionBit2_Pin GPIO_PIN_7
 #define VersionBit2_GPIO_Port GPIOD
+#define UserKey_Pin GPIO_PIN_3
+#define UserKey_GPIO_Port GPIOD
 #define EscSoftUartRx_Pin GPIO_PIN_15
 #define EscSoftUartRx_GPIO_Port GPIOD
 #define HallA_Pin GPIO_PIN_13
