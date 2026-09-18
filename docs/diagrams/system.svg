@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2020" height="1510" viewBox="0 0 2020 1510" role="img">
+  <title>01 系统架构与数据来源</title>
+  <rect width="100%" height="100%" fill="white" />
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#2563eb" />
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#0f766e" />
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#b45309" />
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#7e22ce" />
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#64748b" />
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#b91c1c" />
+    </marker>
+  </defs>
+  <rect stroke-width="1.6" x="375" y="135" width="1190" height="1150" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="21" font-weight="700" text-anchor="start" x="395" y="167" fill="#0f172a">下位机：保留既有控制源与诊断，替换主速度反馈</text>
+  <polyline points="330,280 415,280" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="740,280 815,280" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="740,315 775,315 775,490 815,490" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1135,270 1230,270" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1135,500 1230,500" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1530,285 1640,285" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1530,530 1640,530" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="330,550 415,550" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="740,570 775,570 775,675 1380,675 1380,590" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1670,625 1670,735 1380,735 1380,785" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="1230,875 1135,875" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="975,785 975,590" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="1230,560 1185,560 1185,930 1135,930" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1230,560 1185,560 1185,1195 1135,1195" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="975,965 975,1135" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="330,845 415,845" stroke="#7e22ce" stroke-width="2.2" fill="none" marker-end="url(#arrow-purple)" />
+  <polyline points="740,845 795,845 795,1165 815,1165" stroke="#7e22ce" stroke-width="2.2" fill="none" marker-end="url(#arrow-purple)" />
+  <polyline points="330,1150 415,1150" stroke="#7e22ce" stroke-width="2.2" fill="none" marker-end="url(#arrow-purple)" />
+  <polyline points="740,1195 815,1195" stroke="#7e22ce" stroke-width="2.2" fill="none" marker-end="url(#arrow-purple)" />
+  <polyline points="815,1250 775,1250 775,1315 20,1315 20,345 40,345" stroke="#7e22ce" stroke-width="2.2" fill="none" marker-end="url(#arrow-purple)" />
+  <polyline points="1800,625 1800,765" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1800,855 1800,940" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1800,1035 1800,1115" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1800,1205 1800,1300" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1160,1350 1160,315 1135,315" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" stroke-dasharray="7 6" />
+  <polyline points="1160,1350 1160,555 1135,555" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" stroke-dasharray="7 6" />
+  <polyline points="1160,1350 1160,835 1135,835" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" stroke-dasharray="7 6" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="31" font-weight="700" text-anchor="middle" x="1010.0" y="59.0" fill="#2563eb">RC 线控底盘 · 系统架构</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="20" font-weight="700" text-anchor="middle" x="1010.0" y="101.5" fill="#64748b">feature/ackermann-chassis  ·  模式二适配  ·  保留既有接口与标定</text>
+  <rect stroke-width="1.6" x="40" y="215" width="290" height="150" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="185.0" y="255.0" fill="#0f172a">上位机</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="282.0" fill="#0f172a">目标速度 / 前轮转角</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="309.0" fill="#0f172a">11B 命令 / 24B 状态</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="336.0" fill="#0f172a">原命令与标志语义</text>
+  <rect stroke-width="1.6" x="415" y="210" width="325" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="577.5" y="247.5" fill="#0f172a">上位机通信</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="274.5" fill="#0f172a">UART4 · 115200 / 8N1</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="301.5" fill="#0f172a">PC11 RX / PC10 TX</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="328.5" fill="#0f172a">命令有效性与停止覆盖</text>
+  <rect stroke-width="1.6" x="815" y="195" width="320" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="975.0" y="232.5" fill="#0f172a">转向映射</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="259.5" fill="#0f172a">角度与变化率限制</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="286.5" fill="#0f172a">沿用端点线性插值</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="313.5" fill="#0f172a">请求输出受原脉宽边界约束</text>
+  <rect stroke-width="1.6" x="815" y="410" width="320" height="180" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="975.0" y="451.5" fill="#0f172a">自动纵向控制</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="478.5" fill="#0f172a">沿用缩放 / 限速 / 参考斜坡</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="505.5" fill="#0f172a">前馈标定表 + PI 微调（µs）</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="532.5" fill="#0f172a">独立制动与模式二换向</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="559.5" fill="#0f172a">闭环关系见第 2 页</text>
+  <rect stroke-width="1.6" x="1230" y="210" width="300" height="380" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1380.0" y="327.0" fill="#0f172a">输出仲裁与限幅</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="353.0" fill="#0f172a">RC 停止 ＞ RC 接管 ＞ 串口</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="379.0" fill="#0f172a">无生效控制源 → 中点</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="405.0" fill="#0f172a">转向：PC7 / TIM8 CH2</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="431.0" fill="#0f172a">电调：PC6 / TIM8 CH1</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="457.0" fill="#0f172a">各路径共用输出边界</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="483.0" fill="#0f172a">保留接管与输入诊断</text>
+  <rect stroke-width="1.6" x="1640" y="220" width="320" height="130" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="263.5" fill="#0f172a">两只转向舵机</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="290.5" fill="#0f172a">一个现有逻辑 PWM 通道</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="317.5" fill="#0f172a">应用角由实际输出反算</text>
+  <rect stroke-width="1.6" x="1640" y="445" width="320" height="180" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="500.0" fill="#0f172a">HOBBYWING MAX5 HV G2</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="527.0" fill="#0f172a">模式二：前进 / 刹车 / 倒车</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="554.0" fill="#0f172a">遥测 eRPM / V / A / 温度</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="581.0" fill="#0f172a">遥测链路（未验证）</text>
+  <rect stroke-width="1.6" x="40" y="475" width="290" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="185.0" y="512.5" fill="#0f172a">RC 接收输入</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="539.5" fill="#0f172a">保留基线控制路径</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="566.5" fill="#0f172a">油门 / 转向 / guard</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="593.5" fill="#0f172a">guard 默认关闭</text>
+  <rect stroke-width="1.6" x="415" y="475" width="325" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="577.5" y="512.5" fill="#0f172a">RC 采集与有效性</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="539.5" fill="#0f172a">PD12 油门 / PD13 转向</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="566.5" fill="#0f172a">PD14 guard（默认关闭）</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="593.5" fill="#0f172a">脉宽捕获、滤波与异常诊断</text>
+  <rect stroke-width="1.6" x="40" y="780" width="290" height="130" rx="8" fill="#faf5ff" stroke="#7e22ce" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="185.0" y="823.5" fill="#0f172a">电池电压采样</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="850.5" fill="#0f172a">板载分压输入</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="877.5" fill="#0f172a">既有 battery_mv 来源</text>
+  <rect stroke-width="1.6" x="415" y="775" width="325" height="130" rx="8" fill="#faf5ff" stroke="#7e22ce" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="577.5" y="806.0" fill="#0f172a">板载电压采集</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="577.5" y="832.0" fill="#0f172a">PC2 / ADC1_IN12</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="577.5" y="858.0" fill="#0f172a">raw / 4095 × 3.3 × 11 V</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="577.5" y="884.0" fill="#0f172a">与 ESC 电压分别记录</text>
+  <rect stroke-width="1.6" x="815" y="785" width="320" height="180" rx="8" fill="#ecfdf5" stroke="#0f766e" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="975.0" y="826.5" fill="#0f172a">运动估计：主速度来源</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="853.5" fill="#0f172a">|v| = eRPM × C</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="880.5" fill="#0f172a">÷ (60 × p × G档 × G轮)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="907.5" fill="#0f172a">按最终动作历史估计方向</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="934.5" fill="#0f172a">无效速度不替换为有效零值</text>
+  <rect stroke-width="1.6" x="1230" y="785" width="300" height="180" rx="8" fill="#ecfdf5" stroke="#0f766e" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="middle" x="1380.0" y="829.5" fill="#0f172a">ESC 采集（PD15 待实板验证）</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="400" text-anchor="middle" x="1380.0" y="854.5" fill="#0f172a">编程口 → PD15 / EXTI + TIM5</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="400" text-anchor="middle" x="1380.0" y="879.5" fill="#0f172a">FE32 · CRC16 / MODBUS</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="400" text-anchor="middle" x="1380.0" y="904.5" fill="#0f172a">样本标识 / 时间 / 有效性</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="400" text-anchor="middle" x="1380.0" y="929.5" fill="#0f172a">V / A / 温度保留独立遥测</text>
+  <rect stroke-width="1.6" x="40" y="1080" width="290" height="145" rx="8" fill="#faf5ff" stroke="#7e22ce" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="185.0" y="1117.5" fill="#0f172a">轮侧 Hall A / B</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="1144.5" fill="#0f172a">原 PE13 / PE14 接线</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="1171.5" fill="#0f172a">上拉、下降沿触发</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="185.0" y="1198.5" fill="#0f172a">不假定为正交编码器</text>
+  <rect stroke-width="1.6" x="415" y="1090" width="325" height="135" rx="8" fill="#faf5ff" stroke="#7e22ce" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="577.5" y="1122.5" fill="#0f172a">Hall 测速与诊断</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="1149.5" fill="#0f172a">B 通道脉冲周期测速</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="1176.5" fill="#0f172a">保留短脉冲过滤与历史诊断</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="577.5" y="1203.5" fill="#0f172a">不参与 ESC 主速度闭环</text>
+  <rect stroke-width="1.6" x="815" y="1135" width="320" height="135" rx="8" fill="#faf5ff" stroke="#7e22ce" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="975.0" y="1168.5" fill="#0f172a">状态回传</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="975.0" y="1194.5" fill="#0f172a">ESC 来源的速度 / 应用角</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="975.0" y="1220.5" fill="#0f172a">Hall 速度 / ADC 电池电压</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="975.0" y="1246.5" fill="#0f172a">RC、限幅、故障等原有标志</text>
+  <rect stroke-width="1.6" x="1640" y="765" width="320" height="90" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="802.0" fill="#0f172a">电机</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="829.0" fill="#0f172a">机械 RPM = eRPM / 极对数 p</text>
+  <rect stroke-width="1.6" x="1640" y="940" width="320" height="95" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="966.0" fill="#0f172a">两档减速波箱 · G档</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="993.0" fill="#0f172a">所选档位决定传动比</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1020.0" fill="#0f172a">自动换档不在功能范围内</text>
+  <rect stroke-width="1.6" x="1640" y="1115" width="320" height="90" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="1152.0" fill="#0f172a">后续传动 / 轮端减速 · G轮</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1179.0" fill="#0f172a">波箱输出 RPM / 车轮 RPM</text>
+  <rect stroke-width="1.6" x="1640" y="1300" width="320" height="105" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="1331.0" fill="#0f172a">车轮与底盘运动</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1358.0" fill="#0f172a">轮 RPM × 周长 C / 60</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1385.0" fill="#0f172a">传动模型不消除打滑误差</text>
+  <rect stroke-width="1.6" x="415" y="1350" width="1115" height="115" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="972.5" y="1386.0" fill="#0f172a">车辆数据 · docs/VEHICLE.md</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="972.5" y="1413.0" fill="#0f172a">几何 / 电气 / 各级减速 / 前馈与转向标定 / 限幅及控制参数</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="972.5" y="1440.0" fill="#0f172a">既有数值以源码为准；新增无依据数值留空</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="17" font-weight="700" text-anchor="middle" x="1010.0" y="1490.5" fill="#64748b">蓝：命令与控制    绿：ESC 反馈    紫：诊断与回传    橙：执行与传动    灰虚线：参数依赖    无 IMU / 轮角实测</text>
+  <rect stroke-width="1.6" x="1080" y="642" width="260" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1210.0" y="660.0" fill="#2563eb">RC 请求与有效性</text>
+  <rect stroke-width="1.6" x="1230" y="701" width="300" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1380.0" y="719.0" fill="#0f766e">信号与 GND（电平未验证）</text>
+  <rect stroke-width="1.6" x="840" y="734" width="270" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="975.0" y="752.0" fill="#0f766e">有符号速度估计 / 年龄</text>
+  <rect stroke-width="1.6" x="1175" y="986" width="350" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1350.0" y="1004.0" fill="#b45309">最终动作 / 应用角 / 原诊断</text>
+  <rect stroke-width="1.6" x="60" y="1276" width="580" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="350.0" y="1294.0" fill="#7e22ce">UART4 PC10 TX · 24B 状态 · 双路速度</text>
+</svg>

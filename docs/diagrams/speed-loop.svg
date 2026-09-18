@@ -1,0 +1,180 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1820" height="1650" viewBox="0 0 1820 1650" role="img">
+  <title>02 速度闭环与模式二动作</title>
+  <rect width="100%" height="100%" fill="white" />
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#2563eb" />
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#0f766e" />
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#b45309" />
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#7e22ce" />
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#64748b" />
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 10 4 L 0 8 Z" fill="#b91c1c" />
+    </marker>
+  </defs>
+  <polyline points="295,247 365,247" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="655,247 725,247" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="510,175 510,142 985,142 985,175" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="785,247 850,247" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1125,247 1210,247" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="1490,247 1555,247" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1667,330 1667,420" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="1555,490 1490,490" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="1210,490 1125,490" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="850,490 755,490 755,280" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="960,560 960,635" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)" />
+  <polyline points="1000,697 1030,697 1030,600 1160,600 1160,378 1350,378 1350,330" stroke="#b91c1c" stroke-width="2.2" fill="none" marker-end="url(#arrow-red)" />
+  <polyline points="1450,635 1520,635 1520,365 1450,365 1450,330" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" stroke-dasharray="7 6" />
+  <polyline points="360,1042 510,1042" stroke="#b91c1c" stroke-width="2.2" fill="none" marker-end="url(#arrow-red)" />
+  <polyline points="800,1042 950,1042" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1240,1042 1390,1042" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="640,985 640,950 215,950 215,985" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="655,1100 655,1235" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" />
+  <polyline points="360,1292 510,1292" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" />
+  <polyline points="540,1235 540,1200 215,1200 215,1100" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" />
+  <polyline points="800,1292 950,1292" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1240,1292 1390,1292" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1535,1235 1535,1180 1095,1180 1095,1100" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)" />
+  <polyline points="1680,1042 1775,1042 1775,1520 1680,1520" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" />
+  <polyline points="1535,1580 1535,1610 30,1610 30,1042 70,1042" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="31" font-weight="700" text-anchor="middle" x="910.0" y="61.0" fill="#2563eb">速度闭环 · 前馈、PI 与模式二动作约束</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="910.0" y="101.0" fill="#64748b">沿用基线前馈与 µs 制 PI；模式二适用性和 ESC 上板遥测（未验证）</text>
+  <rect stroke-width="1.6" x="45" y="175" width="250" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="170.0" y="212.5" fill="#0f172a">目标命令</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="170.0" y="239.5" fill="#0f172a">v目标：正前进、负倒车</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="170.0" y="266.5" fill="#0f172a">0 或 BRAKE：受控停车</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="170.0" y="293.5" fill="#0f172a">转向与纵向分别处理</text>
+  <rect stroke-width="1.6" x="365" y="175" width="290" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="510.0" y="212.5" fill="#0f172a">参考速度 v参考</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="239.5" fill="#0f172a">正反速度上限</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="266.5" fill="#0f172a">参考加速 / 减速斜坡</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="293.5" fill="#0f172a">换向先停车，再反向起步</text>
+  <rect stroke-width="1.6" x="725" y="205" width="60" height="75" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="28" font-weight="700" text-anchor="middle" x="755.0" y="252.5" fill="#0f172a">Σ</text>
+  <rect stroke-width="1.6" x="660" y="204" width="60" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="14" font-weight="700" text-anchor="middle" x="690.0" y="221.0" fill="#2563eb">v参考</text>
+  <rect stroke-width="1.6" x="850" y="175" width="275" height="155" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="987.5" y="205.5" fill="#0f172a">前馈 + PI 微调（µs）</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="231.5" fill="#0f172a">p前馈 = F方向(v参考)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="257.5" fill="#0f172a">e = v参考 − v反馈</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="283.5" fill="#0f172a">Δp = clip(Kp·e + Ki·∫e dt)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="309.5" fill="#0f172a">p推进 = p前馈 + Δp</text>
+  <rect stroke-width="1.6" x="1210" y="175" width="280" height="155" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1350.0" y="205.5" fill="#0f172a">电调动作约束</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="231.5" fill="#0f172a">推进 / 制动 / 倒车 / 中点</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="257.5" fill="#0f172a">推进与刹车分别限幅</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="283.5" fill="#0f172a">PI 微调不能跨入另一动作区</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="309.5" fill="#0f172a">制动独立映射，不套倒车限幅</text>
+  <rect stroke-width="1.6" x="1555" y="175" width="225" height="155" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1667.5" y="218.5" fill="#0f172a">执行与传动</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="244.5" fill="#0f172a">PWM → ESC → 电机</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="270.5" fill="#0f172a">波箱 → 轮端 → 车轮</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="296.5" fill="#0f172a">响应包含饱和与时延</text>
+  <rect stroke-width="1.6" x="1555" y="420" width="225" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1667.5" y="456.0" fill="#0f172a">ESC 遥测（未验证）</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="482.0" fill="#0f172a">校验 / 字段有效性</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="508.0" fill="#0f172a">接收时刻 / 样本标识</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="534.0" fill="#0f172a">eRPM 只有幅值</text>
+  <rect stroke-width="1.6" x="1210" y="420" width="280" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1350.0" y="456.0" fill="#0f172a">传动换算</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="482.0" fill="#0f172a">|v| = eRPM × C</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="508.0" fill="#0f172a">÷ (60 × p × G档 × G轮)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="534.0" fill="#0f172a">参数与反馈均须有效</text>
+  <rect stroke-width="1.6" x="850" y="420" width="275" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="987.5" y="456.0" fill="#0f172a">反馈使用约束</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="482.0" fill="#0f172a">幅值 + 动作方向 → v反馈</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="508.0" fill="#0f172a">新样本更新，不重复积分</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="987.5" y="534.0" fill="#0f172a">无效反馈禁止自动推进</text>
+  <rect stroke-width="1.6" x="390" y="635" width="610" height="125" rx="8" fill="#fef2f2" stroke="#b91c1c" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="695.0" y="676.0" fill="#0f172a">前进的比例刹车支路</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="695.0" y="703.0" fill="#0f172a">b = clip[Kb × (|v反馈| − |v参考|)]</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="695.0" y="730.0" fill="#0f172a">切入 / 释放带滞回；制动请求先撤销原有推进</text>
+  <rect stroke-width="1.6" x="1080" y="635" width="700" height="125" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1430.0" y="663.5" fill="#0f172a">自动控制的运行权限</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1430.0" y="689.5" fill="#0f172a">命令超时 / RPM 无效 / 关键参数缺失：取消自动推进</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1430.0" y="715.5" fill="#0f172a">保留 RC 仲裁；SOFTWARE_STOP 按串口命令生效</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1430.0" y="741.5" fill="#0f172a">CLEAR_FAULT 只按原条件处理故障诊断</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="910.0" y="819.5" fill="#64748b">停稳：N 个不同的新鲜低速样本覆盖指定时长；新动作之前的证据失效。</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="910.0" y="846.5" fill="#64748b">速度符号来自动作历史估计；停稳窗口不等于机械锁止或驻车制动。</text>
+  <rect stroke-width="1.6" x="610" y="111" width="270" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="745.0" y="129.0" fill="#2563eb">v参考 → 原前馈表</text>
+  <rect stroke-width="1.6" x="690" y="365" width="130" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="755.0" y="383.0" fill="#0f766e">− v反馈</text>
+  <rect stroke-width="1.6" x="1170" y="345" width="165" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1252.5" y="363.0" fill="#b91c1c">制动幅值 b</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="24" font-weight="700" text-anchor="middle" x="910.0" y="919.0" fill="#2563eb">模式二动作关系</text>
+  <rect stroke-width="1.6" x="70" y="985" width="290" height="115" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="215.0" y="1021.0" fill="#0f172a">前进驱动</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1048.0" fill="#0f172a">正向 PWM：推进</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1075.0" fill="#0f172a">实际正推重置倒车触发历史</text>
+  <rect stroke-width="1.6" x="510" y="985" width="290" height="115" rx="8" fill="#fef2f2" stroke="#b91c1c" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="655.0" y="1021.5" fill="#0f172a">前进制动</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="655.0" y="1047.5" fill="#0f172a">第一次负向 PWM：刹车</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="655.0" y="1073.5" fill="#0f172a">同次制动连续保持负向区</text>
+  <rect stroke-width="1.6" x="950" y="985" width="290" height="115" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1095.0" y="1021.5" fill="#0f172a">回中驻留</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1095.0" y="1047.5" fill="#0f172a">刹车达标并取得新停稳证据</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1095.0" y="1073.5" fill="#0f172a">保持中点至驻留完成</text>
+  <rect stroke-width="1.6" x="1390" y="985" width="290" height="115" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1535.0" y="1021.5" fill="#0f172a">倒车驱动</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1047.5" fill="#0f172a">第二次负向 PWM：倒车</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1073.5" fill="#0f172a">超速减速只收油滑行</text>
+  <rect stroke-width="1.6" x="70" y="1235" width="290" height="115" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="215.0" y="1271.0" fill="#0f172a">上电 / 恢复等待</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1298.0" fill="#0f172a">保持中点</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1325.0" fill="#0f172a">收集新的停稳证据</text>
+  <rect stroke-width="1.6" x="510" y="1235" width="290" height="115" rx="8" fill="#eff6ff" stroke="#2563eb" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="655.0" y="1271.0" fill="#0f172a">中点等待</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="655.0" y="1298.0" fill="#0f172a">目标 0：保持中点</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="655.0" y="1325.0" fill="#0f172a">未知状态只接受前进起步</text>
+  <rect stroke-width="1.6" x="950" y="1235" width="290" height="115" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1095.0" y="1271.5" fill="#0f172a">补足第一击</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1095.0" y="1297.5" fill="#0f172a">已知前进，尚无有效第一击</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1095.0" y="1323.5" fill="#0f172a">停稳后负向触发，再回中</text>
+  <rect stroke-width="1.6" x="1390" y="1235" width="290" height="115" rx="8" fill="#fff7ed" stroke="#b45309" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1535.0" y="1271.5" fill="#0f172a">回中并重新确认</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1297.5" fill="#0f172a">第一击后旧停稳证据失效</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1323.5" fill="#0f172a">重新取得新证据，再驻留</text>
+  <rect stroke-width="1.6" x="1390" y="1460" width="290" height="120" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1535.0" y="1486.0" fill="#0f172a">倒车滑停</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1512.0" fill="#0f172a">零目标：持续中点</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1538.0" fill="#0f172a">转前进：新停稳后才可正推</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1564.0" fill="#0f172a">明确换向请求设超时边界</text>
+  <rect stroke-width="1.6" x="70" y="1445" width="1160" height="125" rx="8" fill="#f8fafc" stroke="#64748b" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="650.0" y="1473.5" fill="#0f172a">动作约束</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1499.5" fill="#0f172a">刹车释放回中后，再次刹车必须先建立实际正向推进；不能用中点抖动反复制动。</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1525.5" fill="#0f172a">夹入一条零速命令不能绕过换向停稳。倒车减速不假定具备对称主动刹车。</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1551.5" fill="#0f172a">启动、接管或反馈失效后，未知状态禁止负向首击；实际正推才重建许可历史。</text>
+  <rect stroke-width="1.6" x="365" y="1008" width="140" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="435.0" y="1026.0" fill="#b91c1c">超速 / 停车</text>
+  <rect stroke-width="1.6" x="798" y="1008" width="155" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="875.5" y="1026.0" fill="#b45309">刹车达标并停稳</text>
+  <rect stroke-width="1.6" x="1245" y="1008" width="140" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1315.0" y="1026.0" fill="#b45309">驻留完成</text>
+  <rect stroke-width="1.6" x="165" y="922" width="500" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="415.0" y="940.0" fill="#2563eb">继续前进：释放制动后重新正推</text>
+  <rect stroke-width="1.6" x="568" y="1160" width="175" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="655.5" y="1178.0" fill="#64748b">目标 0 且停稳</text>
+  <rect stroke-width="1.6" x="365" y="1256" width="140" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="435.0" y="1274.0" fill="#64748b">新的停稳证据</text>
+  <rect stroke-width="1.6" x="235" y="1164" width="295" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="382.5" y="1182.0" fill="#2563eb">目标前进</text>
+  <rect stroke-width="1.6" x="800" y="1256" width="150" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="875.0" y="1274.0" fill="#b45309">已知前进且无首击</text>
+  <rect stroke-width="1.6" x="1240" y="1256" width="150" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1315.0" y="1274.0" fill="#b45309">触发后回中</text>
+  <rect stroke-width="1.6" x="1050" y="1146" width="450" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="1275.0" y="1164.0" fill="#b45309">新的停稳证据</text>
+  <rect stroke-width="1.6" x="365" y="1573" width="845" height="28" rx="8" fill="#ffffff" stroke="none" />
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="787.5" y="1591.0" fill="#64748b">停稳后：正目标才进入前进；零目标回到中点等待</text>
+</svg>

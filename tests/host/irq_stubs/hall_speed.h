@@ -1,0 +1,4 @@
+#ifndef TEST_IRQ_STUBS_HALL_SPEED_H
+#define TEST_IRQ_STUBS_HALL_SPEED_H
+
+#endif
