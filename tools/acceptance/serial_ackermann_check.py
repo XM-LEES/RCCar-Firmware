@@ -132,10 +132,21 @@ def parse_telemetry(frame: bytes) -> Telemetry:
     status_bits = struct.unpack(">I", frame[17:21])[0]
     esc_magnitude_valid = bool(status_bits & STATUS_ESC_SPEED_MAGNITUDE_VALID)
     esc_standstill = bool(status_bits & STATUS_ESC_STANDSTILL_CONFIRMED)
+    esc_fe32_fresh = bool(status_bits & STATUS_ESC_FE32_FRESH)
+    esc_rpm_raw_valid = bool(status_bits & STATUS_ESC_RPM_RAW_VALID)
+    esc_speed_calibration_valid = bool(
+        status_bits & STATUS_ESC_SPEED_CALIBRATION_VALID
+    )
     direction_known = bool(status_bits & STATUS_VEHICLE_DIRECTION_KNOWN)
     if esc_magnitude_valid and esc_standstill:
         raise TelemetryContractError(
             "ESC speed-magnitude-valid and standstill-confirmed bits are both set"
+        )
+    if esc_magnitude_valid and not (
+        esc_fe32_fresh and esc_rpm_raw_valid and esc_speed_calibration_valid
+    ):
+        raise TelemetryContractError(
+            "ESC speed-magnitude-valid requires fresh FE32, raw rpm, and calibration-valid status"
         )
     if not esc_magnitude_valid and speed_mps != 0.0:
         raise TelemetryContractError(

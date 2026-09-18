@@ -112,8 +112,8 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="577.5" y="884.0" fill="#0f172a">与 ESC 电压分别记录</text>
   <rect stroke-width="1.6" x="815" y="785" width="320" height="180" rx="8" fill="#ecfdf5" stroke="#0f766e" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="975.0" y="826.5" fill="#0f172a">运动估计：主速度来源</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="853.5" fill="#0f172a">|v| = eRPM × C</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="880.5" fill="#0f172a">÷ (60 × p × G档 × G轮)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="853.5" fill="#0f172a">轮轴RPM = rpm_raw × 0.14115</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="880.5" fill="#0f172a">|v| = 轮轴RPM × 2πR / 60</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="907.5" fill="#0f172a">按最终动作历史估计方向</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="934.5" fill="#0f172a">无效速度不替换为有效零值</text>
   <rect stroke-width="1.6" x="1230" y="785" width="300" height="180" rx="8" fill="#ecfdf5" stroke="#0f766e" />
@@ -139,13 +139,13 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="975.0" y="1246.5" fill="#0f172a">RC、限幅、故障等原有标志</text>
   <rect stroke-width="1.6" x="1640" y="765" width="320" height="90" rx="8" fill="#fff7ed" stroke="#b45309" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="802.0" fill="#0f172a">电机</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="829.0" fill="#0f172a">机械 RPM = eRPM / 极对数 p</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="829.0" fill="#0f172a">FE32 rpm_raw 幅值</text>
   <rect stroke-width="1.6" x="1640" y="940" width="320" height="95" rx="8" fill="#fff7ed" stroke="#b45309" />
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="966.0" fill="#0f172a">两档减速波箱 · G档</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="993.0" fill="#0f172a">所选档位决定传动比</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="966.0" fill="#0f172a">固定低档</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="993.0" fill="#0f172a">实测轮轴系数 0.14115</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1020.0" fill="#0f172a">自动换档不在功能范围内</text>
   <rect stroke-width="1.6" x="1640" y="1115" width="320" height="90" rx="8" fill="#fff7ed" stroke="#b45309" />
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="1152.0" fill="#0f172a">后续传动 / 轮端减速 · G轮</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="1152.0" fill="#0f172a">轮轴RPM（传动模型终点）</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="1800.0" y="1179.0" fill="#0f172a">波箱输出 RPM / 车轮 RPM</text>
   <rect stroke-width="1.6" x="1640" y="1300" width="320" height="105" rx="8" fill="#fff7ed" stroke="#b45309" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="1800.0" y="1331.0" fill="#0f172a">车轮与底盘运动</text>

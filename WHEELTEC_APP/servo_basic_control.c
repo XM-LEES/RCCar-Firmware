@@ -98,6 +98,7 @@ static uint32_t s_control_snapshot_next_sequence = 0U;
 #define SPEED_PI_KP_MAX_US_PER_MPS               120.0f
 #define SPEED_PI_KI_MAX_US_PER_MPS_S             40.0f
 #define SPEED_PI_TRIM_LIMIT_PARAM_MAX_US         60U
+#define SERVO_BASIC_PI_F                         3.14159265358979f
 #define RC_VALID_MIN_DEFAULT_US                  APP_RC_VALID_MIN_US
 #define RC_VALID_MAX_DEFAULT_US                  APP_RC_VALID_MAX_US
 #define RC_FRAME_MIN_DEFAULT_US                  APP_RC_FRAME_MIN_US
@@ -165,6 +166,12 @@ volatile uint32_t g_esc_motion_telemetry_timeout_ms = APP_ESC_MOTION_TELEMETRY_T
 volatile float g_esc_motion_stopped_speed_threshold_mps = APP_ESC_MOTION_STOPPED_THRESHOLD_MPS_DEFAULT;
 volatile uint32_t g_esc_motion_stopped_min_samples = APP_ESC_MOTION_STOPPED_MIN_SAMPLES_DEFAULT;
 volatile uint32_t g_esc_motion_stopped_min_coverage_ms = APP_ESC_MOTION_STOPPED_MIN_COVERAGE_MS_DEFAULT;
+volatile uint32_t g_esc_speed_calibration_valid =
+	APP_ESC_SPEED_CALIBRATION_VALID_DEFAULT;
+volatile float g_esc_low_gear_wheel_rpm_per_raw =
+	APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT;
+volatile uint32_t g_esc_speed_fresh_timeout_ms =
+	APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT;
 volatile uint32_t g_mode2_drive_calibration_valid = APP_MODE2_DRIVE_CALIBRATION_VALID_DEFAULT;
 volatile uint32_t g_mode2_drive_brake_calibration_valid = APP_MODE2_DRIVE_BRAKE_CALIBRATION_VALID_DEFAULT;
 volatile uint32_t g_mode2_drive_first_strike_calibration_valid =
@@ -2566,6 +2573,58 @@ static uint8_t servo_basic_esc_fe32_is_fresh(uint32_t now_ms)
 	return (age_ms <= ESC_DIAGNOSTIC_FRESH_TIMEOUT_MS) ? 1U : 0U;
 }
 
+static uint8_t servo_basic_uplink_speed_calibration_is_valid(void)
+{
+	return (g_esc_speed_calibration_valid != 0U &&
+		isfinite(g_esc_low_gear_wheel_rpm_per_raw) &&
+		g_esc_low_gear_wheel_rpm_per_raw > 0.0f &&
+		get_orin_ackermann_wheel_radius_mm() != 0U &&
+		g_esc_speed_fresh_timeout_ms != 0U &&
+		g_esc_speed_fresh_timeout_ms < 0x80000000UL) ? 1U : 0U;
+}
+
+static uint8_t servo_basic_compute_uplink_speed_magnitude(uint32_t now_ms,
+														  float *speed_magnitude_mps)
+{
+	uint32_t age_ms;
+	float wheel_axle_rpm;
+	float wheel_circumference_m;
+	float speed_mps;
+
+	if (speed_magnitude_mps != NULL)
+	{
+		*speed_magnitude_mps = 0.0f;
+	}
+	if (servo_basic_uplink_speed_calibration_is_valid() == 0U ||
+		servo_basic_esc_fe32_is_fresh(now_ms) == 0U ||
+		s_esc_rx_invalidated != 0U ||
+		s_esc_latest_raw_sample_valid == 0U ||
+		s_esc_latest_raw_sample.rpm_valid == 0U ||
+		servo_basic_tick_delta_ms(now_ms,
+			s_esc_latest_raw_sample.received_tick_ms,
+			&age_ms) == 0U ||
+		age_ms > g_esc_speed_fresh_timeout_ms)
+	{
+		return 0U;
+	}
+
+	wheel_axle_rpm = (float)s_esc_latest_raw_sample.rpm_raw *
+		g_esc_low_gear_wheel_rpm_per_raw;
+	wheel_circumference_m = 2.0f * SERVO_BASIC_PI_F *
+		((float)get_orin_ackermann_wheel_radius_mm() / 1000.0f);
+	speed_mps = wheel_axle_rpm *
+		wheel_circumference_m / 60.0f;
+	if (isfinite(speed_mps) == 0 || speed_mps < 0.0f)
+	{
+		return 0U;
+	}
+	if (speed_magnitude_mps != NULL)
+	{
+		*speed_magnitude_mps = speed_mps;
+	}
+	return 1U;
+}
+
 static int8_t servo_basic_estimated_vehicle_direction(void)
 {
 	if (s_vehicle_direction_known == 0U)
@@ -2576,11 +2635,13 @@ static int8_t servo_basic_estimated_vehicle_direction(void)
 }
 
 static uint8_t servo_basic_collect_esc_uplink_speed(
+	uint32_t now_ms,
 	float *speed_mps,
 	float *speed_magnitude_mps,
 	uint8_t *direction_known)
 {
 	const int8_t direction = servo_basic_estimated_vehicle_direction();
+	float local_speed_magnitude_mps = 0.0f;
 
 	if (speed_mps != NULL)
 	{
@@ -2595,8 +2656,8 @@ static uint8_t servo_basic_collect_esc_uplink_speed(
 		*direction_known = (direction != 0) ? 1U : 0U;
 	}
 
-	if (s_esc_feedback_available == 0U ||
-		s_esc_motion_estimate.magnitude_valid == 0U ||
+	if (servo_basic_compute_uplink_speed_magnitude(now_ms,
+			&local_speed_magnitude_mps) == 0U ||
 		s_esc_stop_confirmed != 0U)
 	{
 		return 0U;
@@ -2604,13 +2665,12 @@ static uint8_t servo_basic_collect_esc_uplink_speed(
 
 	if (speed_magnitude_mps != NULL)
 	{
-		*speed_magnitude_mps = s_esc_motion_estimate.speed_magnitude_mps;
+		*speed_magnitude_mps = local_speed_magnitude_mps;
 	}
 	if (speed_mps != NULL)
 	{
 		*speed_mps = (direction < 0) ?
-			-s_esc_motion_estimate.speed_magnitude_mps :
-			s_esc_motion_estimate.speed_magnitude_mps;
+			-local_speed_magnitude_mps : local_speed_magnitude_mps;
 	}
 	return 1U;
 }
@@ -2661,6 +2721,10 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 	servo_basic_diagnostics_t diagnostics;
 	const uint8_t fe32_fresh = servo_basic_esc_fe32_is_fresh(now_ms);
 	const int8_t direction = servo_basic_estimated_vehicle_direction();
+	float uplink_speed_magnitude_mps = 0.0f;
+	const uint8_t uplink_speed_valid =
+		servo_basic_compute_uplink_speed_magnitude(now_ms,
+			&uplink_speed_magnitude_mps);
 
 	diagnostics.speed_saturated = (g_orin_state.speed_saturated != 0U ||
 		g_speed_pi_saturated != 0U ||
@@ -2680,11 +2744,10 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 		 s_esc_latest_raw_sample_valid != 0U &&
 		 s_esc_latest_raw_sample.rpm_valid != 0U) ? 1U : 0U;
 	diagnostics.esc_speed_magnitude_valid =
-		(s_esc_feedback_available != 0U &&
-		 s_esc_motion_estimate.magnitude_valid != 0U &&
+		(uplink_speed_valid != 0U &&
 		 s_esc_stop_confirmed == 0U) ? 1U : 0U;
 	diagnostics.esc_speed_calibration_valid =
-		(s_esc_motion_estimator.config_valid != 0U) ? 1U : 0U;
+		(servo_basic_uplink_speed_calibration_is_valid() != 0U) ? 1U : 0U;
 	diagnostics.vehicle_direction_known = (direction != 0) ? 1U : 0U;
 	diagnostics.esc_soft_uart_rx_error =
 		(s_esc_receiver_health.rx_error_count != 0U) ? 1U : 0U;
@@ -2730,6 +2793,7 @@ static void servo_basic_publish_control_snapshot(uint32_t now_ms)
 		&snapshot.steering_angle_rad,
 		&snapshot.yaw_rate_rad_s);
 	snapshot.esc_uplink_speed_valid = servo_basic_collect_esc_uplink_speed(
+		now_ms,
 		&snapshot.esc_uplink_speed_mps,
 		&snapshot.esc_speed_magnitude_mps,
 		&snapshot.esc_direction_known);

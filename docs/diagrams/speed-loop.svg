@@ -87,8 +87,8 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1667.5" y="534.0" fill="#0f172a">eRPM 只有幅值</text>
   <rect stroke-width="1.6" x="1210" y="420" width="280" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1350.0" y="456.0" fill="#0f172a">传动换算</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="482.0" fill="#0f172a">|v| = eRPM × C</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="508.0" fill="#0f172a">÷ (60 × p × G档 × G轮)</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="482.0" fill="#0f172a">轮轴RPM = rpm_raw × 0.14115</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="508.0" fill="#0f172a">|v| = 轮轴RPM × 2πR / 60</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1350.0" y="534.0" fill="#0f172a">参数与反馈均须有效</text>
   <rect stroke-width="1.6" x="850" y="420" width="275" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="987.5" y="456.0" fill="#0f172a">反馈使用约束</text>

@@ -291,6 +291,38 @@ static int tim5_irq_decodes_byte_without_hal_handlers(void)
     return 0;
 }
 
+static int start_glitch_rearms_without_fault_or_ring_drop(void)
+{
+    EscSoftUartStm32Byte_t item;
+    EscSoftUartStm32Diagnostics_t diagnostics;
+    uint32_t faults;
+
+    reset_irq_fixture();
+    EXPECT_TRUE(EscSoftUartStm32_Start(35U) == 1U);
+    uwTick = 36U;
+    feed_byte(0x11U, 0U);
+
+    trigger_start_edge();
+    run_tim5_sample(1U, 0U);
+    faults = EscSoftUartStm32_TakeFaults();
+    EXPECT_TRUE((faults & ESC_SOFT_UART_RX_FAULT_START_GLITCH) == 0UL);
+    EXPECT_TRUE(faults == 0UL);
+    EscSoftUartStm32_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.start_glitches == 1U);
+    EXPECT_TRUE(diagnostics.fault_events == 0U);
+    EXPECT_TRUE((EXTI->IMR & ESC_SOFT_UART_STM32_RX_PIN_MASK) != 0UL);
+
+    uwTick = 37U;
+    feed_byte(0x22U, 0U);
+    EXPECT_TRUE(EscSoftUartStm32_ReadByte(&item) == 1U);
+    EXPECT_TRUE(item.byte == 0x11U);
+    EXPECT_TRUE(item.received_tick_ms == 36U);
+    EXPECT_TRUE(EscSoftUartStm32_ReadByte(&item) == 1U);
+    EXPECT_TRUE(item.byte == 0x22U);
+    EXPECT_TRUE(item.received_tick_ms == 37U);
+    return 0;
+}
+
 static int stop_low_fault_drops_ring_and_recovers(void)
 {
     EscSoftUartStm32Byte_t item;
@@ -362,6 +394,8 @@ int main(void)
                          pd15_exti_runs_before_hall_and_keeps_hall_pending);
     failures += run_test("tim5_irq_decodes_byte_without_hal_handlers",
                          tim5_irq_decodes_byte_without_hal_handlers);
+    failures += run_test("start_glitch_rearms_without_fault_or_ring_drop",
+                         start_glitch_rearms_without_fault_or_ring_drop);
     failures += run_test("stop_low_fault_drops_ring_and_recovers",
                          stop_low_fault_drops_ring_and_recovers);
     failures += run_test("late_compare_fault_is_reported",
@@ -374,6 +408,6 @@ int main(void)
         return 1;
     }
 
-    printf("test_soft_uart_irq: 6 tests passed\n");
+    printf("test_soft_uart_irq: 7 tests passed\n");
     return 0;
 }

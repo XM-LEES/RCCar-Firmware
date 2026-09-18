@@ -132,10 +132,6 @@ static void esc_soft_uart_set_fault(uint32_t fault_flags)
 {
     s_fault_flags |= fault_flags;
     s_diagnostics.fault_events++;
-    if ((fault_flags & ESC_SOFT_UART_RX_FAULT_START_GLITCH) != 0UL)
-    {
-        s_diagnostics.start_glitches++;
-    }
     if ((fault_flags & ESC_SOFT_UART_RX_FAULT_STOP_LOW) != 0UL)
     {
         s_diagnostics.stop_low_faults++;
@@ -152,6 +148,17 @@ static void esc_soft_uart_set_fault(uint32_t fault_flags)
     EscSoftUartRxCore_Init(&s_core);
     esc_soft_uart_disable_compare();
     esc_soft_uart_disable_exti();
+}
+
+static void esc_soft_uart_filter_start_glitch(void)
+{
+    s_diagnostics.start_glitches++;
+    EscSoftUartRxCore_Init(&s_core);
+    esc_soft_uart_disable_compare();
+    if (s_enabled != 0U)
+    {
+        esc_soft_uart_enable_exti();
+    }
 }
 
 ESC_SOFT_UART_INLINE void esc_soft_uart_push_byte(uint8_t byte)
@@ -181,7 +188,7 @@ static void esc_soft_uart_begin_from_current_low(void)
 
     if (esc_soft_uart_read_rx_level() != 0U)
     {
-        esc_soft_uart_set_fault(ESC_SOFT_UART_RX_FAULT_START_GLITCH);
+        esc_soft_uart_filter_start_glitch();
         return;
     }
 
@@ -197,6 +204,15 @@ ESC_SOFT_UART_INLINE void esc_soft_uart_finish_byte_or_fault(
 {
     if (result->status == ESC_SOFT_UART_RX_SAMPLE_FAULT)
     {
+        if (result->fault_flags == ESC_SOFT_UART_RX_FAULT_START_GLITCH)
+        {
+            esc_soft_uart_filter_start_glitch();
+            if (esc_soft_uart_read_rx_level() == 0U)
+            {
+                esc_soft_uart_begin_from_current_low();
+            }
+            return;
+        }
         esc_soft_uart_set_fault(result->fault_flags);
         return;
     }

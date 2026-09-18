@@ -145,6 +145,9 @@ extern volatile uint32_t g_esc_motion_telemetry_timeout_ms;
 extern volatile float g_esc_motion_stopped_speed_threshold_mps;
 extern volatile uint32_t g_esc_motion_stopped_min_samples;
 extern volatile uint32_t g_esc_motion_stopped_min_coverage_ms;
+extern volatile uint32_t g_esc_speed_calibration_valid;
+extern volatile float g_esc_low_gear_wheel_rpm_per_raw;
+extern volatile uint32_t g_esc_speed_fresh_timeout_ms;
 extern volatile uint32_t g_mode2_drive_calibration_valid;
 extern volatile uint32_t g_mode2_drive_brake_calibration_valid;
 extern volatile uint32_t g_mode2_drive_first_strike_calibration_valid;
@@ -495,6 +498,12 @@ static void reset_tunables_to_defaults(void)
     g_esc_motion_stopped_speed_threshold_mps = APP_ESC_MOTION_STOPPED_THRESHOLD_MPS_DEFAULT;
     g_esc_motion_stopped_min_samples = APP_ESC_MOTION_STOPPED_MIN_SAMPLES_DEFAULT;
     g_esc_motion_stopped_min_coverage_ms = APP_ESC_MOTION_STOPPED_MIN_COVERAGE_MS_DEFAULT;
+    g_esc_speed_calibration_valid =
+        APP_ESC_SPEED_CALIBRATION_VALID_DEFAULT;
+    g_esc_low_gear_wheel_rpm_per_raw =
+        APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT;
+    g_esc_speed_fresh_timeout_ms =
+        APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT;
     g_mode2_drive_calibration_valid = APP_MODE2_DRIVE_CALIBRATION_VALID_DEFAULT;
     g_mode2_drive_brake_calibration_valid = APP_MODE2_DRIVE_BRAKE_CALIBRATION_VALID_DEFAULT;
     g_mode2_drive_first_strike_calibration_valid =
@@ -1371,18 +1380,19 @@ static int test_data_task_reports_unknown_direction_as_positive_esc_magnitude(vo
     reset_fixture();
     enable_valid_esc_configs();
     run_control_at(1000U);
-    set_esc_sample(1U, 1U, 1020U, 1000U, 1U);
+    set_esc_sample(1U, 1U, 1020U, 3000U, 1U);
     run_control_at(1020U);
 
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.esc_uplink_speed_valid != 0U);
     EXPECT_TRUE(snapshot.esc_direction_known == 0U);
     EXPECT_TRUE(snapshot.signed_speed_valid == 0U);
-    EXPECT_TRUE(snapshot.esc_uplink_speed_mps > 0.99f);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_mps > 0.509f);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_mps < 0.511f);
 
     run_data_task_once(1020U);
     status_bits = read_u32_be_from_frame(17U);
-    EXPECT_EQ_I32(read_i16_be_from_frame(7U), 1000);
+    EXPECT_EQ_I32(read_i16_be_from_frame(7U), 509);
     EXPECT_EQ_I32(read_i16_be_from_frame(11U), 0);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) != 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_FE32_FRESH) != 0U);
@@ -1425,36 +1435,90 @@ static int test_data_task_reports_known_reverse_as_negative_esc_speed(void)
     run_control_at(1160U);
     EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
 
-    set_esc_sample(1U, 9U, 1180U, 1000U, 1U);
+    set_esc_sample(1U, 9U, 1180U, 3000U, 1U);
     run_control_at(1180U);
     run_data_task_once(1180U);
     status_bits = read_u32_be_from_frame(17U);
-    EXPECT_EQ_I32(read_i16_be_from_frame(7U), -1000);
+    EXPECT_EQ_I32(read_i16_be_from_frame(7U), -509);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) != 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_VEHICLE_DIRECTION_KNOWN) != 0U);
 
     return 0;
 }
 
-static int test_data_task_exposes_raw_esc_frame_when_speed_config_invalid(void)
+static int test_uplink_speed_uses_low_gear_raw_calibration_without_motion_config(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+    uint32_t status_bits;
+
+    reset_fixture();
+    set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_valid != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.esc_motion_config_valid == 0U);
+    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid == 0U);
+    EXPECT_TRUE(snapshot.orin_auto_enabled == 0U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+
+    run_data_task_once(1000U);
+
+    status_bits = read_u32_be_from_frame(17U);
+    EXPECT_EQ_I32(read_i16_be_from_frame(7U), 509);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_FE32_FRESH) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_RPM_RAW_VALID) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_CALIBRATION_VALID) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_VEHICLE_DIRECTION_KNOWN) == 0U);
+
+    return 0;
+}
+
+static int test_uplink_speed_rejects_stale_or_invalid_rpm(void)
 {
     uint32_t status_bits;
 
     reset_fixture();
-    s_esc_diagnostics.rx_error_count = 2U;
-    s_esc_diagnostics.last_rx_error_flags = 0x00000002UL;
-    set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
+    set_esc_sample(1U, 1U, 1000U, 3000U, 0U);
     run_control_at(1000U);
     run_data_task_once(1000U);
-
     status_bits = read_u32_be_from_frame(17U);
     EXPECT_EQ_I32(read_i16_be_from_frame(7U), 0);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) == 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_FE32_FRESH) != 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_RPM_RAW_VALID) != 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_CALIBRATION_VALID) == 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_VEHICLE_DIRECTION_KNOWN) == 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SOFT_UART_RX_ERROR) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_RPM_RAW_VALID) == 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_CALIBRATION_VALID) != 0U);
+
+    reset_fixture();
+    set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
+    g_esc_speed_fresh_timeout_ms = 500U;
+    run_control_at(1300U);
+    run_data_task_once(1300U);
+    status_bits = read_u32_be_from_frame(17U);
+    EXPECT_EQ_I32(read_i16_be_from_frame(7U), 0);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) == 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_FE32_FRESH) == 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_RPM_RAW_VALID) == 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_CALIBRATION_VALID) != 0U);
+
+    return 0;
+}
+
+static int test_uplink_speed_does_not_authorize_auto_propulsion(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+
+    reset_fixture();
+    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
+    run_control_at(1000U);
+
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_valid != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.esc_motion_config_valid == 0U);
+    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid == 0U);
+    EXPECT_TRUE(snapshot.signed_speed_valid == 0U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
 
     return 0;
 }
@@ -1813,7 +1877,15 @@ int main(void)
     {
         return 1;
     }
-    if (test_data_task_exposes_raw_esc_frame_when_speed_config_invalid() != 0)
+    if (test_uplink_speed_uses_low_gear_raw_calibration_without_motion_config() != 0)
+    {
+        return 1;
+    }
+    if (test_uplink_speed_rejects_stale_or_invalid_rpm() != 0)
+    {
+        return 1;
+    }
+    if (test_uplink_speed_does_not_authorize_auto_propulsion() != 0)
     {
         return 1;
     }

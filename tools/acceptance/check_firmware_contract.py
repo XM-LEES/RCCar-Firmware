@@ -278,6 +278,20 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "diagnostics.esc_feedback_direction",
         "s_vehicle_direction_known",
     ]), "bit6 reports ESC speed magnitude while bit23 separately reports known vehicle direction")
+    add(results, "esc_uplink_low_gear_calibration", all(needle in vehicle_config_text for needle in [
+        "#define APP_ESC_SPEED_CALIBRATION_VALID_DEFAULT       1U",
+        "#define APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT 0.14115f",
+        "#define APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT      250U",
+    ]) and all(needle in text for needle in [
+        "g_esc_low_gear_wheel_rpm_per_raw",
+        "servo_basic_compute_uplink_speed_magnitude",
+        "servo_basic_esc_fe32_is_fresh(now_ms) == 0U",
+        "get_orin_ackermann_wheel_radius_mm()",
+        "wheel_axle_rpm = (float)s_esc_latest_raw_sample.rpm_raw *",
+        "wheel_circumference_m = 2.0f * SERVO_BASIC_PI_F *",
+        "diagnostics.esc_speed_calibration_valid =",
+        "servo_basic_uplink_speed_calibration_is_valid()",
+    ]), "uplink speed uses low-gear raw-rpm calibration and the existing vehicle wheel radius, independent of ESC motion gate config")
     add(results, "control_path_uses_compact_receiver_health", all(needle in text for needle in [
         "EscTelemetryReceiverHealth_t s_esc_receiver_health",
         "EscTelemetry_GetReceiverHealth(&s_esc_receiver_health)",
@@ -384,6 +398,9 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ESC_SPEED_LIMIT_MMPS                12000U",
         "#define APP_ESC_SPEED_LIMIT_RELEASE_MMPS        10500U",
         "#define APP_ESC_SPEED_LIMIT_CONFIRM_SAMPLES         3U",
+        "#define APP_ESC_SPEED_CALIBRATION_VALID_DEFAULT       1U",
+        "#define APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT 0.14115f",
+        "#define APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT      250U",
         "#define APP_ESC_TRACKING_BRAKE_VALID_DEFAULT        0U",
         "#define APP_ESC_TRACKING_BRAKE_KP_DEFAULT        0.0f",
         "#define APP_ESC_TRACKING_BRAKE_MAX_DEFAULT       0.0f",
@@ -616,6 +633,15 @@ def check_uart(root: Path) -> list[Check]:
         "EscSoftUartStm32_HandleTim5Irq",
         "void TIM5_IRQHandler(void)",
     ]), "PD15 software UART uses TIM5 priority-3 direct sampling")
+    add(results, "esc_rx_start_glitch_nonfatal", all(needle in soft_uart_text for needle in [
+        "static void esc_soft_uart_filter_start_glitch(void)",
+        "s_diagnostics.start_glitches++",
+        "esc_soft_uart_enable_exti()",
+        "result->fault_flags == ESC_SOFT_UART_RX_FAULT_START_GLITCH",
+    ]) and not matches(
+        soft_uart_text,
+        r"esc_soft_uart_set_fault\s*\(\s*ESC_SOFT_UART_RX_FAULT_START_GLITCH\s*\)",
+    ), "false start glitches are counted and rearmed without setting the fatal fault mask")
     add(results, "esc_rx_task_feeds_parser", all(needle in telemetry_stm32_text for needle in [
         "EscSoftUartStm32_TakeFaults",
         "EscTelemetry_RecordRxError",

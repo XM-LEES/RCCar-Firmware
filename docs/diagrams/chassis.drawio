@@ -178,7 +178,7 @@
         <mxCell id="adc" value="&lt;b&gt;板载电压采集&lt;/b&gt;&lt;br&gt;PC2 / ADC1_IN12&lt;br&gt;raw / 4095 × 3.3 × 11 V&lt;br&gt;与 ESC 电压分别记录" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="415" y="775" width="325" height="130" />
         </mxCell>
-        <mxCell id="estimate" value="&lt;b&gt;运动估计：主速度来源&lt;/b&gt;&lt;br&gt;|v| = eRPM × C&lt;br&gt;÷ (60 × p × G档 × G轮)&lt;br&gt;按最终动作历史估计方向&lt;br&gt;无效速度不替换为有效零值" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
+        <mxCell id="estimate" value="&lt;b&gt;运动估计：主速度来源&lt;/b&gt;&lt;br&gt;轮轴RPM = rpm_raw × 0.14115&lt;br&gt;|v| = 轮轴RPM × 2πR / 60&lt;br&gt;按最终动作历史估计方向&lt;br&gt;无效速度不替换为有效零值" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="815" y="785" width="320" height="180" />
         </mxCell>
         <mxCell id="escrx" value="&lt;b&gt;ESC 采集（PD15 待实板验证）&lt;/b&gt;&lt;br&gt;编程口 → PD15 / EXTI + TIM5&lt;br&gt;115200 / 8N1 位中心采样&lt;br&gt;FE32 · CRC16 / MODBUS&lt;br&gt;样本标识 / 时间 / 有效性" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=17;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
@@ -193,13 +193,13 @@
         <mxCell id="status" value="&lt;b&gt;状态回传&lt;/b&gt;&lt;br&gt;ESC 来源的速度 / 应用角&lt;br&gt;Hall 速度 / ADC 电池电压&lt;br&gt;RC、限幅、故障等原有标志" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="815" y="1135" width="320" height="135" />
         </mxCell>
-        <mxCell id="motor" value="&lt;b&gt;电机&lt;/b&gt;&lt;br&gt;机械 RPM = eRPM / 极对数 p" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="motor" value="&lt;b&gt;电机 / ESC遥测&lt;/b&gt;&lt;br&gt;FE32 rpm_raw 幅值" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1640" y="765" width="320" height="90" />
         </mxCell>
-        <mxCell id="gearbox" value="&lt;b&gt;两档减速波箱 · G档&lt;/b&gt;&lt;br&gt;所选档位决定传动比&lt;br&gt;自动换档不在功能范围内" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="gearbox" value="&lt;b&gt;固定低档&lt;/b&gt;&lt;br&gt;实测轮轴系数 0.14115&lt;br&gt;当前运行不切档" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1640" y="940" width="320" height="95" />
         </mxCell>
-        <mxCell id="wheel_ratio" value="&lt;b&gt;后续传动 / 轮端减速 · G轮&lt;/b&gt;&lt;br&gt;波箱输出 RPM / 车轮 RPM" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="wheel_ratio" value="&lt;b&gt;轮轴RPM&lt;/b&gt;&lt;br&gt;传动标定终点，不含轮胎" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1640" y="1115" width="320" height="90" />
         </mxCell>
         <mxCell id="wheels" value="&lt;b&gt;车轮与底盘运动&lt;/b&gt;&lt;br&gt;轮 RPM × 周长 C / 60&lt;br&gt;传动模型不消除打滑误差" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
@@ -388,7 +388,7 @@
         <mxCell id="telemetry" value="&lt;b&gt;ESC 遥测（未验证）&lt;/b&gt;&lt;br&gt;校验 / 字段有效性&lt;br&gt;接收时刻 / 样本标识&lt;br&gt;eRPM 只有幅值" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1555" y="420" width="225" height="140" />
         </mxCell>
-        <mxCell id="conversion" value="&lt;b&gt;传动换算&lt;/b&gt;&lt;br&gt;|v| = eRPM × C&lt;br&gt;÷ (60 × p × G档 × G轮)&lt;br&gt;参数与反馈均须有效" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
+        <mxCell id="conversion" value="&lt;b&gt;传动换算&lt;/b&gt;&lt;br&gt;轮轴RPM = rpm_raw × 0.14115&lt;br&gt;|v| = 轮轴RPM × 2πR / 60&lt;br&gt;低档实测系数与轮胎半径须有效" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1210" y="420" width="280" height="140" />
         </mxCell>
         <mxCell id="fresh" value="&lt;b&gt;反馈使用约束&lt;/b&gt;&lt;br&gt;幅值 + 动作方向 → v反馈&lt;br&gt;新样本更新，不重复积分&lt;br&gt;无效反馈禁止自动推进" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#ecfdf5;strokeColor=#0f766e;spacing=8;" vertex="1" parent="1">
