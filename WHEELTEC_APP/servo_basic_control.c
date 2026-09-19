@@ -280,6 +280,14 @@ typedef struct
 	float release_error_mps;
 } esc_tracking_brake_config_t;
 
+typedef enum
+{
+	RC_HALL_MODE2_TRACKING = 0,
+	RC_HALL_MODE2_BRAKING,
+	RC_HALL_MODE2_BRAKE_STOPPED,
+	RC_HALL_MODE2_OPPOSITE_ARMED
+} rc_hall_mode2_phase_t;
+
 typedef struct
 {
 	uint8_t valid;
@@ -352,6 +360,9 @@ static uint8_t s_esc_latest_raw_sample_valid = 0U;
 static EscTelemetryReceiverHealth_t s_esc_receiver_health;
 static uint8_t s_vehicle_direction_known = 0U;
 static int8_t s_vehicle_direction = 0;
+static int8_t s_rc_hall_direction = 0;
+static int8_t s_rc_hall_pending_direction = 0;
+static rc_hall_mode2_phase_t s_rc_hall_mode2_phase = RC_HALL_MODE2_TRACKING;
 static uint8_t s_auto_history_boundary_valid = 0U;
 static uint32_t s_auto_history_boundary_ms = 0U;
 
@@ -932,6 +943,99 @@ static int8_t get_rc_throttle_direction(void)
 	return 0;
 }
 
+static void rc_hall_mode2_reset(int8_t direction)
+{
+	s_rc_hall_direction = get_vx_direction((float)direction);
+	s_rc_hall_pending_direction = 0;
+	s_rc_hall_mode2_phase = RC_HALL_MODE2_TRACKING;
+}
+
+static int8_t rc_hall_mode2_update(void)
+{
+	const int8_t requested_direction = get_rc_throttle_direction();
+
+	if (s_rc_hall_direction == 0)
+	{
+		if (requested_direction != 0)
+		{
+			s_rc_hall_direction = requested_direction;
+		}
+		return requested_direction;
+	}
+
+	switch (s_rc_hall_mode2_phase)
+	{
+	case RC_HALL_MODE2_BRAKING:
+		if (requested_direction == s_rc_hall_direction)
+		{
+			rc_hall_mode2_reset(s_rc_hall_direction);
+			return s_rc_hall_direction;
+		}
+		if (requested_direction == 0)
+		{
+			/* Releasing the brake before a confirmed stop cannot unlock reversal. */
+			rc_hall_mode2_reset(s_rc_hall_direction);
+			return 0;
+		}
+		if (requested_direction == s_rc_hall_pending_direction &&
+			HallSpeed_GetState().stationary_confirmed != 0U)
+		{
+			s_rc_hall_mode2_phase = RC_HALL_MODE2_BRAKE_STOPPED;
+		}
+		return 0;
+
+	case RC_HALL_MODE2_BRAKE_STOPPED:
+		if (requested_direction == s_rc_hall_direction)
+		{
+			rc_hall_mode2_reset(s_rc_hall_direction);
+			return s_rc_hall_direction;
+		}
+		if (HallSpeed_GetState().stationary_confirmed == 0U)
+		{
+			/* Any renewed wheel motion cancels the completed-brake evidence. */
+			rc_hall_mode2_reset(s_rc_hall_direction);
+			return 0;
+		}
+		if (requested_direction == 0)
+		{
+			s_rc_hall_mode2_phase = RC_HALL_MODE2_OPPOSITE_ARMED;
+		}
+		return 0;
+
+	case RC_HALL_MODE2_OPPOSITE_ARMED:
+		if (requested_direction == s_rc_hall_pending_direction)
+		{
+			if (HallSpeed_GetState().stationary_confirmed == 0U)
+			{
+				rc_hall_mode2_reset(s_rc_hall_direction);
+				return 0;
+			}
+			rc_hall_mode2_reset(requested_direction);
+			return requested_direction;
+		}
+		if (requested_direction == s_rc_hall_direction)
+		{
+			rc_hall_mode2_reset(s_rc_hall_direction);
+			return s_rc_hall_direction;
+		}
+		return 0;
+
+	case RC_HALL_MODE2_TRACKING:
+	default:
+		if (requested_direction == 0)
+		{
+			return 0;
+		}
+		if (requested_direction == s_rc_hall_direction)
+		{
+			return s_rc_hall_direction;
+		}
+		s_rc_hall_pending_direction = requested_direction;
+		s_rc_hall_mode2_phase = RC_HALL_MODE2_BRAKING;
+		return 0;
+	}
+}
+
 static uint32_t speed_mps_abs_to_mmps(float speed_mps)
 {
 	float abs_speed_mps = fabsf(speed_mps);
@@ -1443,6 +1547,14 @@ static uint8_t rc_passthrough_is_available(void)
 static void set_rc_override_state(
 	uint8_t override_active, uint8_t guard_active, uint8_t release_hold_required)
 {
+	const uint8_t was_active = g_rc_override_active;
+	const uint8_t was_guard_active = g_rc_guard_active;
+	int8_t initial_hall_direction = 0;
+
+	if (was_active == 0U && override_active != 0U && s_vehicle_direction_known != 0U)
+	{
+		initial_hall_direction = s_vehicle_direction;
+	}
 	g_rc_override_active = (override_active != 0U) ? 1U : 0U;
 	g_rc_guard_active = (guard_active != 0U) ? 1U : 0U;
 	g_rc_override_release_hold_required =
@@ -1453,9 +1565,20 @@ static void set_rc_override_state(
 	g_state.emergency_stop = g_rc_guard_active;
 	g_rc_override_release_start_ms = 0U;
 	g_rc_override_enter_count = 0U;
-	if (g_rc_override_active != 0U)
+	if (was_active == 0U && g_rc_override_active != 0U)
 	{
-		HallSpeed_SetCommandDirection(get_rc_throttle_direction());
+		rc_hall_mode2_reset(initial_hall_direction);
+	}
+	else if (was_active != 0U && g_rc_override_active == 0U)
+	{
+		rc_hall_mode2_reset(0);
+		HallSpeed_SetCommandDirection(0);
+	}
+	else if (was_guard_active != g_rc_guard_active)
+	{
+		/* A guard transition invalidates any partial brake/neutral unlock history. */
+		rc_hall_mode2_reset(s_rc_hall_direction);
+		HallSpeed_SetCommandDirection(0);
 	}
 }
 
@@ -1938,6 +2061,7 @@ void ServoBasic_Init(void)
 	g_rc_throttle_present = 0U;
 	g_rc_steering_present = 0U;
 	g_rc_guard_present = 0U;
+	rc_hall_mode2_reset(0);
 	rc_debounce_reset();
 	g_orin_state.esc_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_orin_state.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
@@ -2975,7 +3099,8 @@ void ServoBasic_ProcessControl(void)
 	orin_active = orin_pwm_is_active();
 	if (g_rc_override_active != 0U)
 	{
-		HallSpeed_SetCommandDirection(get_rc_throttle_direction());
+		HallSpeed_SetCommandDirection((g_state.emergency_stop != 0U) ?
+			0 : rc_hall_mode2_update());
 		servo_basic_invalidate_auto_history(now_ms);
 		servo_basic_clear_vehicle_direction();
 		speed_pi_reset_controller();

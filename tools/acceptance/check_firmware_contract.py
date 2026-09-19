@@ -212,12 +212,17 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "HallSpeed_GetSignedSpeedMps",
         "HallSpeed_SetCommandDirection(command_direction)",
     ]), "automatic Ackermann speed, PI, and gate consume ESC samples rather than Hall speed")
-    add(results, "rc_hall_direction_source", all(needle in text for needle in [
+    add(results, "rc_hall_mode2_direction_sequence", all(needle in text for needle in [
         "static int8_t get_rc_throttle_direction(void)",
         "g_rc_throttle_current",
         "center_us + neutral_hold_us",
-        "HallSpeed_SetCommandDirection(get_rc_throttle_direction())",
-    ]), "RC passthrough throttle sets Hall direction")
+        "RC_HALL_MODE2_BRAKING",
+        "RC_HALL_MODE2_BRAKE_STOPPED",
+        "RC_HALL_MODE2_OPPOSITE_ARMED",
+        "HallSpeed_GetState().stationary_confirmed",
+        "rc_hall_mode2_update()",
+    ]) and "HallSpeed_SetCommandDirection(get_rc_throttle_direction())" not in text,
+        "RC Hall direction changes only after brake-stop-neutral-opposite sequence")
     add(results, "hall_speed_telemetry_uses_coherent_snapshot", all(needle in hall_header_text for needle in [
         "HallSpeed_GetSnapshotSpeedMps(const hall_speed_state_t *snapshot",
     ]) and all(needle in data_text for needle in [

@@ -787,6 +787,240 @@ static int test_nonzero_serial_during_rc_releases_to_zero_not_cached_motion(void
     return 0;
 }
 
+static int test_rc_hall_direction_forward_brake_neutral_reverse(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_IsRcOverrideActive() == 1U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    g_hall_speed_state.stationary_confirmed = 0U;
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1400U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    run_control_at(1060U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1080U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1100U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1400U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
+
+    return 0;
+}
+
+static int test_rc_hall_direction_reverse_brake_neutral_forward(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_IsRcOverrideActive() == 1U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
+
+    g_hall_speed_state.stationary_confirmed = 0U;
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1600U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1060U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1080U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1600U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    return 0;
+}
+
+static int test_rc_hall_direction_cancel_brake_keeps_current_direction(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    g_hall_speed_state.stationary_confirmed = 0U;
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    return 0;
+}
+
+static int test_rc_hall_direction_requires_stop_before_neutral_unlock(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    g_hall_speed_state.stationary_confirmed = 0U;
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1060U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1080U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    run_control_at(1100U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1120U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1140U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
+
+    return 0;
+}
+
+static int test_rc_hall_direction_resets_when_rc_exits(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_IsRcOverrideActive() == 1U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    set_rc(0U, 0U, 0U);
+    run_control_at(1020U);
+    EXPECT_TRUE(ServoBasic_IsRcOverrideActive() == 0U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1040U);
+    EXPECT_TRUE(ServoBasic_IsRcOverrideActive() == 1U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
+
+    return 0;
+}
+
+static int test_rc_hall_direction_renewed_motion_revokes_brake_stop(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 0U;
+    run_control_at(1060U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1080U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1100U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    return 0;
+}
+
+static int test_rc_guard_clears_partial_hall_reversal_sequence(void)
+{
+    reset_fixture();
+    g_rc_debounce_enable = 0U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+    g_rc_guard_enable = 1U;
+    g_rc_guard_active_high = 1U;
+
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1000U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1020U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    g_hall_speed_state.stationary_confirmed = 1U;
+    run_control_at(1040U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    s_rc.guard_us = 2000U;
+    s_rc.guard_active = 1U;
+    run_control_at(1060U);
+    EXPECT_TRUE(ServoBasic_IsRcEmergencyActive() == 1U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1080U);
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    run_control_at(1100U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    s_rc.guard_us = 0U;
+    s_rc.guard_active = 0U;
+    run_control_at(1120U);
+    EXPECT_TRUE(ServoBasic_IsRcEmergencyActive() == 0U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    run_control_at(1140U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    return 0;
+}
+
 static int test_steering_direction_limit_and_rate_limit(void)
 {
     servo_basic_diagnostics_t diagnostics;
@@ -1648,6 +1882,7 @@ static int test_control_snapshot_published_on_rc_guard_early_return(void)
     EXPECT_TRUE(after.state.emergency_stop != 0U);
     EXPECT_EQ_U16(after.state.esc_pulse_us, APP_ORIN_ESC_CENTER_US);
     EXPECT_EQ_U16(after.state.servo_pulse_us, APP_ORIN_SERVO_CENTER_US);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
 
     run_data_task_once(1000U);
     EXPECT_TRUE((s_base_telemetry_frame[1] & TELEMETRY_FLAG_RC_OVERRIDE_ACTIVE) != 0U);
@@ -1810,6 +2045,34 @@ int main(void)
         return 1;
     }
     if (test_nonzero_serial_during_rc_releases_to_zero_not_cached_motion() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_forward_brake_neutral_reverse() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_reverse_brake_neutral_forward() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_cancel_brake_keeps_current_direction() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_requires_stop_before_neutral_unlock() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_resets_when_rc_exits() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_hall_direction_renewed_motion_revokes_brake_stop() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_guard_clears_partial_hall_reversal_sequence() != 0)
     {
         return 1;
     }
