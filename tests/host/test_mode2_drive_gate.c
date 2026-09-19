@@ -609,6 +609,52 @@ static int test_reversal_timeout_fault_and_neutral_recovery(void)
     return 0;
 }
 
+static int test_stop_then_resume_original_direction_is_permitted(void)
+{
+    Mode2DriveGateConfig_t config = valid_config();
+    Mode2DriveGate_t gate;
+    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_NEUTRAL);
+    Mode2DriveGateOutput_t output;
+
+    input.stop_requested = 1U;
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
+
+    output = eval(&gate, &input, moving_observation(), 10U);
+    commit_output(&gate, &output, 10U);
+    output = eval(&gate, &input, moving_observation(), 70U);
+    commit_output(&gate, &output, 70U);
+    output = eval(&gate, &input, stopped_observation(70U), 70U);
+    commit_output(&gate, &output, 70U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_ARMED);
+
+    input = request(MODE2_DRIVE_TARGET_FORWARD);
+    output = eval(&gate, &input, stopped_observation(70U), 109U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
+    output = eval(&gate, &input, stopped_observation(70U), 110U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
+    commit_output(&gate, &output, 110U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
+
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
+    input = request(MODE2_DRIVE_TARGET_NEUTRAL);
+    input.stop_requested = 1U;
+    output = eval(&gate, &input, moving_observation(), 10U);
+    commit_output(&gate, &output, 10U);
+    output = eval(&gate, &input, moving_observation(), 60U);
+    commit_output(&gate, &output, 60U);
+    output = eval(&gate, &input, stopped_observation(60U), 60U);
+    commit_output(&gate, &output, 60U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_ARMED);
+
+    input = request(MODE2_DRIVE_TARGET_REVERSE);
+    output = eval(&gate, &input, stopped_observation(60U), 100U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
+
+    return 0;
+}
+
 int main(void)
 {
     if (test_config_authority_motion_and_unknown_safe() != 0)
@@ -656,6 +702,10 @@ int main(void)
         return 1;
     }
     if (test_reversal_timeout_fault_and_neutral_recovery() != 0)
+    {
+        return 1;
+    }
+    if (test_stop_then_resume_original_direction_is_permitted() != 0)
     {
         return 1;
     }

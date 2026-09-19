@@ -764,6 +764,17 @@ static Mode2DriveGateOutput_t mode2_evaluate_known_target(
                                            now_tick_ms);
     }
 
+    /* After a full stop, the ESC may be armed for the opposite direction.
+     * A command that resumes the direction from before the brake is still
+     * unambiguous, but it must observe the same neutral dwell first. */
+    if (gate->state == mode2_armed_state(opposite_direction))
+    {
+        return mode2_evaluate_armed_target(gate,
+                                           target_direction,
+                                           observation,
+                                           now_tick_ms);
+    }
+
     if (gate->state == mode2_maybe_state(target_direction))
     {
         return mode2_neutral_output(MODE2_DRIVE_REASON_FIRST_STRIKE_UNCERTAIN,

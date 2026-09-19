@@ -1136,6 +1136,7 @@ static int test_missing_esc_or_mode2_parameters_keep_propulsion_off(void)
     servo_basic_diagnostics_t diagnostics;
 
     reset_fixture();
+    g_mode2_drive_calibration_valid = 0U;
     set_esc_sample(1U, 1U, 1000U, 0U, 1U);
     s_fake_tick_ms = 1000U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
@@ -1214,6 +1215,42 @@ static int test_feedforward_table_and_pi_microsecond_parameters(void)
     EXPECT_TRUE(g_speed_pi_kp == 120.0f);
     EXPECT_TRUE(g_speed_pi_ki == 40.0f);
     EXPECT_TRUE(g_speed_pi_trim_limit_us == 60U);
+
+    return 0;
+}
+
+static int test_operational_defaults_authorize_speed_control(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+
+    reset_fixture();
+    EXPECT_TRUE(g_orin_vx_forward_cap_mmps == 10000U);
+    EXPECT_TRUE(g_orin_vx_reverse_cap_mmps == 3000U);
+
+    set_esc_sample(1U, 1U, 1020U, 0U, 1U);
+    run_control_at(1020U);
+    set_esc_sample(1U, 2U, 1120U, 0U, 1U);
+    run_control_at(1120U);
+    set_esc_sample(1U, 3U, 1220U, 0U, 1U);
+    run_control_at(1220U);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid != 0U);
+
+    s_fake_tick_ms = 1240U;
+    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    run_control_at(1240U);
+    run_control_at(1260U);
+    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.auto_propulsion_authorized != 0U);
+
+    set_esc_sample(1U, 4U, 1280U, 1000U, 1U);
+    run_control_at(1280U);
+    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.closed_loop_active != 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known != 0U);
 
     return 0;
 }
@@ -1812,6 +1849,7 @@ static int test_uplink_speed_uses_low_gear_raw_calibration_without_control_confi
     uint32_t status_bits;
 
     reset_fixture();
+    g_mode2_drive_calibration_valid = 0U;
     set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
     run_control_at(1000U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
@@ -1870,6 +1908,7 @@ static int test_uplink_speed_does_not_authorize_auto_propulsion(void)
     uint32_t status_bits;
 
     reset_fixture();
+    g_mode2_drive_calibration_valid = 0U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
     set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
     run_control_at(1000U);
@@ -2215,6 +2254,10 @@ int main(void)
         return 1;
     }
     if (test_feedforward_table_and_pi_microsecond_parameters() != 0)
+    {
+        return 1;
+    }
+    if (test_operational_defaults_authorize_speed_control() != 0)
     {
         return 1;
     }
