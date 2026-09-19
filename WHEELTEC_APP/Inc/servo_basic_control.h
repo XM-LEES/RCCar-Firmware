@@ -60,6 +60,17 @@ typedef struct
 	uint8_t vehicle_direction_known;
 	uint8_t esc_soft_uart_rx_error;
 	uint8_t mode2_config_valid;
+	uint8_t auto_propulsion_authorized;
+	uint8_t closed_loop_active;
+	uint8_t tracking_brake_active;
+	uint8_t mode2_opposite_armed;
+	uint8_t mode2_state_ambiguous;
+	uint8_t mode2_control_inhibited;
+	uint8_t mode2_state;
+	uint8_t mode2_reason;
+	uint8_t longitudinal_intent;
+	uint8_t longitudinal_reason;
+	float longitudinal_slewed_target_mps;
 	uint8_t esc_sample_stale;
 	uint8_t esc_rx_invalidated;
 	int8_t esc_feedback_direction;

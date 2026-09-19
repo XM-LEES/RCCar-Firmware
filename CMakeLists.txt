@@ -82,6 +82,19 @@ set_target_properties(mode2_drive_gate PROPERTIES
 )
 rccar_enable_strict_c_warnings(mode2_drive_gate)
 
+add_library(longitudinal_controller STATIC
+    WHEELTEC_APP/longitudinal_controller.c
+)
+target_include_directories(longitudinal_controller
+    PUBLIC
+        WHEELTEC_APP/Inc
+)
+set_target_properties(longitudinal_controller PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+)
+rccar_enable_strict_c_warnings(longitudinal_controller)
+
 if(RCCAR_BUILD_HOST_TESTS)
     enable_testing()
 
@@ -170,6 +183,21 @@ if(RCCAR_BUILD_HOST_TESTS)
     add_test(NAME mode2_drive_gate_unit
              COMMAND test_mode2_drive_gate)
 
+    add_executable(test_longitudinal_controller
+        tests/host/test_longitudinal_controller.c
+    )
+    target_link_libraries(test_longitudinal_controller PRIVATE
+        longitudinal_controller
+        m
+    )
+    set_target_properties(test_longitudinal_controller PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+    )
+    rccar_enable_strict_c_warnings(test_longitudinal_controller)
+    add_test(NAME longitudinal_controller_unit
+             COMMAND test_longitudinal_controller)
+
     add_executable(test_servo_basic_control
         tests/host/test_servo_basic_control.c
         WHEELTEC_APP/servo_basic_control.c
@@ -183,6 +211,7 @@ if(RCCAR_BUILD_HOST_TESTS)
     )
     target_link_libraries(test_servo_basic_control PRIVATE
         mode2_drive_gate
+        longitudinal_controller
         m
     )
     set_target_properties(test_servo_basic_control PROPERTIES
@@ -432,6 +461,7 @@ if(RCCAR_BUILD_FIRMWARE)
         WHEELTEC_APP/esc_telemetry_stm32.c
         WHEELTEC_APP/esc_motion_estimator.c
         WHEELTEC_APP/mode2_drive_gate.c
+        WHEELTEC_APP/longitudinal_controller.c
     )
 
     add_executable(WHEELTEC.elf ${RCCAR_FIRMWARE_SOURCES})
@@ -476,6 +506,9 @@ if(RCCAR_BUILD_FIRMWARE)
         $<$<BOOL:${RCCAR_BUILD_FIRMWARE}>:${RCCAR_MCU_FLAGS}>
     )
     target_compile_options(mode2_drive_gate PRIVATE
+        $<$<BOOL:${RCCAR_BUILD_FIRMWARE}>:${RCCAR_MCU_FLAGS}>
+    )
+    target_compile_options(longitudinal_controller PRIVATE
         $<$<BOOL:${RCCAR_BUILD_FIRMWARE}>:${RCCAR_MCU_FLAGS}>
     )
     target_link_options(WHEELTEC.elf PRIVATE

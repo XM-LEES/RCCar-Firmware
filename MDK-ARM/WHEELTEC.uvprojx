@@ -1239,6 +1239,11 @@
               <FileType>1</FileType>
               <FilePath>..\WHEELTEC_APP\mode2_drive_gate.c</FilePath>
             </File>
+            <File>
+              <FileName>longitudinal_controller.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\WHEELTEC_APP\longitudinal_controller.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

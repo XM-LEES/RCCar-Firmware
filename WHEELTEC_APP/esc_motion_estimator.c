@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define ESC_MOTION_TICK_HALF_RANGE 0x80000000UL
+#define ESC_MOTION_TWO_PI 6.28318530717958647692
 
 static uint8_t esc_motion_float_is_positive_finite(float value)
 {
@@ -61,23 +62,26 @@ static void esc_motion_clear_sample_and_stop(EscMotionEstimator_t *estimator)
     esc_motion_clear_stop(estimator);
 }
 
-static uint8_t esc_motion_config_equals(const EscMotionEstimatorConfig_t *left,
-                                        const EscMotionEstimatorConfig_t *right)
+static uint8_t esc_motion_magnitude_config_equals(const EscMotionEstimatorConfig_t *left,
+                                                  const EscMotionEstimatorConfig_t *right)
 {
     return (left->calibration_valid == right->calibration_valid &&
-            left->pole_pairs_valid == right->pole_pairs_valid &&
-            left->gear_ratio_valid == right->gear_ratio_valid &&
-            left->wheel_ratio_valid == right->wheel_ratio_valid &&
-            left->wheel_circumference_valid == right->wheel_circumference_valid &&
+            left->magnitude_config_valid == right->magnitude_config_valid &&
+            left->wheel_rpm_per_raw_valid == right->wheel_rpm_per_raw_valid &&
+            left->wheel_radius_valid == right->wheel_radius_valid &&
             left->telemetry_timeout_valid == right->telemetry_timeout_valid &&
+            left->wheel_rpm_per_raw == right->wheel_rpm_per_raw &&
+            left->wheel_radius_m == right->wheel_radius_m &&
+            left->telemetry_timeout_ms == right->telemetry_timeout_ms) ? 1U : 0U;
+}
+
+static uint8_t esc_motion_stop_config_equals(const EscMotionEstimatorConfig_t *left,
+                                             const EscMotionEstimatorConfig_t *right)
+{
+    return (left->stop_config_valid == right->stop_config_valid &&
             left->stopped_threshold_valid == right->stopped_threshold_valid &&
             left->stopped_samples_valid == right->stopped_samples_valid &&
             left->stopped_coverage_valid == right->stopped_coverage_valid &&
-            left->motor_pole_pairs == right->motor_pole_pairs &&
-            left->gear_ratio == right->gear_ratio &&
-            left->wheel_ratio == right->wheel_ratio &&
-            left->wheel_circumference_m == right->wheel_circumference_m &&
-            left->telemetry_timeout_ms == right->telemetry_timeout_ms &&
             left->stopped_speed_threshold_mps == right->stopped_speed_threshold_mps &&
             left->stopped_min_samples == right->stopped_min_samples &&
             left->stopped_min_coverage_ms == right->stopped_min_coverage_ms) ? 1U : 0U;
@@ -99,51 +103,71 @@ uint8_t EscMotionEstimator_ConfigIsValid(const EscMotionEstimatorConfig_t *confi
     }
 
     if (config->calibration_valid == 0U ||
-        config->pole_pairs_valid == 0U ||
-        config->gear_ratio_valid == 0U ||
-        config->wheel_ratio_valid == 0U ||
-        config->wheel_circumference_valid == 0U ||
+        config->magnitude_config_valid == 0U ||
+        config->wheel_rpm_per_raw_valid == 0U ||
+        config->wheel_radius_valid == 0U ||
         config->telemetry_timeout_valid == 0U ||
-        config->stopped_threshold_valid == 0U ||
-        config->stopped_samples_valid == 0U ||
-        config->stopped_coverage_valid == 0U)
-    {
-        valid = 0U;
-    }
-    else if (config->motor_pole_pairs == 0U ||
-             esc_motion_float_is_positive_finite(config->gear_ratio) == 0U ||
-             esc_motion_float_is_positive_finite(config->wheel_ratio) == 0U ||
-             esc_motion_float_is_positive_finite(config->wheel_circumference_m) == 0U ||
-             esc_motion_duration_is_valid(config->telemetry_timeout_ms) == 0U ||
-             esc_motion_float_is_positive_finite(config->stopped_speed_threshold_mps) == 0U ||
-             config->stopped_min_samples < 2U ||
-             esc_motion_duration_is_valid(config->stopped_min_coverage_ms) == 0U)
+        esc_motion_float_is_positive_finite(config->wheel_rpm_per_raw) == 0U ||
+        esc_motion_float_is_positive_finite(config->wheel_radius_m) == 0U ||
+        esc_motion_duration_is_valid(config->telemetry_timeout_ms) == 0U)
     {
         valid = 0U;
     }
     else
     {
-        const double ratio = (double)config->motor_pole_pairs *
-            (double)config->gear_ratio *
-            (double)config->wheel_ratio;
-        const double denominator = 60.0 * ratio;
-        const double meters_per_erpm =
-            (double)config->wheel_circumference_m / denominator;
+        const double meters_per_raw =
+            ((double)config->wheel_rpm_per_raw *
+             ESC_MOTION_TWO_PI *
+             (double)config->wheel_radius_m) / 60.0;
 
-        if (isfinite(ratio) == 0 ||
-            isfinite(denominator) == 0 ||
-            isfinite(meters_per_erpm) == 0 ||
-            ratio <= 0.0 ||
-            denominator <= 0.0 ||
-            denominator > (double)FLT_MAX ||
-            meters_per_erpm <= 0.0 ||
-            meters_per_erpm > (double)FLT_MAX)
+        if (isfinite(meters_per_raw) == 0 ||
+            meters_per_raw <= 0.0 ||
+            meters_per_raw > (double)FLT_MAX)
         {
             valid = 0U;
         }
     }
 
     if (valid == 0U)
+    {
+        local_reason = ESC_MOTION_REASON_CONFIG_INVALID;
+    }
+
+    if (reason != NULL)
+    {
+        *reason = local_reason;
+    }
+    return valid;
+}
+
+uint8_t EscMotionEstimator_StopConfigIsValid(const EscMotionEstimatorConfig_t *config,
+                                             EscMotionReason_t *reason)
+{
+    EscMotionReason_t local_reason = ESC_MOTION_REASON_OK;
+    uint8_t valid = 1U;
+
+    if (config == NULL)
+    {
+        if (reason != NULL)
+        {
+            *reason = ESC_MOTION_REASON_INVALID_ARGUMENT;
+        }
+        return 0U;
+    }
+
+    if (EscMotionEstimator_ConfigIsValid(config, &local_reason) == 0U ||
+        config->stop_config_valid == 0U ||
+        config->stopped_threshold_valid == 0U ||
+        config->stopped_samples_valid == 0U ||
+        config->stopped_coverage_valid == 0U ||
+        esc_motion_float_is_positive_finite(config->stopped_speed_threshold_mps) == 0U ||
+        config->stopped_min_samples < 2U ||
+        esc_motion_duration_is_valid(config->stopped_min_coverage_ms) == 0U)
+    {
+        valid = 0U;
+    }
+
+    if (valid == 0U && local_reason == ESC_MOTION_REASON_OK)
     {
         local_reason = ESC_MOTION_REASON_CONFIG_INVALID;
     }
@@ -180,7 +204,9 @@ EscMotionReason_t EscMotionEstimator_SetConfig(EscMotionEstimator_t *estimator,
 {
     EscMotionReason_t reason = ESC_MOTION_REASON_OK;
     uint8_t new_config_valid;
-    uint8_t same_valid_config;
+    uint8_t new_stop_config_valid;
+    uint8_t same_magnitude_config;
+    uint8_t same_stop_config;
 
     if (estimator == NULL || config == NULL)
     {
@@ -188,36 +214,46 @@ EscMotionReason_t EscMotionEstimator_SetConfig(EscMotionEstimator_t *estimator,
     }
 
     new_config_valid = EscMotionEstimator_ConfigIsValid(config, &reason);
-    same_valid_config = (estimator->config_valid != 0U &&
-                         new_config_valid != 0U &&
-                         esc_motion_config_equals(&estimator->config, config) != 0U) ? 1U : 0U;
+    new_stop_config_valid =
+        EscMotionEstimator_StopConfigIsValid(config, &estimator->stop_config_reason);
+    same_magnitude_config = (estimator->config_valid != 0U &&
+                             new_config_valid != 0U &&
+                             esc_motion_magnitude_config_equals(&estimator->config,
+                                                                config) != 0U) ? 1U : 0U;
+    same_stop_config = (estimator->stop_config_valid == new_stop_config_valid &&
+                        esc_motion_stop_config_equals(&estimator->config,
+                                                      config) != 0U) ? 1U : 0U;
 
     estimator->config = *config;
     estimator->config_valid = new_config_valid;
+    estimator->stop_config_valid = new_stop_config_valid;
     estimator->config_reason = reason;
-    if (same_valid_config == 0U)
+    if (same_magnitude_config == 0U)
     {
         esc_motion_clear_sample_and_stop(estimator);
+    }
+    else if (same_stop_config == 0U)
+    {
+        esc_motion_clear_stop(estimator);
     }
     return reason;
 }
 
-static uint8_t esc_motion_erpm_to_mps(const EscMotionEstimatorConfig_t *config,
-                                      uint32_t erpm,
-                                      float *speed_magnitude_mps)
+static uint8_t esc_motion_raw_rpm_to_mps(const EscMotionEstimatorConfig_t *config,
+                                         uint32_t rpm_raw,
+                                         float *speed_magnitude_mps)
 {
-    const double denominator = 60.0 *
-        (double)config->motor_pole_pairs *
-        (double)config->gear_ratio *
-        (double)config->wheel_ratio;
+    const double wheel_axle_rpm =
+        (double)rpm_raw * (double)config->wheel_rpm_per_raw;
     const double speed_mps =
-        ((double)erpm * (double)config->wheel_circumference_m) / denominator;
+        (wheel_axle_rpm * ESC_MOTION_TWO_PI *
+         (double)config->wheel_radius_m) / 60.0;
     float local_speed_mps;
 
     if (speed_magnitude_mps == NULL ||
-        isfinite(denominator) == 0 ||
+        isfinite(wheel_axle_rpm) == 0 ||
         isfinite(speed_mps) == 0 ||
-        denominator <= 0.0 ||
+        wheel_axle_rpm < 0.0 ||
         speed_mps < 0.0 ||
         speed_mps > (double)FLT_MAX)
     {
@@ -226,7 +262,7 @@ static uint8_t esc_motion_erpm_to_mps(const EscMotionEstimatorConfig_t *config,
 
     local_speed_mps = (float)speed_mps;
     if (isfinite(local_speed_mps) == 0 ||
-        (erpm != 0U && local_speed_mps <= 0.0f))
+        (rpm_raw != 0U && local_speed_mps <= 0.0f))
     {
         return 0U;
     }
@@ -340,9 +376,9 @@ EscMotionReason_t EscMotionEstimator_ObserveSample(EscMotionEstimator_t *estimat
         return ESC_MOTION_REASON_RPM_INVALID;
     }
 
-    if (esc_motion_erpm_to_mps(&estimator->config,
-                               sample->erpm_candidate,
-                               &estimator->last_speed_magnitude_mps) == 0U)
+    if (esc_motion_raw_rpm_to_mps(&estimator->config,
+                                  sample->rpm_raw,
+                                  &estimator->last_speed_magnitude_mps) == 0U)
     {
         estimator->last_rpm_valid = 0U;
         estimator->last_speed_magnitude_mps = 0.0f;
@@ -350,8 +386,15 @@ EscMotionReason_t EscMotionEstimator_ObserveSample(EscMotionEstimator_t *estimat
         return ESC_MOTION_REASON_CALCULATION_INVALID;
     }
 
-    esc_motion_update_stop_evidence(estimator, sample,
-                                    estimator->last_speed_magnitude_mps);
+    if (estimator->stop_config_valid != 0U)
+    {
+        esc_motion_update_stop_evidence(estimator, sample,
+                                        estimator->last_speed_magnitude_mps);
+    }
+    else
+    {
+        esc_motion_clear_stop(estimator);
+    }
     return ESC_MOTION_REASON_OK;
 }
 
@@ -370,6 +413,8 @@ EscMotionEstimate_t EscMotionEstimator_GetEstimate(const EscMotionEstimator_t *e
     }
 
     estimate.config_valid = estimator->config_valid;
+    estimate.magnitude_config_valid = estimator->config_valid;
+    estimate.stop_config_valid = estimator->stop_config_valid;
     if (estimator->config_valid == 0U)
     {
         estimate.reason = estimator->config_reason;
@@ -408,30 +453,21 @@ EscMotionEstimate_t EscMotionEstimator_GetEstimate(const EscMotionEstimator_t *e
 
     estimate.magnitude_valid = 1U;
     estimate.speed_magnitude_mps = estimator->last_speed_magnitude_mps;
-    estimate.stop_sample_count = estimator->stop_sample_count;
-    estimate.stop_coverage_ms = estimator->stop_last_tick_ms -
-        estimator->stop_first_tick_ms;
-    estimate.stop_evidence_start_tick_ms = estimator->stop_first_tick_ms;
-    estimate.stop_established_tick_ms = estimator->stop_established_tick_ms;
-    estimate.stopped = estimator->stop_evidence_valid;
-
-    if (estimator->direction == ESC_MOTION_DIRECTION_FORWARD ||
-        estimator->direction == ESC_MOTION_DIRECTION_REVERSE)
+    if (estimator->stop_config_valid != 0U)
     {
-        estimate.direction = estimator->direction;
-        estimate.direction_valid = 1U;
-        estimate.signed_speed_valid = 1U;
-        estimate.signed_speed_mps =
-            (estimator->direction == ESC_MOTION_DIRECTION_FORWARD) ?
-            estimator->last_speed_magnitude_mps :
-            -estimator->last_speed_magnitude_mps;
-        estimate.reason = ESC_MOTION_REASON_OK;
-    }
-    else
-    {
-        estimate.reason = ESC_MOTION_REASON_DIRECTION_UNKNOWN;
+        estimate.stop_valid = 1U;
+        estimate.moving_observed =
+            (estimate.speed_magnitude_mps >
+             estimator->config.stopped_speed_threshold_mps) ? 1U : 0U;
+        estimate.stop_sample_count = estimator->stop_sample_count;
+        estimate.stop_coverage_ms = estimator->stop_last_tick_ms -
+            estimator->stop_first_tick_ms;
+        estimate.stop_evidence_start_tick_ms = estimator->stop_first_tick_ms;
+        estimate.stop_established_tick_ms = estimator->stop_established_tick_ms;
+        estimate.stopped = estimator->stop_evidence_valid;
     }
 
+    estimate.reason = ESC_MOTION_REASON_OK;
     return estimate;
 }
 
@@ -450,7 +486,6 @@ void EscMotionEstimator_InvalidateDirectionAndStop(EscMotionEstimator_t *estimat
     {
         return;
     }
-    estimator->direction = ESC_MOTION_DIRECTION_UNKNOWN;
     esc_motion_clear_stop(estimator);
 }
 
@@ -482,13 +517,11 @@ void EscMotionEstimator_CommitAppliedActionAt(EscMotionEstimator_t *estimator,
     switch (action)
     {
     case ESC_MOTION_APPLIED_ACTION_FORWARD:
-        estimator->direction = ESC_MOTION_DIRECTION_FORWARD;
         esc_motion_clear_stop(estimator);
         estimator->stop_epoch_valid = 1U;
         estimator->stop_epoch_tick_ms = applied_tick_ms;
         break;
     case ESC_MOTION_APPLIED_ACTION_REVERSE:
-        estimator->direction = ESC_MOTION_DIRECTION_REVERSE;
         esc_motion_clear_stop(estimator);
         estimator->stop_epoch_valid = 1U;
         estimator->stop_epoch_tick_ms = applied_tick_ms;
@@ -510,7 +543,6 @@ void EscMotionEstimator_CommitAppliedActionAt(EscMotionEstimator_t *estimator,
         }
         break;
     case ESC_MOTION_APPLIED_ACTION_EXTERNAL_OVERRIDE:
-        estimator->direction = ESC_MOTION_DIRECTION_UNKNOWN;
         esc_motion_clear_stop(estimator);
         estimator->stop_epoch_valid = 1U;
         estimator->stop_epoch_tick_ms = applied_tick_ms;

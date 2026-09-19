@@ -52,6 +52,13 @@ static UART_HandleTypeDef *serial = &huart4;
 #define STATUS_BIT_ESC_SPEED_CALIBRATION_VALID (1UL << 22)
 #define STATUS_BIT_VEHICLE_DIRECTION_KNOWN (1UL << 23)
 #define STATUS_BIT_ESC_SOFT_UART_RX_ERROR  (1UL << 24)
+#define STATUS_BIT_AUTO_PROPULSION_AUTHORIZED (1UL << 25)
+#define STATUS_BIT_CLOSED_LOOP_ACTIVE      (1UL << 26)
+#define STATUS_BIT_TRACKING_BRAKE_ACTIVE   (1UL << 27)
+#define STATUS_BIT_MODE2_OPPOSITE_ARMED    (1UL << 28)
+#define STATUS_BIT_MODE2_STATE_AMBIGUOUS   (1UL << 29)
+#define STATUS_BIT_MODE2_CONTROL_INHIBITED (1UL << 30)
+#define STATUS_BIT_MODE2_CONFIG_VALID      (1UL << 31)
 
 #if BaseFRAME_LEN != 24U
 #error "UART4 ROS telemetry frame must remain 24 bytes for the upper computer parser."
@@ -266,6 +273,13 @@ void RobotDataTransmitTask(void* param)
         if (servo_diagnostics.esc_speed_calibration_valid != 0U) { status_bits |= STATUS_BIT_ESC_SPEED_CALIBRATION_VALID; }
         if (esc_direction_known != 0U) { status_bits |= STATUS_BIT_VEHICLE_DIRECTION_KNOWN; }
         if (servo_diagnostics.esc_soft_uart_rx_error != 0U) { status_bits |= STATUS_BIT_ESC_SOFT_UART_RX_ERROR; }
+        if (servo_diagnostics.auto_propulsion_authorized != 0U) { status_bits |= STATUS_BIT_AUTO_PROPULSION_AUTHORIZED; }
+        if (servo_diagnostics.closed_loop_active != 0U) { status_bits |= STATUS_BIT_CLOSED_LOOP_ACTIVE; }
+        if (servo_diagnostics.tracking_brake_active != 0U) { status_bits |= STATUS_BIT_TRACKING_BRAKE_ACTIVE; }
+        if (servo_diagnostics.mode2_opposite_armed != 0U) { status_bits |= STATUS_BIT_MODE2_OPPOSITE_ARMED; }
+        if (servo_diagnostics.mode2_state_ambiguous != 0U) { status_bits |= STATUS_BIT_MODE2_STATE_AMBIGUOUS; }
+        if (servo_diagnostics.mode2_control_inhibited != 0U) { status_bits |= STATUS_BIT_MODE2_CONTROL_INHIBITED; }
+        if (servo_diagnostics.mode2_config_valid != 0U) { status_bits |= STATUS_BIT_MODE2_CONFIG_VALID; }
 
         basebuffer[0] = BaseFRAME_HEAD;
         basebuffer[1] = status_flags;

@@ -25,6 +25,13 @@ static void show_u4_zero_padded(uint8_t x, uint8_t y, uint32_t value)
     oled->ShowNumber((uint8_t)(x + 24U), y, value % 10U, 1, 12);
 }
 
+static void show_u2_zero_padded(uint8_t x, uint8_t y, uint32_t value)
+{
+    value %= 100U;
+    oled->ShowNumber(x, y, (value / 10U) % 10U, 1, 12);
+    oled->ShowNumber((uint8_t)(x + 8U), y, value % 10U, 1, 12);
+}
+
 static void show_i4_zero_padded(uint8_t x, uint8_t y, int32_t value)
 {
     uint32_t magnitude;
@@ -114,11 +121,17 @@ static void show_diagnostic_page(
 
     show_clear_line(12);
     oled->ShowString(0, 12, "U");
-    show_u4_zero_padded(8, 12,
+    show_u2_zero_padded(8, 12,
         control_snapshot->diagnostics.esc_soft_uart_error_count);
-    oled->ShowString(48, 12, "X");
-    show_u4_zero_padded(56, 12,
+    oled->ShowString(32, 12, "X");
+    show_u2_zero_padded(40, 12,
         control_snapshot->diagnostics.esc_soft_uart_error_flags);
+    oled->ShowString(64, 12, "M");
+    show_u2_zero_padded(72, 12,
+        control_snapshot->diagnostics.mode2_state);
+    oled->ShowString(96, 12, "Q");
+    show_u2_zero_padded(104, 12,
+        control_snapshot->diagnostics.mode2_reason);
 
     show_clear_line(24);
     oled->ShowString(0, 24, "T");

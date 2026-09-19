@@ -13,6 +13,7 @@
 #include "esc_motion_estimator.h"
 #include "esc_telemetry.h"
 #include "hall_speed.h"
+#include "longitudinal_controller.h"
 #include "mode2_drive_gate.h"
 #include "servo_rc_capture.h"
 
@@ -150,6 +151,14 @@ volatile float g_esc_tracking_brake_enter_error_mps =
 volatile float g_esc_tracking_brake_release_error_mps =
 	APP_ESC_TRACKING_BRAKE_RELEASE_ERROR_MPS_DEFAULT;
 volatile uint32_t g_esc_motion_calibration_valid = APP_ESC_MOTION_CALIBRATION_VALID_DEFAULT;
+volatile uint32_t g_esc_motion_magnitude_config_valid =
+	APP_ESC_MOTION_MAGNITUDE_CONFIG_VALID_DEFAULT;
+volatile uint32_t g_esc_motion_stop_config_valid =
+	APP_ESC_MOTION_STOP_CONFIG_VALID_DEFAULT;
+volatile uint32_t g_esc_motion_wheel_rpm_per_raw_valid =
+	APP_ESC_MOTION_WHEEL_RPM_PER_RAW_VALID_DEFAULT;
+volatile uint32_t g_esc_motion_wheel_radius_valid =
+	APP_ESC_MOTION_WHEEL_RADIUS_VALID_DEFAULT;
 volatile uint32_t g_esc_motion_pole_pairs_valid = APP_ESC_MOTION_POLE_PAIRS_VALID_DEFAULT;
 volatile uint32_t g_esc_motion_gear_ratio_valid = APP_ESC_MOTION_GEAR_RATIO_VALID_DEFAULT;
 volatile uint32_t g_esc_motion_wheel_ratio_valid = APP_ESC_MOTION_WHEEL_RATIO_VALID_DEFAULT;
@@ -162,6 +171,10 @@ volatile uint32_t g_esc_motion_motor_pole_pairs = APP_ESC_MOTION_MOTOR_POLE_PAIR
 volatile float g_esc_motion_gear_ratio = APP_ESC_MOTION_GEAR_RATIO_DEFAULT;
 volatile float g_esc_motion_wheel_ratio = APP_ESC_MOTION_WHEEL_RATIO_DEFAULT;
 volatile float g_esc_motion_wheel_circumference_m = APP_ESC_MOTION_WHEEL_CIRCUMFERENCE_M_DEFAULT;
+volatile float g_esc_motion_wheel_rpm_per_raw =
+	APP_ESC_MOTION_WHEEL_RPM_PER_RAW_DEFAULT;
+volatile float g_esc_motion_wheel_radius_m =
+	APP_ESC_MOTION_WHEEL_RADIUS_M_DEFAULT;
 volatile uint32_t g_esc_motion_telemetry_timeout_ms = APP_ESC_MOTION_TELEMETRY_TIMEOUT_MS_DEFAULT;
 volatile float g_esc_motion_stopped_speed_threshold_mps = APP_ESC_MOTION_STOPPED_THRESHOLD_MPS_DEFAULT;
 volatile uint32_t g_esc_motion_stopped_min_samples = APP_ESC_MOTION_STOPPED_MIN_SAMPLES_DEFAULT;
@@ -183,11 +196,29 @@ volatile float g_mode2_drive_reverse_first_strike_request =
 	APP_MODE2_DRIVE_REVERSE_FIRST_STRIKE_REQUEST_DEFAULT;
 volatile uint32_t g_mode2_drive_reverse_first_strike_min_ms =
 	APP_MODE2_DRIVE_REVERSE_FIRST_STRIKE_MIN_MS_DEFAULT;
+volatile float g_mode2_fwd_to_rev_brake_request =
+	APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT;
+volatile float g_mode2_rev_to_fwd_brake_request =
+	APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT;
+volatile uint32_t g_mode2_fwd_to_rev_brake_hold_ms =
+	APP_MODE2_FWD_TO_REV_BRAKE_HOLD_MS_DEFAULT;
+volatile uint32_t g_mode2_rev_to_fwd_brake_hold_ms =
+	APP_MODE2_REV_TO_FWD_BRAKE_HOLD_MS_DEFAULT;
 volatile uint32_t g_mode2_drive_neutral_dwell_ms = APP_MODE2_DRIVE_NEUTRAL_DWELL_MS_DEFAULT;
 volatile uint32_t g_mode2_drive_reversal_timeout_ms = APP_MODE2_DRIVE_REVERSAL_TIMEOUT_MS_DEFAULT;
+volatile uint32_t g_mode2_fwd_to_rev_qualify_delta_us =
+	APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT;
+volatile uint32_t g_mode2_rev_to_fwd_qualify_delta_us =
+	APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT;
 volatile uint32_t g_mode2_brake_pwm_valid = APP_MODE2_BRAKE_PWM_VALID_DEFAULT;
 volatile uint32_t g_mode2_brake_pwm_center_us = APP_MODE2_BRAKE_PWM_CENTER_US_DEFAULT;
 volatile uint32_t g_mode2_brake_pwm_full_us = APP_MODE2_BRAKE_PWM_FULL_US_DEFAULT;
+volatile uint32_t g_mode2_forward_brake_pwm_valid =
+	APP_MODE2_FORWARD_BRAKE_PWM_VALID_DEFAULT;
+volatile uint32_t g_mode2_forward_brake_pwm_center_us =
+	APP_MODE2_FORWARD_BRAKE_PWM_CENTER_US_DEFAULT;
+volatile uint32_t g_mode2_forward_brake_pwm_full_us =
+	APP_MODE2_FORWARD_BRAKE_PWM_FULL_US_DEFAULT;
 volatile uint32_t g_orin_accel_limit_mmps2 = ORIN_ACCEL_LIMIT_DEFAULT_MMPS2;
 volatile uint32_t g_orin_steering_rate_limit_mradps = ORIN_STEERING_RATE_LIMIT_DEFAULT_MRADPS;
 volatile uint32_t g_speed_pi_enable = SPEED_PI_ENABLE_DEFAULT;
@@ -290,9 +321,11 @@ typedef enum
 
 typedef struct
 {
-	uint8_t valid;
+	uint8_t reverse_valid;
+	uint8_t forward_valid;
 	uint32_t center_us;
-	uint32_t full_us;
+	uint32_t reverse_full_us;
+	uint32_t forward_full_us;
 	uint32_t neutral_us;
 } mode2_brake_pwm_runtime_config_t;
 
@@ -334,19 +367,22 @@ static uint8_t g_speed_pi_have_sample = 0U;
 static int8_t g_speed_pi_last_target_direction = 0;
 static uint32_t s_esc_speed_limit_over_count = 0U;
 static uint32_t s_esc_speed_limit_last_sample_id = 0U;
-static uint8_t s_esc_tracking_brake_active = 0U;
 static EscMotionEstimator_t s_esc_motion_estimator;
 static Mode2DriveGate_t s_mode2_drive_gate;
+static LongitudinalController_t s_longitudinal_controller;
 static EscMotionEstimatorConfig_t s_esc_motion_config;
 static Mode2DriveGateConfig_t s_mode2_drive_config;
+static LongitudinalControllerConfig_t s_longitudinal_config;
 static esc_tracking_brake_config_t s_esc_tracking_brake_config;
 static mode2_brake_pwm_runtime_config_t s_mode2_brake_pwm_config;
 static uint8_t s_esc_motion_config_initialized = 0U;
 static uint8_t s_mode2_drive_config_initialized = 0U;
+static uint8_t s_longitudinal_config_initialized = 0U;
 static uint8_t s_esc_tracking_brake_config_initialized = 0U;
 static uint8_t s_mode2_brake_pwm_config_initialized = 0U;
 static EscMotionEstimate_t s_esc_motion_estimate;
 static Mode2DriveGateOutput_t s_mode2_drive_output;
+static LongitudinalControllerOutput_t s_longitudinal_output;
 static uint8_t s_esc_feedback_available = 0U;
 static uint8_t s_esc_stop_confirmed = 0U;
 static uint8_t s_esc_sample_stale = 0U;
@@ -411,10 +447,15 @@ static void servo_basic_apply_debug_command(uint32_t cmd, uint32_t value);
 static void servo_basic_refresh_esc_configs(uint32_t now_ms);
 static void servo_basic_update_esc_feedback(uint32_t now_ms);
 static void servo_basic_invalidate_auto_history(uint32_t now_ms);
+static uint32_t get_speed_pi_trim_limit_us(void);
+static esc_tracking_brake_config_t servo_basic_read_tracking_brake_config(void);
 static uint8_t tracking_brake_config_is_valid(const esc_tracking_brake_config_t *config);
+static uint8_t longitudinal_config_equal(const LongitudinalControllerConfig_t *left,
+										 const LongitudinalControllerConfig_t *right);
 static uint8_t servo_basic_tick_is_after(uint32_t tick_ms, uint32_t reference_ms);
 static uint8_t servo_basic_tick_delta_ms(uint32_t tick_ms, uint32_t reference_ms, uint32_t *delta_ms);
 static uint8_t servo_basic_mode2_application_config_valid(void);
+static uint8_t servo_basic_auto_propulsion_authorized(void);
 static void servo_basic_clear_vehicle_direction(void);
 static uint8_t orin_pwm_is_active_at(uint32_t now_ms);
 static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms);
@@ -1248,18 +1289,6 @@ static float clamp_unit_float(float value)
 	return value;
 }
 
-static uint8_t esc_motion_direction_is_forward(void)
-{
-	return (s_esc_motion_estimate.direction_valid != 0U &&
-		s_esc_motion_estimate.direction == ESC_MOTION_DIRECTION_FORWARD) ? 1U : 0U;
-}
-
-static uint8_t esc_motion_direction_is_reverse(void)
-{
-	return (s_esc_motion_estimate.direction_valid != 0U &&
-		s_esc_motion_estimate.direction == ESC_MOTION_DIRECTION_REVERSE) ? 1U : 0U;
-}
-
 static uint8_t esc_speed_limit_protection_active(void)
 {
 	const float limit_mps = (float)get_esc_speed_limit_mmps() / 1000.0f;
@@ -1308,118 +1337,6 @@ static uint8_t esc_speed_limit_protection_active(void)
 	}
 
 	return (g_esc_speed_limit_active != 0U) ? 1U : 0U;
-}
-
-static float esc_tracking_brake_reference_mps(Mode2DriveTargetDirection_t target_direction,
-											  float target_vx_mps,
-											  uint8_t stop_like_request,
-											  uint8_t absolute_speed_limit_active)
-{
-	float reference_mps = 0.0f;
-
-	if (stop_like_request == 0U)
-	{
-		if (target_direction == MODE2_DRIVE_TARGET_FORWARD &&
-			esc_motion_direction_is_forward() != 0U)
-		{
-			reference_mps = fabsf(target_vx_mps);
-		}
-		else if (target_direction == MODE2_DRIVE_TARGET_REVERSE &&
-				 esc_motion_direction_is_reverse() != 0U)
-		{
-			reference_mps = fabsf(target_vx_mps);
-		}
-	}
-
-	if (absolute_speed_limit_active != 0U)
-	{
-		const float release_mps = (float)get_esc_speed_limit_release_mmps() / 1000.0f;
-		if (reference_mps <= 0.0f || reference_mps > release_mps)
-		{
-			reference_mps = release_mps;
-		}
-	}
-
-	return reference_mps;
-}
-
-static uint8_t esc_tracking_brake_update(Mode2DriveTargetDirection_t target_direction,
-										 float target_vx_mps,
-										 uint8_t stop_like_request,
-										 uint8_t absolute_speed_limit_active,
-										 uint8_t *brake_request_valid,
-										 float *normalized_brake_request)
-{
-	const float speed_abs_mps = s_esc_motion_estimate.speed_magnitude_mps;
-	const float reference_mps = esc_tracking_brake_reference_mps(target_direction,
-		target_vx_mps,
-		stop_like_request,
-		absolute_speed_limit_active);
-	const float speed_error_mps = speed_abs_mps - reference_mps;
-	uint8_t decel_requested = 0U;
-	uint8_t release_to_center = 0U;
-
-	if (brake_request_valid != NULL)
-	{
-		*brake_request_valid = 0U;
-	}
-	if (normalized_brake_request != NULL)
-	{
-		*normalized_brake_request = 0.0f;
-	}
-
-	if (s_esc_feedback_available == 0U ||
-		s_esc_motion_estimate.magnitude_valid == 0U ||
-		tracking_brake_config_is_valid(&s_esc_tracking_brake_config) == 0U)
-	{
-		s_esc_tracking_brake_active = 0U;
-		return 0U;
-	}
-
-	if (absolute_speed_limit_active != 0U)
-	{
-		s_esc_tracking_brake_active = 1U;
-	}
-	else if (s_esc_tracking_brake_active != 0U)
-	{
-		if (speed_error_mps <= s_esc_tracking_brake_config.release_error_mps)
-		{
-			s_esc_tracking_brake_active = 0U;
-			release_to_center = 1U;
-		}
-	}
-	else if (speed_error_mps >= s_esc_tracking_brake_config.enter_error_mps)
-	{
-		s_esc_tracking_brake_active = 1U;
-	}
-
-	decel_requested =
-		(s_esc_tracking_brake_active != 0U || release_to_center != 0U) ? 1U : 0U;
-	if (decel_requested == 0U)
-	{
-		return 0U;
-	}
-
-	if (esc_motion_direction_is_forward() != 0U)
-	{
-		float request = (release_to_center != 0U) ? 0.0f :
-			s_esc_tracking_brake_config.kp * speed_error_mps;
-		if (request > s_esc_tracking_brake_config.max_request)
-		{
-			request = s_esc_tracking_brake_config.max_request;
-		}
-		request = clamp_unit_float(request);
-		if (brake_request_valid != NULL)
-		{
-			*brake_request_valid = 1U;
-		}
-		if (normalized_brake_request != NULL)
-		{
-			*normalized_brake_request = request;
-		}
-	}
-
-	return 1U;
 }
 
 static uint8_t pulse_is_outside_center(uint16_t pulse_us, uint32_t center_us, uint32_t threshold_us)
@@ -1590,6 +1507,10 @@ static void apply_esc_pulse(uint16_t pulse_us)
 
 static void speed_pi_reset_controller(void)
 {
+	if (s_longitudinal_config_initialized != 0U)
+	{
+		LongitudinalController_Reset(&s_longitudinal_controller);
+	}
 	g_speed_pi_last_update_ms = 0U;
 	g_speed_pi_last_sample_id = 0U;
 	g_speed_pi_have_sample = 0U;
@@ -1609,14 +1530,28 @@ static uint8_t uint32_to_u8_flag(uint32_t value)
 static EscMotionEstimatorConfig_t servo_basic_read_esc_motion_config(void)
 {
 	EscMotionEstimatorConfig_t config;
+	const uint8_t speed_calibration_valid =
+		(g_esc_speed_calibration_valid != 0U &&
+		 g_esc_motion_magnitude_config_valid != 0U) ? 1U : 0U;
 
 	memset(&config, 0, sizeof(config));
-	config.calibration_valid = uint32_to_u8_flag(g_esc_motion_calibration_valid);
+	config.calibration_valid = speed_calibration_valid;
+	config.magnitude_config_valid = speed_calibration_valid;
+	config.stop_config_valid = uint32_to_u8_flag(g_esc_motion_stop_config_valid);
+	config.wheel_rpm_per_raw_valid =
+		(speed_calibration_valid != 0U &&
+		 g_esc_motion_wheel_rpm_per_raw_valid != 0U) ? 1U : 0U;
+	config.wheel_radius_valid =
+		(get_orin_ackermann_wheel_radius_mm() != 0U &&
+		 g_esc_motion_wheel_radius_valid != 0U) ? 1U : 0U;
 	config.pole_pairs_valid = uint32_to_u8_flag(g_esc_motion_pole_pairs_valid);
 	config.gear_ratio_valid = uint32_to_u8_flag(g_esc_motion_gear_ratio_valid);
 	config.wheel_ratio_valid = uint32_to_u8_flag(g_esc_motion_wheel_ratio_valid);
 	config.wheel_circumference_valid = uint32_to_u8_flag(g_esc_motion_wheel_circumference_valid);
-	config.telemetry_timeout_valid = uint32_to_u8_flag(g_esc_motion_telemetry_timeout_valid);
+	config.telemetry_timeout_valid =
+		(g_esc_speed_fresh_timeout_ms != 0U &&
+		 g_esc_speed_fresh_timeout_ms < 0x80000000UL &&
+		 g_esc_motion_telemetry_timeout_valid != 0U) ? 1U : 0U;
 	config.stopped_threshold_valid = uint32_to_u8_flag(g_esc_motion_stopped_threshold_valid);
 	config.stopped_samples_valid = uint32_to_u8_flag(g_esc_motion_stopped_samples_valid);
 	config.stopped_coverage_valid = uint32_to_u8_flag(g_esc_motion_stopped_coverage_valid);
@@ -1624,7 +1559,20 @@ static EscMotionEstimatorConfig_t servo_basic_read_esc_motion_config(void)
 	config.gear_ratio = g_esc_motion_gear_ratio;
 	config.wheel_ratio = g_esc_motion_wheel_ratio;
 	config.wheel_circumference_m = g_esc_motion_wheel_circumference_m;
-	config.telemetry_timeout_ms = g_esc_motion_telemetry_timeout_ms;
+	config.wheel_rpm_per_raw = g_esc_low_gear_wheel_rpm_per_raw;
+	if (isfinite(g_esc_motion_wheel_rpm_per_raw) != 0 &&
+		g_esc_motion_wheel_rpm_per_raw > 0.0f)
+	{
+		config.wheel_rpm_per_raw = g_esc_motion_wheel_rpm_per_raw;
+	}
+	config.wheel_radius_m = (float)get_orin_ackermann_wheel_radius_mm() / 1000.0f;
+	if (isfinite(g_esc_motion_wheel_radius_m) != 0 &&
+		g_esc_motion_wheel_radius_m > 0.0f)
+	{
+		config.wheel_radius_m = g_esc_motion_wheel_radius_m;
+	}
+	config.telemetry_timeout_ms = (g_esc_motion_telemetry_timeout_ms != 0U) ?
+		g_esc_motion_telemetry_timeout_ms : g_esc_speed_fresh_timeout_ms;
 	config.stopped_speed_threshold_mps = g_esc_motion_stopped_speed_threshold_mps;
 	config.stopped_min_samples = (uint8_t)g_esc_motion_stopped_min_samples;
 	config.stopped_min_coverage_ms = g_esc_motion_stopped_min_coverage_ms;
@@ -1647,6 +1595,46 @@ static Mode2DriveGateConfig_t servo_basic_read_mode2_config(void)
 	config.reverse_first_strike_min_ms = g_mode2_drive_reverse_first_strike_min_ms;
 	config.neutral_dwell_ms = g_mode2_drive_neutral_dwell_ms;
 	config.reversal_timeout_ms = g_mode2_drive_reversal_timeout_ms;
+	config.forward_brake_request = g_mode2_rev_to_fwd_brake_request;
+	config.reverse_brake_request = g_mode2_fwd_to_rev_brake_request;
+	config.forward_brake_min_ms = g_mode2_rev_to_fwd_brake_hold_ms;
+	config.reverse_brake_min_ms = g_mode2_fwd_to_rev_brake_hold_ms;
+	config.center_pwm_us = get_orin_esc_center_pulse();
+	config.fwd_to_rev_qualify_delta_us =
+		(uint16_t)g_mode2_fwd_to_rev_qualify_delta_us;
+	config.rev_to_fwd_qualify_delta_us =
+		(uint16_t)g_mode2_rev_to_fwd_qualify_delta_us;
+	return config;
+}
+
+static LongitudinalControllerConfig_t servo_basic_read_longitudinal_config(void)
+{
+	LongitudinalControllerConfig_t config;
+	const esc_tracking_brake_config_t tracking_config =
+		servo_basic_read_tracking_brake_config();
+
+	memset(&config, 0, sizeof(config));
+	config.config_valid = 1U;
+	config.center_pwm_us = get_orin_esc_center_pulse();
+	config.min_pwm_us = ESC_PWM_MIN_PULSE_US;
+	config.max_pwm_us = ESC_PWM_MAX_PULSE_US;
+	config.forward_limit_pwm_us = get_orin_esc_forward_limit_pulse();
+	config.reverse_limit_pwm_us = get_orin_esc_reverse_limit_pulse();
+	config.min_control_speed_mps = (float)get_orin_ackermann_min_vx_mmps() / 1000.0f;
+	config.forward_speed_cap_mps = (float)get_orin_vx_forward_cap_mmps() / 1000.0f;
+	config.reverse_speed_cap_mps = (float)get_orin_vx_reverse_cap_mmps() / 1000.0f;
+	config.target_slew_rate_mps2 = (float)get_orin_accel_limit_mmps2() / 1000.0f;
+	config.pi_enabled = uint32_to_u8_flag(g_speed_pi_enable);
+	config.pi_kp_us_per_mps = g_speed_pi_kp;
+	config.pi_ki_us_per_mps_s = g_speed_pi_ki;
+	config.pi_trim_limit_us = (uint16_t)get_speed_pi_trim_limit_us();
+	config.tracking_brake_enabled =
+		(tracking_brake_config_is_valid(&tracking_config) != 0U) ? 1U : 0U;
+	config.tracking_brake_kp = tracking_config.kp;
+	config.tracking_brake_max = tracking_config.max_request;
+	config.tracking_brake_enter_error_mps = tracking_config.enter_error_mps;
+	config.tracking_brake_release_error_mps = tracking_config.release_error_mps;
+	config.stop_brake_request = g_mode2_drive_brake_request;
 	return config;
 }
 
@@ -1720,9 +1708,11 @@ static mode2_brake_pwm_runtime_config_t servo_basic_read_mode2_brake_pwm_config(
 {
 	mode2_brake_pwm_runtime_config_t config;
 
-	config.valid = uint32_to_u8_flag(g_mode2_brake_pwm_valid);
+	config.reverse_valid = uint32_to_u8_flag(g_mode2_brake_pwm_valid);
+	config.forward_valid = uint32_to_u8_flag(g_mode2_forward_brake_pwm_valid);
 	config.center_us = g_mode2_brake_pwm_center_us;
-	config.full_us = g_mode2_brake_pwm_full_us;
+	config.reverse_full_us = g_mode2_brake_pwm_full_us;
+	config.forward_full_us = g_mode2_forward_brake_pwm_full_us;
 	config.neutral_us = get_orin_esc_center_pulse();
 	return config;
 }
@@ -1731,9 +1721,11 @@ static uint8_t mode2_brake_pwm_runtime_config_equal(
 	const mode2_brake_pwm_runtime_config_t *left,
 	const mode2_brake_pwm_runtime_config_t *right)
 {
-	return (left->valid == right->valid &&
+	return (left->reverse_valid == right->reverse_valid &&
+		left->forward_valid == right->forward_valid &&
 		left->center_us == right->center_us &&
-		left->full_us == right->full_us &&
+		left->reverse_full_us == right->reverse_full_us &&
+		left->forward_full_us == right->forward_full_us &&
 		left->neutral_us == right->neutral_us) ? 1U : 0U;
 }
 
@@ -1741,6 +1733,10 @@ static uint8_t esc_motion_config_equal(const EscMotionEstimatorConfig_t *left,
 									   const EscMotionEstimatorConfig_t *right)
 {
 	return (left->calibration_valid == right->calibration_valid &&
+		left->magnitude_config_valid == right->magnitude_config_valid &&
+		left->stop_config_valid == right->stop_config_valid &&
+		left->wheel_rpm_per_raw_valid == right->wheel_rpm_per_raw_valid &&
+		left->wheel_radius_valid == right->wheel_radius_valid &&
 		left->pole_pairs_valid == right->pole_pairs_valid &&
 		left->gear_ratio_valid == right->gear_ratio_valid &&
 		left->wheel_ratio_valid == right->wheel_ratio_valid &&
@@ -1753,6 +1749,8 @@ static uint8_t esc_motion_config_equal(const EscMotionEstimatorConfig_t *left,
 		left->gear_ratio == right->gear_ratio &&
 		left->wheel_ratio == right->wheel_ratio &&
 		left->wheel_circumference_m == right->wheel_circumference_m &&
+		left->wheel_rpm_per_raw == right->wheel_rpm_per_raw &&
+		left->wheel_radius_m == right->wheel_radius_m &&
 		left->telemetry_timeout_ms == right->telemetry_timeout_ms &&
 		left->stopped_speed_threshold_mps == right->stopped_speed_threshold_mps &&
 		left->stopped_min_samples == right->stopped_min_samples &&
@@ -1771,7 +1769,39 @@ static uint8_t mode2_config_equal(const Mode2DriveGateConfig_t *left,
 		left->reverse_first_strike_request == right->reverse_first_strike_request &&
 		left->reverse_first_strike_min_ms == right->reverse_first_strike_min_ms &&
 		left->neutral_dwell_ms == right->neutral_dwell_ms &&
-		left->reversal_timeout_ms == right->reversal_timeout_ms) ? 1U : 0U;
+		left->reversal_timeout_ms == right->reversal_timeout_ms &&
+		left->forward_brake_request == right->forward_brake_request &&
+		left->reverse_brake_request == right->reverse_brake_request &&
+		left->forward_brake_min_ms == right->forward_brake_min_ms &&
+		left->reverse_brake_min_ms == right->reverse_brake_min_ms &&
+		left->center_pwm_us == right->center_pwm_us &&
+		left->fwd_to_rev_qualify_delta_us == right->fwd_to_rev_qualify_delta_us &&
+		left->rev_to_fwd_qualify_delta_us == right->rev_to_fwd_qualify_delta_us) ? 1U : 0U;
+}
+
+static uint8_t longitudinal_config_equal(const LongitudinalControllerConfig_t *left,
+										 const LongitudinalControllerConfig_t *right)
+{
+	return (left->config_valid == right->config_valid &&
+		left->center_pwm_us == right->center_pwm_us &&
+		left->min_pwm_us == right->min_pwm_us &&
+		left->max_pwm_us == right->max_pwm_us &&
+		left->forward_limit_pwm_us == right->forward_limit_pwm_us &&
+		left->reverse_limit_pwm_us == right->reverse_limit_pwm_us &&
+		left->min_control_speed_mps == right->min_control_speed_mps &&
+		left->forward_speed_cap_mps == right->forward_speed_cap_mps &&
+		left->reverse_speed_cap_mps == right->reverse_speed_cap_mps &&
+		left->target_slew_rate_mps2 == right->target_slew_rate_mps2 &&
+		left->pi_enabled == right->pi_enabled &&
+		left->pi_kp_us_per_mps == right->pi_kp_us_per_mps &&
+		left->pi_ki_us_per_mps_s == right->pi_ki_us_per_mps_s &&
+		left->pi_trim_limit_us == right->pi_trim_limit_us &&
+		left->tracking_brake_enabled == right->tracking_brake_enabled &&
+		left->tracking_brake_kp == right->tracking_brake_kp &&
+		left->tracking_brake_max == right->tracking_brake_max &&
+		left->tracking_brake_enter_error_mps == right->tracking_brake_enter_error_mps &&
+		left->tracking_brake_release_error_mps == right->tracking_brake_release_error_mps &&
+		left->stop_brake_request == right->stop_brake_request) ? 1U : 0U;
 }
 
 static void servo_basic_clear_esc_observation_state(void)
@@ -1794,10 +1824,10 @@ static void servo_basic_clear_esc_observation_state(void)
 	memset(&s_esc_motion_estimate, 0, sizeof(s_esc_motion_estimate));
 	memset(&s_mode2_drive_output, 0, sizeof(s_mode2_drive_output));
 	s_mode2_drive_output.action = MODE2_DRIVE_ACTION_NEUTRAL;
+	memset(&s_longitudinal_output, 0, sizeof(s_longitudinal_output));
 	g_esc_speed_limit_active = 0U;
 	s_esc_speed_limit_over_count = 0U;
 	s_esc_speed_limit_last_sample_id = 0U;
-	s_esc_tracking_brake_active = 0U;
 }
 
 static void servo_basic_invalidate_auto_history(uint32_t now_ms)
@@ -1812,7 +1842,6 @@ static void servo_basic_invalidate_auto_history(uint32_t now_ms)
 	g_esc_speed_limit_active = 0U;
 	s_esc_speed_limit_over_count = 0U;
 	s_esc_speed_limit_last_sample_id = 0U;
-	s_esc_tracking_brake_active = 0U;
 }
 
 static void servo_basic_refresh_esc_configs(uint32_t now_ms)
@@ -1821,6 +1850,8 @@ static void servo_basic_refresh_esc_configs(uint32_t now_ms)
 		servo_basic_read_esc_motion_config();
 	const Mode2DriveGateConfig_t mode2_config =
 		servo_basic_read_mode2_config();
+	const LongitudinalControllerConfig_t longitudinal_config =
+		servo_basic_read_longitudinal_config();
 	const esc_tracking_brake_config_t tracking_brake_config =
 		servo_basic_read_tracking_brake_config();
 	const mode2_brake_pwm_runtime_config_t brake_pwm_config =
@@ -1852,6 +1883,23 @@ static void servo_basic_refresh_esc_configs(uint32_t now_ms)
 	{
 		(void)Mode2DriveGate_SetConfig(&s_mode2_drive_gate, &mode2_config);
 		s_mode2_drive_config = mode2_config;
+		changed = 1U;
+	}
+
+	if (s_longitudinal_config_initialized == 0U)
+	{
+		LongitudinalController_Init(&s_longitudinal_controller,
+			&longitudinal_config);
+		s_longitudinal_config = longitudinal_config;
+		s_longitudinal_config_initialized = 1U;
+		changed = 1U;
+	}
+	else if (longitudinal_config_equal(&s_longitudinal_config,
+									  &longitudinal_config) == 0U)
+	{
+		(void)LongitudinalController_SetConfig(&s_longitudinal_controller,
+			&longitudinal_config);
+		s_longitudinal_config = longitudinal_config;
 		changed = 1U;
 	}
 
@@ -1913,6 +1961,7 @@ static void servo_basic_update_cached_estimate(uint32_t now_ms)
 		 s_esc_motion_estimate.magnitude_valid != 0U) ? 1U : 0U;
 	s_esc_stop_confirmed =
 		(s_esc_feedback_available != 0U &&
+		 s_esc_motion_estimate.stop_valid != 0U &&
 		 s_esc_motion_estimate.stopped != 0U) ? 1U : 0U;
 	if (s_esc_stop_confirmed != 0U)
 	{
@@ -1923,7 +1972,6 @@ static void servo_basic_update_cached_estimate(uint32_t now_ms)
 		g_esc_speed_limit_active = 0U;
 		s_esc_speed_limit_over_count = 0U;
 		s_esc_speed_limit_last_sample_id = 0U;
-		s_esc_tracking_brake_active = 0U;
 	}
 }
 
@@ -2086,6 +2134,7 @@ void ServoBasic_Init(void)
 	g_speed_pi_final_us = ESC_PWM_NEUTRAL_PULSE_US;
 	s_esc_motion_config_initialized = 0U;
 	s_mode2_drive_config_initialized = 0U;
+	s_longitudinal_config_initialized = 0U;
 	s_esc_tracking_brake_config_initialized = 0U;
 	s_mode2_brake_pwm_config_initialized = 0U;
 	servo_basic_clear_esc_observation_state();
@@ -2153,191 +2202,226 @@ static uint32_t get_speed_pi_trim_limit_us(void)
 	return limit_us;
 }
 
-static uint16_t orin_compute_speed_control_esc(Mode2DriveAction_t action)
+static uint16_t longitudinal_drive_output_to_pwm(
+	const LongitudinalControllerOutput_t *output)
 {
-	const float target_vx_mps = g_orin_state.target_speed_mps;
-	const uint16_t base_us = orin_map_limited_vx_to_esc(target_vx_mps);
-	const int8_t target_direction = get_vx_direction(target_vx_mps);
-	float feedback_vx_mps = 0.0f;
-	uint8_t feedback_valid = 0U;
-	uint8_t new_feedback_sample = 0U;
+	uint16_t final_pulse;
+	uint16_t base_pulse = get_orin_esc_center_pulse();
 
-	g_speed_pi_target_vx_mps = target_vx_mps;
-	g_speed_pi_base_us = base_us;
-
-	if (orin_target_is_below_min_control(target_vx_mps) != 0U ||
-		(action != MODE2_DRIVE_ACTION_FORWARD &&
-		 action != MODE2_DRIVE_ACTION_REVERSE))
+	if (output != NULL)
 	{
-		g_speed_pi_feedback_vx_mps = 0.0f;
+		base_pulse = orin_map_limited_vx_to_esc(
+			output->diagnostics.slewed_target_mps);
+	}
+
+	if (output == NULL || output->intent != LONGITUDINAL_INTENT_DRIVE)
+	{
+		g_speed_pi_base_us = base_pulse;
 		g_speed_pi_final_us = get_orin_esc_center_pulse();
-		speed_pi_reset_controller();
+		g_speed_pi_saturated = 0U;
 		return get_orin_esc_center_pulse();
 	}
 
-	if (g_speed_pi_last_target_direction != 0 && target_direction != g_speed_pi_last_target_direction)
+	final_pulse = limit_esc_safe_pulse(output->drive_pwm_us);
+	g_speed_pi_base_us = base_pulse;
+	g_speed_pi_final_us = final_pulse;
+	g_speed_pi_saturated =
+		(output->diagnostics.pi_saturated != 0U ||
+		 output->diagnostics.target_limited != 0U ||
+		 final_pulse != output->drive_pwm_us) ? 1U : 0U;
+	return final_pulse;
+}
+
+static void update_speed_watch_from_longitudinal(
+	const LongitudinalControllerOutput_t *output)
+{
+	if (output == NULL)
 	{
 		speed_pi_reset_controller();
-	}
-	g_speed_pi_last_target_direction = target_direction;
-
-	if (s_esc_feedback_available != 0U &&
-		s_esc_motion_estimate.signed_speed_valid != 0U)
-	{
-		feedback_vx_mps = s_esc_motion_estimate.signed_speed_mps;
-		feedback_valid = 1U;
-	}
-	else if (s_esc_stop_confirmed != 0U)
-	{
-		feedback_vx_mps = 0.0f;
-		feedback_valid = 1U;
-	}
-	g_speed_pi_feedback_valid = feedback_valid;
-	g_speed_pi_feedback_vx_mps = feedback_vx_mps;
-
-	if (g_speed_pi_enable == 0U || feedback_valid == 0U)
-	{
-		const uint16_t final_pulse = limit_esc_safe_pulse(base_us);
-
-		g_speed_pi_error_mps = 0.0f;
-		g_speed_pi_trim_us = 0;
-		g_speed_pi_saturated = (final_pulse != base_us) ? 1U : 0U;
-		g_speed_pi_final_us = final_pulse;
-		if (feedback_valid == 0U)
-		{
-			g_speed_pi_last_update_ms = 0U;
-			g_speed_pi_integral = 0.0f;
-		}
-		return final_pulse;
+		return;
 	}
 
+	g_speed_pi_target_vx_mps = output->diagnostics.requested_target_mps;
+	g_speed_pi_feedback_vx_mps = output->diagnostics.feedback_signed_mps;
+	g_speed_pi_feedback_valid = output->diagnostics.feedback_valid;
+	g_speed_pi_error_mps = output->diagnostics.speed_error_mps;
+	g_speed_pi_integral = output->diagnostics.pi_integral_mps_s;
+	g_speed_pi_trim_us = float_to_i32_nearest(output->diagnostics.pi_trim_us);
+	g_orin_state.accel_limited = output->diagnostics.slew_limited;
+	g_speed_pi_last_target_direction =
+		(output->target_direction == LONGITUDINAL_DIRECTION_FORWARD) ? 1 :
+		((output->target_direction == LONGITUDINAL_DIRECTION_REVERSE) ? -1 : 0);
+	if (output->diagnostics.duplicate_sample == 0U &&
+		output->diagnostics.feedback_valid != 0U)
 	{
-		float dt_s = 0.0f;
-		const float kp = g_speed_pi_kp;
-		const float ki = g_speed_pi_ki;
-		const float trim_limit = (float)get_speed_pi_trim_limit_us();
-		float error_mps;
-		float integral;
-		float trim_us;
-		int32_t trim_i32;
-		int32_t final_i32;
-
-		new_feedback_sample = (g_speed_pi_have_sample == 0U ||
-			g_speed_pi_last_sample_id != s_esc_motion_estimate.last_sample_id) ? 1U : 0U;
-		if (new_feedback_sample != 0U && g_speed_pi_have_sample != 0U)
-		{
-			const uint32_t dt_ms = s_esc_motion_estimate.last_sample_tick_ms -
-				g_speed_pi_last_update_ms;
-			dt_s = (float)dt_ms / 1000.0f;
-			if (dt_s > 0.100f)
-			{
-				dt_s = 0.100f;
-			}
-		}
-		if (new_feedback_sample != 0U)
-		{
-			g_speed_pi_last_update_ms = s_esc_motion_estimate.last_sample_tick_ms;
-			g_speed_pi_last_sample_id = s_esc_motion_estimate.last_sample_id;
-			g_speed_pi_have_sample = 1U;
-		}
-
-		error_mps = target_vx_mps - feedback_vx_mps;
-		integral = (new_feedback_sample != 0U) ?
-			(g_speed_pi_integral + error_mps * dt_s) :
-			g_speed_pi_integral;
-		trim_us = kp * error_mps + ki * integral;
-		g_speed_pi_saturated = 0U;
-
-		if (trim_us > trim_limit)
-		{
-			trim_us = trim_limit;
-			g_speed_pi_saturated = 1U;
-			if (ki > 0.001f)
-			{
-				integral = (trim_limit - kp * error_mps) / ki;
-			}
-		}
-		else if (trim_us < -trim_limit)
-		{
-			trim_us = -trim_limit;
-			g_speed_pi_saturated = 1U;
-			if (ki > 0.001f)
-			{
-				integral = (-trim_limit - kp * error_mps) / ki;
-			}
-		}
-
-		trim_i32 = float_to_i32_nearest(trim_us);
-		final_i32 = (int32_t)base_us + trim_i32;
-		if (target_direction > 0 && final_i32 < (int32_t)get_orin_esc_center_pulse())
-		{
-			final_i32 = (int32_t)get_orin_esc_center_pulse();
-			g_speed_pi_saturated = 1U;
-		}
-		else if (target_direction < 0 && final_i32 > (int32_t)get_orin_esc_center_pulse())
-		{
-			final_i32 = (int32_t)get_orin_esc_center_pulse();
-			g_speed_pi_saturated = 1U;
-		}
-		if (final_i32 < (int32_t)ESC_PWM_MIN_PULSE_US || final_i32 > (int32_t)ESC_PWM_MAX_PULSE_US)
-		{
-			g_speed_pi_saturated = 1U;
-		}
-
-		g_speed_pi_error_mps = error_mps;
-		g_speed_pi_integral = integral;
-		g_speed_pi_trim_us = trim_i32;
-		{
-			const uint16_t hard_limited_pulse = clamp_esc_pulse_i32(final_i32);
-			const uint16_t final_pulse = limit_esc_safe_pulse(hard_limited_pulse);
-
-			if (final_pulse != hard_limited_pulse)
-			{
-				g_speed_pi_saturated = 1U;
-			}
-			g_speed_pi_final_us = final_pulse;
-		}
-		return (uint16_t)g_speed_pi_final_us;
+		g_speed_pi_have_sample = 1U;
+		g_speed_pi_last_sample_id = s_esc_motion_estimate.last_sample_id;
+		g_speed_pi_last_update_ms = s_esc_motion_estimate.last_sample_tick_ms;
 	}
 }
 
-static Mode2DriveTargetDirection_t mode2_target_direction_from_vx(float vx_mps)
+static Mode2DriveTargetDirection_t mode2_target_from_longitudinal(
+	LongitudinalDirection_t direction)
 {
-	if (orin_target_is_below_min_control(vx_mps) != 0U)
+	if (direction == LONGITUDINAL_DIRECTION_FORWARD)
 	{
-		return MODE2_DRIVE_TARGET_NEUTRAL;
+		return MODE2_DRIVE_TARGET_FORWARD;
 	}
-	return (vx_mps > 0.0f) ? MODE2_DRIVE_TARGET_FORWARD : MODE2_DRIVE_TARGET_REVERSE;
+	if (direction == LONGITUDINAL_DIRECTION_REVERSE)
+	{
+		return MODE2_DRIVE_TARGET_REVERSE;
+	}
+	return MODE2_DRIVE_TARGET_NEUTRAL;
+}
+
+static LongitudinalDirection_t longitudinal_direction_from_gate(void)
+{
+	if (s_esc_stop_confirmed != 0U)
+	{
+		return LONGITUDINAL_DIRECTION_UNKNOWN;
+	}
+
+	switch (s_mode2_drive_gate.state)
+	{
+	case MODE2_DRIVE_STATE_FORWARD_TRACKING:
+	case MODE2_DRIVE_STATE_FORWARD_BRAKE_CONTINUOUS:
+	case MODE2_DRIVE_STATE_REVERSE_MAYBE_ARMED:
+		return LONGITUDINAL_DIRECTION_FORWARD;
+	case MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING:
+		return (s_esc_motion_estimate.moving_observed != 0U &&
+			servo_basic_tick_is_after(s_esc_motion_estimate.last_sample_tick_ms,
+				s_mode2_drive_gate.forward_recovery_start_ms) != 0U) ?
+			LONGITUDINAL_DIRECTION_FORWARD : LONGITUDINAL_DIRECTION_UNKNOWN;
+	case MODE2_DRIVE_STATE_REVERSE_TRACKING:
+	case MODE2_DRIVE_STATE_REVERSE_BRAKE_CONTINUOUS:
+	case MODE2_DRIVE_STATE_FORWARD_MAYBE_ARMED:
+		return LONGITUDINAL_DIRECTION_REVERSE;
+	default:
+		break;
+	}
+
+	if (s_vehicle_direction_known != 0U)
+	{
+		return (s_vehicle_direction < 0) ?
+			LONGITUDINAL_DIRECTION_REVERSE : LONGITUDINAL_DIRECTION_FORWARD;
+	}
+	return LONGITUDINAL_DIRECTION_UNKNOWN;
+}
+
+static LongitudinalControllerInput_t servo_basic_build_longitudinal_input(
+	uint32_t now_ms,
+	uint8_t speed_limit_active)
+{
+	LongitudinalControllerInput_t input;
+
+	memset(&input, 0, sizeof(input));
+	input.automatic_enabled = servo_basic_auto_propulsion_authorized();
+	input.stop_requested =
+		(g_orin_state.brake_active != 0U || speed_limit_active != 0U) ? 1U : 0U;
+	input.target_speed_mps = g_orin_state.target_speed_mps;
+	input.feedback_valid = s_esc_feedback_available;
+	input.stopped = (s_esc_stop_confirmed != 0U ||
+		s_mode2_drive_gate.state == MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING) ? 1U : 0U;
+	input.current_direction = longitudinal_direction_from_gate();
+	input.speed_magnitude_mps =
+		(s_esc_feedback_available != 0U) ?
+		s_esc_motion_estimate.speed_magnitude_mps : 0.0f;
+	input.feedback_sample_id = s_esc_motion_estimate.last_sample_id;
+	input.feedback_sample_tick_ms = s_esc_motion_estimate.last_sample_tick_ms;
+	input.now_tick_ms = now_ms;
+	return input;
+}
+
+static Mode2DriveGateInput_t servo_basic_mode2_input_from_longitudinal(
+	const LongitudinalControllerOutput_t *control_output)
+{
+	Mode2DriveGateInput_t input;
+
+	memset(&input, 0, sizeof(input));
+	if (control_output == NULL)
+	{
+		return input;
+	}
+
+	input.propulsion_authorized = servo_basic_auto_propulsion_authorized();
+	input.target_direction =
+		mode2_target_from_longitudinal(control_output->target_direction);
+	switch (control_output->intent)
+	{
+	case LONGITUDINAL_INTENT_DRIVE:
+		break;
+	case LONGITUDINAL_INTENT_TRACKING_BRAKE:
+		input.decel_or_stop_requested = 1U;
+		input.brake_request_valid = 1U;
+		input.normalized_brake_request =
+			control_output->normalized_brake_request;
+		break;
+	case LONGITUDINAL_INTENT_STOP_BRAKE:
+		input.target_direction = MODE2_DRIVE_TARGET_NEUTRAL;
+		input.decel_or_stop_requested = 1U;
+		input.stop_requested = 1U;
+		input.brake_request_valid = 1U;
+		input.normalized_brake_request =
+			control_output->normalized_brake_request;
+		break;
+	case LONGITUDINAL_INTENT_REVERSAL_REQUEST:
+		input.decel_or_stop_requested = 1U;
+		input.brake_request_valid = 1U;
+		input.normalized_brake_request =
+			control_output->normalized_brake_request;
+		break;
+	case LONGITUDINAL_INTENT_NEUTRAL:
+	default:
+		input.target_direction = MODE2_DRIVE_TARGET_NEUTRAL;
+		break;
+	}
+
+	input.forward_recovery_authorized =
+		(input.target_direction == MODE2_DRIVE_TARGET_FORWARD &&
+		 control_output->intent == LONGITUDINAL_INTENT_DRIVE &&
+		 s_esc_stop_confirmed != 0U &&
+		 s_mode2_drive_gate.state == MODE2_DRIVE_STATE_UNKNOWN_SAFE) ? 1U : 0U;
+	return input;
 }
 
 static uint8_t mode2_brake_pwm_config_is_valid(void)
 {
 	const uint32_t center_us = g_mode2_brake_pwm_center_us;
-	const uint32_t full_us = g_mode2_brake_pwm_full_us;
+	const uint32_t reverse_full_us = g_mode2_brake_pwm_full_us;
+	const uint32_t forward_center_us = g_mode2_forward_brake_pwm_center_us;
+	const uint32_t forward_full_us = g_mode2_forward_brake_pwm_full_us;
 
 	return (g_mode2_brake_pwm_valid != 0U &&
+		g_mode2_forward_brake_pwm_valid != 0U &&
 		center_us == (uint32_t)get_orin_esc_center_pulse() &&
+		forward_center_us == center_us &&
 		center_us >= ESC_PWM_MIN_PULSE_US &&
 		center_us <= ESC_PWM_MAX_PULSE_US &&
-		full_us >= ESC_PWM_MIN_PULSE_US &&
-		full_us <= ESC_PWM_MAX_PULSE_US &&
-		full_us < center_us) ? 1U : 0U;
+		reverse_full_us >= ESC_PWM_MIN_PULSE_US &&
+		reverse_full_us < center_us &&
+		forward_full_us > center_us &&
+		forward_full_us <= ESC_PWM_MAX_PULSE_US &&
+		center_us - reverse_full_us >= g_mode2_fwd_to_rev_qualify_delta_us &&
+		forward_full_us - center_us >= g_mode2_rev_to_fwd_qualify_delta_us) ? 1U : 0U;
 }
 
 static uint8_t servo_basic_mode2_application_config_valid(void)
 {
 	return (s_mode2_drive_gate.config_valid != 0U &&
 		mode2_brake_pwm_config_is_valid() != 0U &&
-		tracking_brake_config_is_valid(&s_esc_tracking_brake_config) != 0U) ? 1U : 0U;
+		tracking_brake_config_is_valid(&s_esc_tracking_brake_config) != 0U &&
+		s_longitudinal_controller.config_valid != 0U) ? 1U : 0U;
 }
 
-static uint16_t mode2_brake_request_to_pwm(float request,
+static uint16_t mode2_brake_request_to_pwm(Mode2DriveAction_t action,
+										   float request,
 										   float *actual_normalized_brake)
 {
 	const uint16_t center_us = (uint16_t)get_orin_esc_center_pulse();
 	int32_t final_us;
 	int32_t brake_span_us;
 	int32_t actual_delta_us;
+	int32_t span_abs_us;
 
 	if (actual_normalized_brake != NULL)
 	{
@@ -2349,24 +2433,48 @@ static uint16_t mode2_brake_request_to_pwm(float request,
 		return center_us;
 	}
 
-	brake_span_us = (int32_t)g_mode2_brake_pwm_full_us -
-		(int32_t)center_us;
+	if (action == MODE2_DRIVE_ACTION_FORWARD_BRAKE)
+	{
+		brake_span_us = (int32_t)g_mode2_forward_brake_pwm_full_us -
+			(int32_t)center_us;
+	}
+	else
+	{
+		brake_span_us = (int32_t)g_mode2_brake_pwm_full_us -
+			(int32_t)center_us;
+	}
 	final_us = (int32_t)center_us +
 		float_to_i32_nearest((float)brake_span_us * request);
 	final_us = (int32_t)clamp_esc_pulse_i32(final_us);
-	if (final_us >= (int32_t)center_us)
+	if (action == MODE2_DRIVE_ACTION_FORWARD_BRAKE)
+	{
+		if (final_us <= (int32_t)center_us)
+		{
+			final_us = (int32_t)center_us;
+			actual_delta_us = 0;
+		}
+		else
+		{
+			actual_delta_us = final_us - (int32_t)center_us;
+		}
+		span_abs_us = (int32_t)g_mode2_forward_brake_pwm_full_us -
+			(int32_t)center_us;
+	}
+	else if (final_us >= (int32_t)center_us)
 	{
 		final_us = (int32_t)center_us;
 		actual_delta_us = 0;
+		span_abs_us = (int32_t)center_us -
+			(int32_t)g_mode2_brake_pwm_full_us;
 	}
 	else
 	{
 		actual_delta_us = (int32_t)center_us - final_us;
+		span_abs_us = (int32_t)center_us -
+			(int32_t)g_mode2_brake_pwm_full_us;
 	}
 	if (actual_normalized_brake != NULL)
 	{
-		const int32_t span_abs_us = (int32_t)center_us -
-			(int32_t)g_mode2_brake_pwm_full_us;
 		*actual_normalized_brake = (actual_delta_us == 0 || span_abs_us <= 0) ? 0.0f :
 			clamp_unit_float((float)actual_delta_us / (float)span_abs_us);
 	}
@@ -2394,6 +2502,9 @@ static Mode2DriveAction_t mode2_actual_action_from_output(Mode2DriveAction_t req
 	case MODE2_DRIVE_ACTION_REVERSE_FIRST_STRIKE:
 		return (final_esc_pulse < center_us && actual_normalized_brake > 0.0f) ?
 			MODE2_DRIVE_ACTION_REVERSE_FIRST_STRIKE : MODE2_DRIVE_ACTION_NEUTRAL;
+	case MODE2_DRIVE_ACTION_FORWARD_BRAKE:
+		return (final_esc_pulse > center_us && actual_normalized_brake > 0.0f) ?
+			MODE2_DRIVE_ACTION_FORWARD_BRAKE : MODE2_DRIVE_ACTION_NEUTRAL;
 	case MODE2_DRIVE_ACTION_NEUTRAL:
 	default:
 		return MODE2_DRIVE_ACTION_NEUTRAL;
@@ -2401,7 +2512,9 @@ static Mode2DriveAction_t mode2_actual_action_from_output(Mode2DriveAction_t req
 }
 
 static uint16_t mode2_drive_output_to_esc_pwm(Mode2DriveAction_t action,
+											  uint8_t forward_recovery_probe,
 											  float normalized_brake_request,
+											  const LongitudinalControllerOutput_t *control_output,
 											  float *actual_normalized_brake)
 {
 	if (actual_normalized_brake != NULL)
@@ -2413,15 +2526,30 @@ static uint16_t mode2_drive_output_to_esc_pwm(Mode2DriveAction_t action,
 	{
 	case MODE2_DRIVE_ACTION_FORWARD:
 	case MODE2_DRIVE_ACTION_REVERSE:
-		return orin_compute_speed_control_esc(action);
+	{
+		uint16_t drive_pwm = longitudinal_drive_output_to_pwm(control_output);
+
+		if (forward_recovery_probe != 0U && action == MODE2_DRIVE_ACTION_FORWARD)
+		{
+			const uint16_t recovery_limit = orin_map_limited_vx_to_esc(
+				(float)get_orin_ackermann_min_vx_mmps() / 1000.0f);
+			if (drive_pwm > recovery_limit)
+			{
+				drive_pwm = recovery_limit;
+				g_speed_pi_final_us = drive_pwm;
+			}
+		}
+		return drive_pwm;
+	}
 	case MODE2_DRIVE_ACTION_BRAKE:
 	case MODE2_DRIVE_ACTION_REVERSE_FIRST_STRIKE:
-		speed_pi_reset_controller();
-		return mode2_brake_request_to_pwm(normalized_brake_request,
+	case MODE2_DRIVE_ACTION_FORWARD_BRAKE:
+		return mode2_brake_request_to_pwm(action,
+			normalized_brake_request,
 			actual_normalized_brake);
 	case MODE2_DRIVE_ACTION_NEUTRAL:
 	default:
-		speed_pi_reset_controller();
+		g_speed_pi_final_us = get_orin_esc_center_pulse();
 		return get_orin_esc_center_pulse();
 	}
 }
@@ -2436,19 +2564,21 @@ static void servo_basic_commit_auto_action(Mode2DriveAction_t requested_action,
 			final_esc_pulse,
 			actual_normalized_brake);
 
-	Mode2DriveGate_CommitAppliedActionWithEvidence(&s_mode2_drive_gate,
+	Mode2DriveGate_CommitAppliedActionWithPwmEvidence(&s_mode2_drive_gate,
 		actual_action,
 		now_ms,
-		actual_normalized_brake);
+		final_esc_pulse);
 	EscMotionEstimator_CommitAppliedActionAt(&s_esc_motion_estimator,
 		Mode2DriveGate_ToMotionAction(actual_action),
 		now_ms);
-	if (actual_action == MODE2_DRIVE_ACTION_FORWARD)
+	if (s_mode2_drive_gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING ||
+		s_mode2_drive_gate.state == MODE2_DRIVE_STATE_FORWARD_BRAKE_CONTINUOUS)
 	{
 		s_vehicle_direction_known = 1U;
 		s_vehicle_direction = 1;
 	}
-	else if (actual_action == MODE2_DRIVE_ACTION_REVERSE)
+	else if (s_mode2_drive_gate.state == MODE2_DRIVE_STATE_REVERSE_TRACKING ||
+		s_mode2_drive_gate.state == MODE2_DRIVE_STATE_REVERSE_BRAKE_CONTINUOUS)
 	{
 		s_vehicle_direction_known = 1U;
 		s_vehicle_direction = -1;
@@ -2460,6 +2590,7 @@ static uint8_t servo_basic_auto_propulsion_authorized(void)
 	return (g_orin_state.auto_enabled != 0U &&
 		s_esc_feedback_available != 0U &&
 		s_esc_motion_estimator.config_valid != 0U &&
+		s_esc_motion_estimator.stop_config_valid != 0U &&
 		servo_basic_mode2_application_config_valid() != 0U) ? 1U : 0U;
 }
 
@@ -2545,13 +2676,11 @@ static void update_ackermann_from_orin(float speed_mps,
 									   uint8_t emergency_stop)
 {
 	float requested_speed_mps;
-	float limited_speed_mps;
 	float clamped_steering_angle_rad;
 	float feedback_speed_mps;
 	float dt_s = 0.0f;
 	uint32_t now_ms;
 	uint8_t speed_below_min;
-	uint8_t accel_limited = 0U;
 	uint8_t steering_saturated = 0U;
 	uint8_t steering_rate_limited = 0U;
 	const uint8_t auto_enabled = (enable != 0U) ? 1U : 0U;
@@ -2581,15 +2710,8 @@ static void update_ackermann_from_orin(float speed_mps,
 	clamped_steering_angle_rad = clamp_orin_steering_angle(steering_angle_rad);
 	steering_saturated = (fabsf(clamped_steering_angle_rad - steering_angle_rad) > 0.0005f) ? 1U : 0U;
 	requested_speed_mps = (force_zero_speed != 0U) ? 0.0f : scale_and_limit_orin_vx(speed_mps);
-	limited_speed_mps = requested_speed_mps;
 	if (force_zero_speed == 0U && g_orin_state.active != 0U && dt_s > 0.0f)
 	{
-		limited_speed_mps = apply_rate_limit_float(
-			requested_speed_mps,
-			g_orin_state.target_speed_mps,
-			(float)get_orin_accel_limit_mmps2() / 1000.0f,
-			dt_s,
-			&accel_limited);
 		clamped_steering_angle_rad = apply_rate_limit_float(
 			clamped_steering_angle_rad,
 			g_orin_state.target_steering_angle_rad,
@@ -2598,9 +2720,9 @@ static void update_ackermann_from_orin(float speed_mps,
 			&steering_rate_limited);
 	}
 
-	speed_below_min = orin_target_is_below_min_control(limited_speed_mps);
+	speed_below_min = orin_target_is_below_min_control(requested_speed_mps);
 	feedback_speed_mps = (speed_below_min != 0U ||
-		fabsf(limited_speed_mps) < get_orin_velocity_neutral_threshold_mps()) ? 0.0f : limited_speed_mps;
+		fabsf(requested_speed_mps) < get_orin_velocity_neutral_threshold_mps()) ? 0.0f : requested_speed_mps;
 
 	if (estop_active != 0U)
 	{
@@ -2617,12 +2739,12 @@ static void update_ackermann_from_orin(float speed_mps,
 			}
 			else
 			{
-				g_orin_state.esc_pulse_us = orin_map_limited_vx_to_esc(limited_speed_mps);
+				g_orin_state.esc_pulse_us = orin_map_limited_vx_to_esc(requested_speed_mps);
 			}
 			g_orin_state.servo_pulse_us = orin_map_steering_to_servo(clamped_steering_angle_rad);
 		}
 
-	g_orin_state.target_speed_mps = (force_zero_speed != 0U) ? 0.0f : limited_speed_mps;
+	g_orin_state.target_speed_mps = (force_zero_speed != 0U) ? 0.0f : requested_speed_mps;
 	if (s_esc_feedback_available != 0U &&
 		s_esc_motion_estimate.signed_speed_valid != 0U)
 	{
@@ -2651,7 +2773,7 @@ static void update_ackermann_from_orin(float speed_mps,
 	g_orin_state.emergency_stop = estop_active;
 	g_orin_state.speed_saturated = (force_zero_speed == 0U && orin_vx_would_saturate(speed_mps) != 0U) ? 1U : 0U;
 	g_orin_state.steering_saturated = steering_saturated;
-	g_orin_state.accel_limited = accel_limited;
+	g_orin_state.accel_limited = 0U;
 	g_orin_state.steering_rate_limited = steering_rate_limited;
 }
 
@@ -2807,16 +2929,25 @@ static uint8_t servo_basic_collect_ackermann_feedback(
 {
 	float feedback_speed = 0.0f;
 	uint8_t speed_valid = 0U;
+	const int8_t direction = servo_basic_estimated_vehicle_direction();
 	const uint16_t servo_pulse = (state != NULL) ?
 		state->servo_pulse_us : get_orin_servo_center_pulse();
 	const float steering_rad =
 		telemetry_estimate_steering_rad_from_servo_pulse(servo_pulse);
 	float yaw_rate;
 
-	if (s_esc_feedback_available != 0U &&
-		s_esc_motion_estimate.signed_speed_valid != 0U)
+	if (s_esc_stop_confirmed != 0U)
 	{
-		feedback_speed = s_esc_motion_estimate.signed_speed_mps;
+		feedback_speed = 0.0f;
+		speed_valid = 1U;
+	}
+	else if (s_esc_feedback_available != 0U &&
+		s_esc_motion_estimate.magnitude_valid != 0U &&
+		direction != 0)
+	{
+		feedback_speed = (direction < 0) ?
+			-s_esc_motion_estimate.speed_magnitude_mps :
+			s_esc_motion_estimate.speed_magnitude_mps;
 		speed_valid = 1U;
 	}
 	if (speed_valid == 0U)
@@ -2845,6 +2976,15 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 	servo_basic_diagnostics_t diagnostics;
 	const uint8_t fe32_fresh = servo_basic_esc_fe32_is_fresh(now_ms);
 	const int8_t direction = servo_basic_estimated_vehicle_direction();
+	const Mode2DriveState_t mode2_state = s_mode2_drive_gate.state;
+	const uint8_t mode2_opposite_armed =
+		(mode2_state == MODE2_DRIVE_STATE_FORWARD_ARMED ||
+		 mode2_state == MODE2_DRIVE_STATE_REVERSE_ARMED) ? 1U : 0U;
+	const uint8_t mode2_state_ambiguous =
+		(mode2_state == MODE2_DRIVE_STATE_UNKNOWN_SAFE ||
+		 mode2_state == MODE2_DRIVE_STATE_FORWARD_MAYBE_ARMED ||
+		 mode2_state == MODE2_DRIVE_STATE_REVERSE_MAYBE_ARMED ||
+		 mode2_state == MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING) ? 1U : 0U;
 	float uplink_speed_magnitude_mps = 0.0f;
 	const uint8_t uplink_speed_valid =
 		servo_basic_compute_uplink_speed_magnitude(now_ms,
@@ -2857,8 +2997,10 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 	diagnostics.accel_limited = g_orin_state.accel_limited;
 	diagnostics.steering_rate_limited = g_orin_state.steering_rate_limited;
 	diagnostics.steering_fault = (g_rc_input_fault_active != 0U) ? 1U : 0U;
-	diagnostics.esc_feedback_valid = (s_esc_feedback_available != 0U &&
-		s_esc_motion_estimate.signed_speed_valid != 0U) ? 1U : 0U;
+	diagnostics.esc_feedback_valid =
+		(s_esc_stop_confirmed != 0U ||
+		 (s_esc_feedback_available != 0U &&
+		  s_esc_motion_estimate.magnitude_valid != 0U && direction != 0)) ? 1U : 0U;
 	diagnostics.esc_stop_confirmed = s_esc_stop_confirmed;
 	diagnostics.esc_motion_config_valid =
 		(s_esc_motion_estimator.config_valid != 0U) ? 1U : 0U;
@@ -2877,12 +3019,30 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 		(s_esc_receiver_health.rx_error_count != 0U) ? 1U : 0U;
 	diagnostics.mode2_config_valid =
 		(servo_basic_mode2_application_config_valid() != 0U) ? 1U : 0U;
+	diagnostics.auto_propulsion_authorized = servo_basic_auto_propulsion_authorized();
+	diagnostics.closed_loop_active =
+		(diagnostics.auto_propulsion_authorized != 0U &&
+		 g_rc_override_active == 0U && orin_pwm_is_active_at(now_ms) != 0U) ? 1U : 0U;
+	diagnostics.tracking_brake_active =
+		(s_longitudinal_output.intent == LONGITUDINAL_INTENT_TRACKING_BRAKE) ? 1U : 0U;
+	diagnostics.mode2_opposite_armed = mode2_opposite_armed;
+	diagnostics.mode2_state_ambiguous = mode2_state_ambiguous;
+	diagnostics.mode2_control_inhibited =
+		(g_orin_state.auto_enabled != 0U &&
+		 (diagnostics.auto_propulsion_authorized == 0U ||
+		  s_mode2_drive_gate.fault_latched != 0U ||
+		  mode2_state_ambiguous != 0U)) ? 1U : 0U;
+	diagnostics.mode2_state = (uint8_t)mode2_state;
+	diagnostics.mode2_reason = (uint8_t)s_mode2_drive_output.reason;
+	diagnostics.longitudinal_intent = (uint8_t)s_longitudinal_output.intent;
+	diagnostics.longitudinal_reason = (uint8_t)s_longitudinal_output.reason;
+	diagnostics.longitudinal_slewed_target_mps =
+		s_longitudinal_output.diagnostics.slewed_target_mps;
 	diagnostics.esc_sample_stale = s_esc_sample_stale;
 	diagnostics.esc_rx_invalidated = s_esc_rx_invalidated;
 	if (diagnostics.esc_feedback_valid != 0U)
 	{
-		diagnostics.esc_feedback_direction =
-			(s_esc_motion_estimate.direction == ESC_MOTION_DIRECTION_FORWARD) ? 1 : -1;
+		diagnostics.esc_feedback_direction = direction;
 	}
 	else
 	{
@@ -3139,51 +3299,33 @@ void ServoBasic_ProcessControl(void)
 		}
 		else
 		{
-			Mode2DriveGateInput_t input;
-			Mode2DriveTargetDirection_t target_direction;
-			float normalized_brake_request = 0.0f;
+			LongitudinalControllerInput_t control_input;
+			LongitudinalControllerOutput_t control_output;
+			Mode2DriveGateInput_t mode2_input;
 			float actual_normalized_brake = 0.0f;
 			uint16_t final_esc_pulse;
-			uint8_t brake_request_valid = 0U;
 			const uint8_t speed_limit_active =
 				esc_speed_limit_protection_active();
-			uint8_t tracking_decel_active;
-			uint8_t stop_like_request;
 
-			memset(&input, 0, sizeof(input));
-			target_direction = mode2_target_direction_from_vx(g_orin_state.target_speed_mps);
-			stop_like_request =
-				(g_orin_state.brake_active != 0U ||
-				 target_direction == MODE2_DRIVE_TARGET_NEUTRAL) ? 1U : 0U;
-			tracking_decel_active = esc_tracking_brake_update(target_direction,
-				g_orin_state.target_speed_mps,
-				stop_like_request,
-				speed_limit_active,
-				&brake_request_valid,
-				&normalized_brake_request);
-			input.target_direction = target_direction;
-			if (tracking_decel_active != 0U && esc_motion_direction_is_reverse() != 0U)
-			{
-				input.target_direction = MODE2_DRIVE_TARGET_NEUTRAL;
-			}
-			input.decel_or_stop_requested =
-				(g_orin_state.brake_active != 0U ||
-				 speed_limit_active != 0U ||
-				 tracking_decel_active != 0U ||
-				 input.target_direction == MODE2_DRIVE_TARGET_NEUTRAL) ? 1U : 0U;
-			input.stop_requested =
-				(input.target_direction == MODE2_DRIVE_TARGET_NEUTRAL) ? 1U : 0U;
-			input.propulsion_authorized = servo_basic_auto_propulsion_authorized();
-			input.brake_request_valid = brake_request_valid;
-			input.normalized_brake_request = normalized_brake_request;
+			control_input = servo_basic_build_longitudinal_input(now_ms,
+				speed_limit_active);
+			control_output = LongitudinalController_Evaluate(
+				&s_longitudinal_controller,
+				&control_input);
+			s_longitudinal_output = control_output;
+			update_speed_watch_from_longitudinal(&control_output);
+			mode2_input = servo_basic_mode2_input_from_longitudinal(
+				&control_output);
 
 			s_mode2_drive_output = Mode2DriveGate_Evaluate(&s_mode2_drive_gate,
-				&input,
+				&mode2_input,
 				&s_esc_motion_estimate,
 				now_ms);
 			final_esc_pulse = mode2_drive_output_to_esc_pwm(
 				s_mode2_drive_output.action,
+				s_mode2_drive_output.forward_recovery_probe,
 				s_mode2_drive_output.normalized_brake_request,
+				&control_output,
 				&actual_normalized_brake);
 			apply_esc_pulse(final_esc_pulse);
 			apply_servo_pulse(limit_servo_safe_pulse(clamp_servo_pulse(g_orin_state.servo_pulse_us)));
@@ -3197,10 +3339,10 @@ void ServoBasic_ProcessControl(void)
 	{
 		apply_esc_pulse(get_orin_esc_center_pulse());
 		apply_servo_pulse(get_orin_servo_center_pulse());
-		Mode2DriveGate_CommitAppliedActionWithEvidence(&s_mode2_drive_gate,
+		Mode2DriveGate_CommitAppliedActionWithPwmEvidence(&s_mode2_drive_gate,
 			MODE2_DRIVE_ACTION_NEUTRAL,
 			now_ms,
-			0.0f);
+			get_orin_esc_center_pulse());
 		EscMotionEstimator_CommitAppliedActionAt(&s_esc_motion_estimator,
 			ESC_MOTION_APPLIED_ACTION_NEUTRAL,
 			now_ms);

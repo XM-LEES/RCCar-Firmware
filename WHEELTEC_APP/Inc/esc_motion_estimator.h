@@ -42,6 +42,14 @@ typedef enum
 typedef struct
 {
     uint8_t calibration_valid;
+    uint8_t magnitude_config_valid;
+    uint8_t stop_config_valid;
+    uint8_t wheel_rpm_per_raw_valid;
+    uint8_t wheel_radius_valid;
+
+    /* Deprecated transition fields. They are kept so callers can migrate in
+     * small steps, but the estimator no longer uses them for speed conversion.
+     */
     uint8_t pole_pairs_valid;
     uint8_t gear_ratio_valid;
     uint8_t wheel_ratio_valid;
@@ -55,6 +63,8 @@ typedef struct
     float gear_ratio;
     float wheel_ratio;
     float wheel_circumference_m;
+    float wheel_rpm_per_raw;
+    float wheel_radius_m;
     uint32_t telemetry_timeout_ms;
     float stopped_speed_threshold_mps;
     uint8_t stopped_min_samples;
@@ -64,13 +74,17 @@ typedef struct
 typedef struct
 {
     uint8_t config_valid;
+    uint8_t magnitude_config_valid;
+    uint8_t stop_config_valid;
     uint8_t has_sample;
     uint8_t sample_fresh;
     uint8_t rpm_valid;
     uint8_t magnitude_valid;
+    uint8_t stop_valid;
     uint8_t direction_valid;
     uint8_t signed_speed_valid;
     uint8_t stopped;
+    uint8_t moving_observed;
 
     EscMotionDirection_t direction;
     EscMotionReason_t reason;
@@ -89,7 +103,9 @@ typedef struct
 {
     EscMotionEstimatorConfig_t config;
     uint8_t config_valid;
+    uint8_t stop_config_valid;
     EscMotionReason_t config_reason;
+    EscMotionReason_t stop_config_reason;
 
     uint8_t has_sample;
     uint32_t last_sample_id;
@@ -113,6 +129,8 @@ typedef struct
 
 uint8_t EscMotionEstimator_ConfigIsValid(const EscMotionEstimatorConfig_t *config,
                                          EscMotionReason_t *reason);
+uint8_t EscMotionEstimator_StopConfigIsValid(const EscMotionEstimatorConfig_t *config,
+                                             EscMotionReason_t *reason);
 void EscMotionEstimator_Init(EscMotionEstimator_t *estimator,
                              const EscMotionEstimatorConfig_t *config);
 EscMotionReason_t EscMotionEstimator_SetConfig(EscMotionEstimator_t *estimator,

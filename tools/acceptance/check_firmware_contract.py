@@ -136,6 +136,13 @@ def check_telemetry(root: Path) -> list[Check]:
         "STATUS_BIT_ESC_SPEED_CALIBRATION_VALID",
         "STATUS_BIT_VEHICLE_DIRECTION_KNOWN",
         "STATUS_BIT_ESC_SOFT_UART_RX_ERROR",
+        "STATUS_BIT_AUTO_PROPULSION_AUTHORIZED",
+        "STATUS_BIT_CLOSED_LOOP_ACTIVE",
+        "STATUS_BIT_TRACKING_BRAKE_ACTIVE",
+        "STATUS_BIT_MODE2_OPPOSITE_ARMED",
+        "STATUS_BIT_MODE2_STATE_AMBIGUOUS",
+        "STATUS_BIT_MODE2_CONTROL_INHIBITED",
+        "STATUS_BIT_MODE2_CONFIG_VALID",
     ]
     add(results, "status_bit_definitions", all(needle in text for needle in status_defs), "complete status bit definitions")
 
@@ -158,6 +165,13 @@ def check_telemetry(root: Path) -> list[Check]:
         "STATUS_BIT_ESC_SPEED_CALIBRATION_VALID",
         "STATUS_BIT_VEHICLE_DIRECTION_KNOWN",
         "STATUS_BIT_ESC_SOFT_UART_RX_ERROR",
+        "STATUS_BIT_AUTO_PROPULSION_AUTHORIZED",
+        "STATUS_BIT_CLOSED_LOOP_ACTIVE",
+        "STATUS_BIT_TRACKING_BRAKE_ACTIVE",
+        "STATUS_BIT_MODE2_OPPOSITE_ARMED",
+        "STATUS_BIT_MODE2_STATE_AMBIGUOUS",
+        "STATUS_BIT_MODE2_CONTROL_INHIBITED",
+        "STATUS_BIT_MODE2_CONFIG_VALID",
     ]
     add(results, "current_status_assignments", all(matches(text, rf"status_bits\s*\|=\s*{needle}") for needle in status_assignments), "current implemented status bit assignments")
 
@@ -196,6 +210,8 @@ def check_telemetry(root: Path) -> list[Check]:
 
 def check_speed_feedback_sources(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    longitudinal_text = read_text(root, "WHEELTEC_APP/longitudinal_controller.c")
+    mode2_text = read_text(root, "WHEELTEC_APP/mode2_drive_gate.c")
     hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
     hall_header_text = read_text(root, "WHEELTEC_APP/Inc/hall_speed.h")
     vehicle_config_text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
@@ -379,18 +395,42 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "mode2_brake_pwm_runtime_config_equal(&s_mode2_brake_pwm_config",
         "s_mode2_brake_pwm_config_initialized",
     ]), "brake PWM mapping is part of the runtime config snapshot that invalidates old gate/stop evidence")
-    add(results, "speed_pi_uses_sample_existence_not_tick_nonzero", all(needle in text for needle in [
-        "g_speed_pi_have_sample == 0U ||",
-        "new_feedback_sample != 0U && g_speed_pi_have_sample != 0U",
-        "dt_s = (float)dt_ms / 1000.0f",
-    ]) and "g_speed_pi_last_update_ms != 0U" not in text,
+    add(results, "speed_pi_uses_sample_existence_not_tick_nonzero", all(needle in longitudinal_text for needle in [
+        "controller->have_feedback_sample == 0U ||",
+        "controller->have_feedback_sample != 0U &&",
+        "controller->last_feedback_sample_tick_ms",
+        "float local_dt_s = (float)dt_ms / 1000.0f",
+    ]),
         "PI sample timing handles HAL tick zero and same-tick distinct samples without fabricating integration time")
+    add(results, "mode2_qualification_uses_final_pwm", all(needle in text for needle in [
+        "Mode2DriveGate_CommitAppliedActionWithPwmEvidence(&s_mode2_drive_gate",
+        "final_esc_pulse",
+    ]) and all(needle in mode2_text for needle in [
+        "mode2_applied_pwm_delta_us",
+        "fwd_to_rev_qualify_delta_us",
+        "rev_to_fwd_qualify_delta_us",
+        "applied_delta_us < required_delta_us",
+    ]), "both reversal directions qualify continuous braking from final applied PWM")
+    add(results, "unknown_forward_recovery_requires_fresh_motion", all(needle in text for needle in [
+        "MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING",
+        "s_esc_motion_estimate.moving_observed",
+        "forward_recovery_start_ms",
+        "s_mode2_drive_gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING",
+    ]) and all(needle in mode2_text for needle in [
+        "MODE2_DRIVE_REASON_FORWARD_RECOVERY_TIMEOUT",
+        "observation->moving_observed",
+        "observation->sample_tick_ms",
+        "output.forward_recovery_probe = 1U",
+    ]), "UNKNOWN_SAFE forward recovery stays direction-unknown until fresh post-probe motion evidence")
     return results
 
 
 def check_vehicle_defaults(root: Path) -> list[Check]:
     text = read_text(root, "WHEELTEC_APP/Inc/app_vehicle_config.h")
     control_text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    longitudinal_text = read_text(root, "WHEELTEC_APP/longitudinal_controller.c")
+    cmake_text = read_text(root, "CMakeLists.txt")
+    keil_text = read_text(root, "MDK-ARM/WHEELTEC.uvprojx")
     results: list[Check] = []
     expected = [
         "#define APP_ORIN_PWM_TIMEOUT_DEFAULT_MS           250U",
@@ -417,6 +457,13 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ESC_MOTION_CALIBRATION_VALID_DEFAULT      0U",
         "#define APP_MODE2_DRIVE_CALIBRATION_VALID_DEFAULT       0U",
         "#define APP_MODE2_BRAKE_PWM_VALID_DEFAULT               0U",
+        "#define APP_MODE2_FORWARD_BRAKE_PWM_VALID_DEFAULT       0U",
+        "#define APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT       0.0f",
+        "#define APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT       0.0f",
+        "#define APP_MODE2_FWD_TO_REV_BRAKE_HOLD_MS_DEFAULT          0U",
+        "#define APP_MODE2_REV_TO_FWD_BRAKE_HOLD_MS_DEFAULT          0U",
+        "#define APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT    0U",
+        "#define APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT    0U",
         "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
@@ -446,20 +493,25 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "esc_tracking_brake_independent_of_absolute_limit",
         all(needle in control_text for needle in [
             "esc_speed_limit_protection_active",
-            "esc_tracking_brake_update",
-            "speed_error_mps >= s_esc_tracking_brake_config.enter_error_mps",
-            "speed_error_mps <= s_esc_tracking_brake_config.release_error_mps",
-            "input.target_direction = MODE2_DRIVE_TARGET_NEUTRAL",
+            "servo_basic_read_tracking_brake_config",
+        ]) and all(needle in longitudinal_text for needle in [
+            "tracking_brake_enter_error_mps",
+            "tracking_brake_release_error_mps",
+            "LONGITUDINAL_INTENT_TRACKING_BRAKE",
+            "controller->config.tracking_brake_kp * tracking_error_mps",
         ]),
-        "normal ESC tracking brake has its own error hysteresis and reverse coast path",
+        "normal ESC tracking brake has independent symmetric error hysteresis",
     )
     add(
         results,
         "propulsion_keeps_legacy_soft_pwm_limits",
         all(needle in control_text for needle in [
-            "const uint16_t final_pulse = limit_esc_safe_pulse(base_us);",
-            "const uint16_t final_pulse = limit_esc_safe_pulse(hard_limited_pulse);",
+            "final_pulse = limit_esc_safe_pulse(output->drive_pwm_us);",
             "g_speed_pi_final_us = final_pulse;",
+        ]) and all(needle in longitudinal_text for needle in [
+            "config->forward_limit_pwm_us",
+            "config->reverse_limit_pwm_us",
+            "output->drive_pwm_us = limit_drive_pwm",
         ]),
         "automatic forward/reverse propulsion still applies the legacy soft PWM limits after PI",
     )
@@ -470,8 +522,22 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
             "center_us == (uint32_t)get_orin_esc_center_pulse()",
             "full_us < center_us",
             "final_esc_pulse < center_us && actual_normalized_brake > 0.0f",
+            "center_us - reverse_full_us >= g_mode2_fwd_to_rev_qualify_delta_us",
+            "forward_full_us - center_us >= g_mode2_rev_to_fwd_qualify_delta_us",
         ]),
-        "mode2 brake PWM requires neutral center and a lower braking endpoint",
+        "mode2 brake PWM requires neutral center and direction-correct endpoints",
+    )
+    add(
+        results,
+        "longitudinal_controller_in_both_projects",
+        all(needle in cmake_text for needle in [
+            "WHEELTEC_APP/longitudinal_controller.c",
+            "test_longitudinal_controller",
+        ]) and all(needle in keil_text for needle in [
+            "<FileName>longitudinal_controller.c</FileName>",
+            "<FilePath>..\\WHEELTEC_APP\\longitudinal_controller.c</FilePath>",
+        ]),
+        "CMake host/ARM and Keil projects compile the longitudinal controller",
     )
     add(
         results,

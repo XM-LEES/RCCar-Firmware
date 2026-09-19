@@ -415,7 +415,7 @@
         <mxCell id="states" value="&lt;b&gt;模式二动作关系&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=24;fontColor=#0f172a;fillColor=none;strokeColor=#2563eb;spacing=8;strokeColor=none;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="40" y="890" width="1740" height="42" />
         </mxCell>
-        <mxCell id="forward" value="&lt;b&gt;前进驱动&lt;/b&gt;&lt;br&gt;正向 PWM：推进&lt;br&gt;实际正推重置倒车触发历史" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="forward" value="&lt;b&gt;前进驱动&lt;/b&gt;&lt;br&gt;正向 PWM：推进&lt;br&gt;新鲜运动样本确认正向历史" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="70" y="985" width="290" height="115" />
         </mxCell>
         <mxCell id="braking" value="&lt;b&gt;前进制动&lt;/b&gt;&lt;br&gt;第一次负向 PWM：刹车&lt;br&gt;同次制动连续保持负向区" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#b91c1c;spacing=8;" vertex="1" parent="1">
@@ -424,25 +424,25 @@
         <mxCell id="neutral_dwell" value="&lt;b&gt;回中驻留&lt;/b&gt;&lt;br&gt;刹车达标并取得新停稳证据&lt;br&gt;保持中点至驻留完成" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="950" y="985" width="290" height="115" />
         </mxCell>
-        <mxCell id="reverse" value="&lt;b&gt;倒车驱动&lt;/b&gt;&lt;br&gt;第二次负向 PWM：倒车&lt;br&gt;超速减速只收油滑行" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="reverse" value="&lt;b&gt;倒车驱动&lt;/b&gt;&lt;br&gt;第二次负向 PWM：倒车&lt;br&gt;超速时用正向侧主动刹车" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1390" y="985" width="290" height="115" />
         </mxCell>
-        <mxCell id="wait" value="&lt;b&gt;上电 / 恢复等待&lt;/b&gt;&lt;br&gt;保持中点&lt;br&gt;收集新的停稳证据" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
+        <mxCell id="wait" value="&lt;b&gt;上电 / 恢复等待&lt;/b&gt;&lt;br&gt;受限正向探测&lt;br&gt;新鲜运动样本确认或超时回中" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="70" y="1235" width="290" height="115" />
         </mxCell>
-        <mxCell id="neutral" value="&lt;b&gt;中点等待&lt;/b&gt;&lt;br&gt;目标 0：保持中点&lt;br&gt;未知状态只接受前进起步" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="neutral" value="&lt;b&gt;中点等待&lt;/b&gt;&lt;br&gt;目标 0：保持中点&lt;br&gt;未知状态禁止直接倒车" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="510" y="1235" width="290" height="115" />
         </mxCell>
-        <mxCell id="first_hit" value="&lt;b&gt;补足第一击&lt;/b&gt;&lt;br&gt;已知前进，尚无有效第一击&lt;br&gt;停稳后负向触发，再回中" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="first_hit" value="&lt;b&gt;证据不足禁止&lt;/b&gt;&lt;br&gt;刹车未达力度或保持时间&lt;br&gt;回中后不自动补发同侧信号" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="950" y="1235" width="290" height="115" />
         </mxCell>
-        <mxCell id="reconfirm" value="&lt;b&gt;回中并重新确认&lt;/b&gt;&lt;br&gt;第一击后旧停稳证据失效&lt;br&gt;重新取得新证据，再驻留" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="reconfirm" value="&lt;b&gt;双向对称资格&lt;/b&gt;&lt;br&gt;F→R 与 R→F 阈值独立&lt;br&gt;最终实际 PWM 连续达标" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1390" y="1235" width="290" height="115" />
         </mxCell>
-        <mxCell id="coast" value="&lt;b&gt;倒车滑停&lt;/b&gt;&lt;br&gt;零目标：持续中点&lt;br&gt;转前进：新停稳后才可正推&lt;br&gt;明确换向请求设超时边界" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
+        <mxCell id="coast" value="&lt;b&gt;倒车制动&lt;/b&gt;&lt;br&gt;正向侧信号主动刹车&lt;br&gt;停稳、回中后才可前进&lt;br&gt;明确换向请求设超时边界" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1390" y="1460" width="290" height="120" />
         </mxCell>
-        <mxCell id="constraints" value="&lt;b&gt;动作约束&lt;/b&gt;&lt;br&gt;刹车释放回中后，再次刹车必须先建立实际正向推进；不能用中点抖动反复制动。&lt;br&gt;夹入一条零速命令不能绕过换向停稳。倒车减速不假定具备对称主动刹车。&lt;br&gt;启动、接管或反馈失效后，未知状态禁止负向首击；实际正推才重建许可历史。" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
+        <mxCell id="constraints" value="&lt;b&gt;动作约束&lt;/b&gt;&lt;br&gt;回中后不自动补发同侧刹车；同侧信号此时可能已是推进。&lt;br&gt;夹入零速命令不能绕过换向停稳；双向主动刹车分别标定。&lt;br&gt;未知状态禁止负向动作；受限正向探测须由新鲜运动样本确认。" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="70" y="1445" width="1160" height="125" />
         </mxCell>
         <mxCell id="fwd_brake" value="&lt;b&gt;超速 / 停车&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=16;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#b91c1c;spacing=8;strokeColor=none;" vertex="1" parent="1">
