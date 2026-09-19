@@ -14,6 +14,8 @@
     } while (0)
 
 #define TEST_CENTER_PWM_US 1500U
+#define TEST_FWD_TO_REV_FULL_PWM_US 1000U
+#define TEST_REV_TO_FWD_FULL_PWM_US 2000U
 #define TEST_QUALIFY_DELTA_US 100U
 
 static Mode2DriveGateConfig_t valid_config(void)
@@ -21,21 +23,14 @@ static Mode2DriveGateConfig_t valid_config(void)
     Mode2DriveGateConfig_t config;
 
     memset(&config, 0, sizeof(config));
-    config.calibration_valid = 1U;
-    config.brake_calibration_valid = 1U;
-    config.first_strike_calibration_valid = 1U;
-    config.neutral_dwell_valid = 1U;
-    config.reversal_timeout_valid = 1U;
-    config.brake_request = 0.80f;
-    config.reverse_first_strike_request = 0.70f;
-    config.reverse_first_strike_min_ms = 60U;
+    config.fwd_to_rev_brake_request = 0.75f;
+    config.rev_to_fwd_brake_request = 0.65f;
+    config.fwd_to_rev_brake_min_ms = 60U;
+    config.rev_to_fwd_brake_min_ms = 50U;
     config.neutral_dwell_ms = 40U;
-    config.reversal_timeout_ms = 500U;
-    config.forward_brake_request = 0.65f;
-    config.reverse_brake_request = 0.75f;
-    config.forward_brake_min_ms = 50U;
-    config.reverse_brake_min_ms = 60U;
     config.center_pwm_us = TEST_CENTER_PWM_US;
+    config.fwd_to_rev_brake_full_pwm_us = TEST_FWD_TO_REV_FULL_PWM_US;
+    config.rev_to_fwd_brake_full_pwm_us = TEST_REV_TO_FWD_FULL_PWM_US;
     config.fwd_to_rev_qualify_delta_us = TEST_QUALIFY_DELTA_US;
     config.rev_to_fwd_qualify_delta_us = TEST_QUALIFY_DELTA_US;
     return config;
@@ -51,23 +46,29 @@ static Mode2DriveGateInput_t request(Mode2DriveTargetDirection_t direction)
     return input;
 }
 
-static Mode2DriveMotionObservation_t moving_observation(void)
+static Mode2DriveMotionObservation_t moving_observation_at(uint32_t sample_tick_ms)
 {
     Mode2DriveMotionObservation_t observation;
 
     memset(&observation, 0, sizeof(observation));
     observation.available = 1U;
     observation.moving_observed = 1U;
-    observation.sample_tick_ms = 1000U;
+    observation.sample_tick_ms = sample_tick_ms;
     return observation;
+}
+
+static Mode2DriveMotionObservation_t moving_observation(void)
+{
+    return moving_observation_at(1000U);
 }
 
 static Mode2DriveMotionObservation_t stopped_observation(uint32_t stop_tick_ms)
 {
-    Mode2DriveMotionObservation_t observation = moving_observation();
+    Mode2DriveMotionObservation_t observation;
 
+    memset(&observation, 0, sizeof(observation));
+    observation.available = 1U;
     observation.stopped = 1U;
-    observation.moving_observed = 0U;
     observation.stop_established_valid = 1U;
     observation.stop_established_tick_ms = stop_tick_ms;
     observation.sample_tick_ms = stop_tick_ms;
@@ -77,13 +78,12 @@ static Mode2DriveMotionObservation_t stopped_observation(uint32_t stop_tick_ms)
 static uint16_t pwm_for_action_delta(Mode2DriveAction_t action,
                                      uint16_t delta_us)
 {
-    if (action == MODE2_DRIVE_ACTION_BRAKE ||
-        action == MODE2_DRIVE_ACTION_REVERSE_FIRST_STRIKE)
+    if (action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE)
     {
         return (uint16_t)(TEST_CENTER_PWM_US - delta_us);
     }
 
-    if (action == MODE2_DRIVE_ACTION_FORWARD_BRAKE)
+    if (action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE)
     {
         return (uint16_t)(TEST_CENTER_PWM_US + delta_us);
     }
@@ -116,27 +116,24 @@ static void establish_known_tracking(Mode2DriveGate_t *gate,
                                      Mode2DriveTargetDirection_t direction,
                                      uint32_t tick_ms)
 {
-    const Mode2DriveAction_t action =
-        (direction == MODE2_DRIVE_TARGET_FORWARD) ?
-            MODE2_DRIVE_ACTION_FORWARD : MODE2_DRIVE_ACTION_REVERSE;
-
+    commit_action(gate,
+                  (direction == MODE2_DRIVE_TARGET_FORWARD) ?
+                      MODE2_DRIVE_ACTION_FORWARD : MODE2_DRIVE_ACTION_REVERSE,
+                  tick_ms);
     gate->state = (direction == MODE2_DRIVE_TARGET_FORWARD) ?
         MODE2_DRIVE_STATE_FORWARD_TRACKING :
         MODE2_DRIVE_STATE_REVERSE_TRACKING;
-    commit_action(gate, action, tick_ms);
 }
 
 static void commit_output(Mode2DriveGate_t *gate,
                           const Mode2DriveGateOutput_t *output,
                           uint32_t tick_ms)
 {
-    const uint16_t pwm_us =
-        pwm_for_action_delta(output->action, TEST_QUALIFY_DELTA_US);
-
-    Mode2DriveGate_CommitAppliedActionWithPwmEvidence(gate,
-                                                      output->action,
-                                                      tick_ms,
-                                                      pwm_us);
+    Mode2DriveGate_CommitAppliedActionWithPwmEvidence(
+        gate,
+        output->action,
+        tick_ms,
+        pwm_for_action_delta(output->action, TEST_QUALIFY_DELTA_US));
 }
 
 static Mode2DriveGateOutput_t eval(Mode2DriveGate_t *gate,
@@ -150,46 +147,53 @@ static Mode2DriveGateOutput_t eval(Mode2DriveGate_t *gate,
                                                   tick_ms);
 }
 
-static int test_config_authority_motion_and_unknown_safe(void)
+static int test_config_is_derived_from_values(void)
+{
+    Mode2DriveGateConfig_t config = valid_config();
+    Mode2DriveReason_t reason;
+
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) != 0U);
+    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_OK);
+
+    config = valid_config();
+    config.fwd_to_rev_brake_request = 0.0f;
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
+    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
+
+    config = valid_config();
+    config.rev_to_fwd_brake_min_ms = 0U;
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
+
+    config = valid_config();
+    config.center_pwm_us = 0U;
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
+
+    config = valid_config();
+    config.fwd_to_rev_brake_full_pwm_us = TEST_CENTER_PWM_US - 50U;
+    config.fwd_to_rev_qualify_delta_us = 100U;
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
+
+    config = valid_config();
+    config.rev_to_fwd_brake_full_pwm_us = TEST_CENTER_PWM_US + 50U;
+    config.rev_to_fwd_qualify_delta_us = 100U;
+    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
+
+    return 0;
+}
+
+static int test_authority_motion_and_unknown_safe(void)
 {
     Mode2DriveGateConfig_t config = valid_config();
     Mode2DriveGate_t gate;
     Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_REVERSE);
     Mode2DriveMotionObservation_t observation = stopped_observation(0U);
     Mode2DriveGateOutput_t output;
-    Mode2DriveReason_t reason;
 
-    config.forward_brake_min_ms = 0x80000000UL;
-    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
-    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
-
-    config = valid_config();
-    config.reverse_brake_request = INFINITY;
-    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
-    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
-
-    config = valid_config();
-    config.center_pwm_us = 0U;
-    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
-    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
-
-    config = valid_config();
-    config.fwd_to_rev_qualify_delta_us = 0U;
-    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
-    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
-
-    config = valid_config();
-    config.rev_to_fwd_qualify_delta_us = 1200U;
-    EXPECT_TRUE(Mode2DriveGate_ConfigIsValid(&config, &reason) == 0U);
-    EXPECT_TRUE(reason == MODE2_DRIVE_REASON_CONFIG_INVALID);
-
-    config = valid_config();
     Mode2DriveGate_Init(&gate, &config);
 
     output = eval(&gate, &input, observation, 10U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
     EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_ESC_STATE_UNKNOWN);
-    EXPECT_TRUE(output.reverse_permitted == 0U);
 
     input = request(MODE2_DRIVE_TARGET_FORWARD);
     output = eval(&gate, &input, observation, 20U);
@@ -199,30 +203,29 @@ static int test_config_authority_motion_and_unknown_safe(void)
     input.forward_recovery_authorized = 1U;
     output = eval(&gate, &input, observation, 30U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
-    EXPECT_TRUE(output.forward_recovery_probe != 0U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_RECOVERY);
     commit_output(&gate, &output, 30U);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING);
 
-    output = eval(&gate, &input, observation, 40U);
+    input.forward_recovery_authorized = 0U;
+    output = eval(&gate, &input, stopped_observation(40U), 40U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
-    EXPECT_TRUE(output.forward_recovery_probe != 0U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_RECOVERY);
 
-    observation = moving_observation();
-    observation.sample_tick_ms = 50U;
-    output = eval(&gate, &input, observation, 50U);
+    output = eval(&gate, &input, moving_observation_at(50U), 50U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
-    EXPECT_TRUE(output.forward_recovery_probe == 0U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_PERMITTED);
     commit_output(&gate, &output, 50U);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
 
     input.propulsion_authorized = 0U;
-    output = eval(&gate, &input, observation, 60U);
+    output = eval(&gate, &input, moving_observation(), 60U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
     EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_NOT_AUTHORIZED);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_UNKNOWN_SAFE);
 
     input.propulsion_authorized = 1U;
+    observation = moving_observation();
     observation.available = 0U;
     output = eval(&gate, &input, observation, 70U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
@@ -231,81 +234,48 @@ static int test_config_authority_motion_and_unknown_safe(void)
     return 0;
 }
 
-static int test_forward_to_reverse_requires_continuous_actual_brake_then_dwell(void)
-{
-    Mode2DriveGateConfig_t config = valid_config();
-    Mode2DriveGate_t gate;
-    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_REVERSE);
-    Mode2DriveMotionObservation_t observation = moving_observation();
-    Mode2DriveGateOutput_t output;
-
-    Mode2DriveGate_Init(&gate, &config);
-    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
-
-    output = eval(&gate, &input, observation, 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    EXPECT_TRUE(output.brake_permitted == 1U);
-    EXPECT_TRUE(fabsf(output.normalized_brake_request - config.reverse_brake_request) < 0.0001f);
-    commit_output(&gate, &output, 10U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_BRAKE_CONTINUOUS);
-
-    output = eval(&gate, &input, observation, 69U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_output(&gate, &output, 69U);
-
-    output = eval(&gate, &input, stopped_observation(70U), 70U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_output(&gate, &output, 70U);
-
-    output = eval(&gate, &input, stopped_observation(71U), 71U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_WAITING_FOR_NEUTRAL_DWELL);
-    commit_output(&gate, &output, 71U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_ARMED);
-
-    output = eval(&gate, &input, stopped_observation(71U), 110U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.brake_permitted == 0U);
-
-    output = eval(&gate, &input, stopped_observation(71U), 111U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
-    EXPECT_TRUE(output.reverse_permitted == 1U);
-    commit_output(&gate, &output, 111U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_TRACKING);
-
-    return 0;
-}
-
-static int test_forward_recovery_times_out_without_fresh_motion(void)
+static int test_forward_recovery_uses_estimator_motion_threshold(void)
 {
     Mode2DriveGateConfig_t config = valid_config();
     Mode2DriveGate_t gate;
     Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_FORWARD);
-    Mode2DriveMotionObservation_t observation = stopped_observation(10U);
+    EscMotionEstimate_t motion;
     Mode2DriveGateOutput_t output;
 
-    config.reversal_timeout_ms = 100U;
-    input.forward_recovery_authorized = 1U;
-    Mode2DriveGate_Init(&gate, &config);
+    memset(&motion, 0, sizeof(motion));
+    motion.config_valid = 1U;
+    motion.has_sample = 1U;
+    motion.sample_fresh = 1U;
+    motion.magnitude_valid = 1U;
+    motion.stopped = 1U;
+    motion.stop_established_tick_ms = 10U;
+    motion.last_sample_tick_ms = 10U;
 
-    output = eval(&gate, &input, observation, 10U);
-    EXPECT_TRUE(output.forward_recovery_probe != 0U);
-    commit_output(&gate, &output, 10U);
+    Mode2DriveGate_Init(&gate, &config);
+    input.forward_recovery_authorized = 1U;
+    output = Mode2DriveGate_Evaluate(&gate, &input, &motion, 20U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
+    commit_output(&gate, &output, 20U);
+
+    motion.stopped = 0U;
+    motion.speed_magnitude_mps = 0.01f;
+    motion.moving_observed = 0U;
+    motion.last_sample_tick_ms = 30U;
+    input.forward_recovery_authorized = 0U;
+    output = Mode2DriveGate_Evaluate(&gate, &input, &motion, 30U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_RECOVERY);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING);
 
-    observation.sample_tick_ms = 50U;
-    output = eval(&gate, &input, observation, 50U);
-    EXPECT_TRUE(output.forward_recovery_probe != 0U);
-
-    output = eval(&gate, &input, observation, 111U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_RECOVERY_TIMEOUT);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_UNKNOWN_SAFE);
+    motion.moving_observed = 1U;
+    motion.last_sample_tick_ms = 40U;
+    output = Mode2DriveGate_Evaluate(&gate, &input, &motion, 40U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_PERMITTED);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
 
     return 0;
 }
 
-static int test_forward_to_reverse_qualifies_only_from_final_pwm_delta(void)
+static int test_forward_to_reverse_requires_continuous_actual_brake_then_dwell(void)
 {
     Mode2DriveGateConfig_t config = valid_config();
     Mode2DriveGate_t gate;
@@ -316,48 +286,74 @@ static int test_forward_to_reverse_qualifies_only_from_final_pwm_delta(void)
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
 
     output = eval(&gate, &input, moving_observation(), 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_action_pwm(&gate,
-                      output.action,
-                      10U,
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    EXPECT_TRUE(fabsf(output.normalized_brake_request - config.fwd_to_rev_brake_request) < 0.0001f);
+    commit_output(&gate, &output, 10U);
+
+    output = eval(&gate, &input, moving_observation(), 69U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_output(&gate, &output, 69U);
+
+    output = eval(&gate, &input, stopped_observation(70U), 70U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_output(&gate, &output, 70U);
+
+    output = eval(&gate, &input, stopped_observation(71U), 71U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_WAITING_FOR_NEUTRAL_DWELL);
+    commit_output(&gate, &output, 71U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_ARMED);
+
+    output = eval(&gate, &input, stopped_observation(71U), 110U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
+
+    output = eval(&gate, &input, stopped_observation(71U), 111U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
+    commit_output(&gate, &output, 111U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_TRACKING);
+
+    return 0;
+}
+
+static int test_final_pwm_delta_qualifies_brake(void)
+{
+    Mode2DriveGateConfig_t config = valid_config();
+    Mode2DriveGate_t gate;
+    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_REVERSE);
+    Mode2DriveGateOutput_t output;
+
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
+
+    output = eval(&gate, &input, moving_observation(), 10U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_action_pwm(&gate, output.action, 10U,
                       pwm_for_action_delta(output.action, 1U));
 
     output = eval(&gate, &input, stopped_observation(70U), 70U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_action_pwm(&gate,
-                      output.action,
-                      70U,
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_action_pwm(&gate, output.action, 70U,
                       pwm_for_action_delta(output.action, 90U));
 
     output = eval(&gate, &input, stopped_observation(130U), 130U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_action_pwm(&gate,
-                      output.action,
-                      130U,
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_action_pwm(&gate, output.action, 130U,
                       pwm_for_action_delta(output.action, 100U));
 
     output = eval(&gate, &input, stopped_observation(130U), 189U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_action_pwm(&gate,
-                      output.action,
-                      189U,
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_action_pwm(&gate, output.action, 189U,
                       pwm_for_action_delta(output.action, 100U));
 
     output = eval(&gate, &input, stopped_observation(130U), 190U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_action_pwm(&gate,
-                      output.action,
-                      190U,
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_action_pwm(&gate, output.action, 190U,
                       pwm_for_action_delta(output.action, 100U));
 
     output = eval(&gate, &input, stopped_observation(130U), 191U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.brake_permitted == 0U);
     commit_output(&gate, &output, 191U);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_ARMED);
-
-    output = eval(&gate, &input, stopped_observation(130U), 231U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
 
     return 0;
 }
@@ -367,17 +363,16 @@ static int test_uncommitted_requests_do_not_advance_history(void)
     Mode2DriveGateConfig_t config = valid_config();
     Mode2DriveGate_t gate;
     Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_REVERSE);
-    Mode2DriveMotionObservation_t observation = moving_observation();
     Mode2DriveGateOutput_t output;
 
     Mode2DriveGate_Init(&gate, &config);
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
 
-    output = eval(&gate, &input, observation, 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    output = eval(&gate, &input, moving_observation(), 10U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
 
     output = eval(&gate, &input, stopped_observation(100U), 100U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
     EXPECT_TRUE(output.reverse_permitted == 0U);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
 
@@ -395,7 +390,7 @@ static int test_underqualified_forward_brake_neutral_inhibits_reverse_no_retry(v
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
 
     output = eval(&gate, &input, moving_observation(), 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
     commit_action_pwm(&gate,
                       output.action,
                       10U,
@@ -407,13 +402,9 @@ static int test_underqualified_forward_brake_neutral_inhibits_reverse_no_retry(v
 
     output = eval(&gate, &input, stopped_observation(20U), 100U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FIRST_STRIKE_UNCERTAIN);
-    EXPECT_TRUE(output.brake_permitted == 0U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_ARMING_UNCERTAIN);
     EXPECT_TRUE(output.reverse_permitted == 0U);
-
-    commit_action(&gate, MODE2_DRIVE_ACTION_FORWARD, 120U);
-    output = eval(&gate, &input, moving_observation(), 130U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.brake_permitted == 0U);
 
     return 0;
 }
@@ -429,13 +420,12 @@ static int test_reverse_to_forward_is_symmetric(void)
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
 
     output = eval(&gate, &input, moving_observation(), 20U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD_BRAKE);
-    EXPECT_TRUE(fabsf(output.normalized_brake_request - config.forward_brake_request) < 0.0001f);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
+    EXPECT_TRUE(fabsf(output.normalized_brake_request - config.rev_to_fwd_brake_request) < 0.0001f);
     commit_output(&gate, &output, 20U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_BRAKE_CONTINUOUS);
 
     output = eval(&gate, &input, moving_observation(), 70U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
     commit_output(&gate, &output, 70U);
 
     output = eval(&gate, &input, stopped_observation(71U), 71U);
@@ -461,7 +451,7 @@ static int test_underqualified_reverse_brake_neutral_inhibits_forward_no_retry(v
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
 
     output = eval(&gate, &input, moving_observation(), 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
     commit_action_pwm(&gate,
                       output.action,
                       10U,
@@ -471,9 +461,9 @@ static int test_underqualified_reverse_brake_neutral_inhibits_forward_no_retry(v
 
     output = eval(&gate, &input, stopped_observation(20U), 100U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FIRST_STRIKE_UNCERTAIN);
-    EXPECT_TRUE(output.brake_permitted == 0U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_ARMING_UNCERTAIN);
     EXPECT_TRUE(output.forward_permitted == 0U);
+    EXPECT_TRUE(output.brake_permitted == 0U);
 
     return 0;
 }
@@ -495,7 +485,7 @@ static int test_old_stop_evidence_does_not_arm_reversal(void)
     EXPECT_TRUE(gate.brake_sufficient != 0U);
 
     output = eval(&gate, &input, stopped_observation(50U), 170U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
     EXPECT_TRUE(output.reverse_permitted == 0U);
 
     output = eval(&gate, &input, stopped_observation(170U), 170U);
@@ -529,7 +519,7 @@ static int test_renewed_motion_after_arming_invalidates_automatic_opposite_outpu
 
     output = eval(&gate, &input, moving_observation(), 80U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FIRST_STRIKE_UNCERTAIN);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_ARMING_UNCERTAIN);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_REVERSE_MAYBE_ARMED);
 
     output = eval(&gate, &input, stopped_observation(100U), 140U);
@@ -551,11 +541,11 @@ static int test_neutral_stop_can_record_opposite_arming_without_skipping_dwell(v
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
 
     output = eval(&gate, &input, moving_observation(), 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
     commit_output(&gate, &output, 10U);
 
     output = eval(&gate, &input, moving_observation(), 70U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
     commit_output(&gate, &output, 70U);
 
     output = eval(&gate, &input, stopped_observation(70U), 70U);
@@ -566,45 +556,9 @@ static int test_neutral_stop_can_record_opposite_arming_without_skipping_dwell(v
     input = request(MODE2_DRIVE_TARGET_REVERSE);
     output = eval(&gate, &input, stopped_observation(70U), 109U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.brake_permitted == 0U);
 
     output = eval(&gate, &input, stopped_observation(70U), 110U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
-
-    return 0;
-}
-
-static int test_reversal_timeout_fault_and_neutral_recovery(void)
-{
-    Mode2DriveGateConfig_t config = valid_config();
-    Mode2DriveGate_t gate;
-    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_REVERSE);
-    Mode2DriveGateOutput_t output;
-
-    config.reversal_timeout_ms = 100U;
-    Mode2DriveGate_Init(&gate, &config);
-    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
-
-    output = eval(&gate, &input, moving_observation(), 10U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_BRAKE);
-    commit_output(&gate, &output, 10U);
-
-    output = eval(&gate, &input, moving_observation(), 111U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_REVERSAL_TIMEOUT);
-    EXPECT_TRUE(output.fault_latched == 1U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FAULT_INHIBIT);
-
-    input = request(MODE2_DRIVE_TARGET_NEUTRAL);
-    output = eval(&gate, &input, stopped_observation(160U), 160U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.fault_latched == 0U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_UNKNOWN_SAFE);
-
-    input = request(MODE2_DRIVE_TARGET_REVERSE);
-    output = eval(&gate, &input, stopped_observation(200U), 200U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_ESC_STATE_UNKNOWN);
 
     return 0;
 }
@@ -621,6 +575,29 @@ static int test_stop_then_resume_original_direction_is_permitted(void)
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
 
     output = eval(&gate, &input, moving_observation(), 10U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE);
+    commit_output(&gate, &output, 10U);
+
+    input = request(MODE2_DRIVE_TARGET_FORWARD);
+    output = eval(&gate, &input, moving_observation(), 20U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
+    commit_output(&gate, &output, 20U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
+
+    return 0;
+}
+
+static int test_armed_stop_can_resume_original_direction_after_dwell(void)
+{
+    Mode2DriveGateConfig_t config = valid_config();
+    Mode2DriveGate_t gate;
+    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_NEUTRAL);
+    Mode2DriveGateOutput_t output;
+
+    input.stop_requested = 1U;
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_FORWARD, 0U);
+    output = eval(&gate, &input, moving_observation(), 10U);
     commit_output(&gate, &output, 10U);
     output = eval(&gate, &input, moving_observation(), 70U);
     commit_output(&gate, &output, 70U);
@@ -633,23 +610,23 @@ static int test_stop_then_resume_original_direction_is_permitted(void)
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
     output = eval(&gate, &input, stopped_observation(70U), 110U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
-    commit_output(&gate, &output, 110U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
 
-    Mode2DriveGate_Init(&gate, &config);
-    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
     input = request(MODE2_DRIVE_TARGET_NEUTRAL);
     input.stop_requested = 1U;
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
     output = eval(&gate, &input, moving_observation(), 10U);
     commit_output(&gate, &output, 10U);
     output = eval(&gate, &input, moving_observation(), 60U);
     commit_output(&gate, &output, 60U);
-    output = eval(&gate, &input, stopped_observation(60U), 60U);
-    commit_output(&gate, &output, 60U);
+    output = eval(&gate, &input, stopped_observation(61U), 61U);
+    commit_output(&gate, &output, 61U);
     EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_ARMED);
 
     input = request(MODE2_DRIVE_TARGET_REVERSE);
-    output = eval(&gate, &input, stopped_observation(60U), 100U);
+    output = eval(&gate, &input, stopped_observation(61U), 100U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
+    output = eval(&gate, &input, stopped_observation(61U), 101U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REVERSE);
 
     return 0;
@@ -657,7 +634,15 @@ static int test_stop_then_resume_original_direction_is_permitted(void)
 
 int main(void)
 {
-    if (test_config_authority_motion_and_unknown_safe() != 0)
+    if (test_config_is_derived_from_values() != 0)
+    {
+        return 1;
+    }
+    if (test_authority_motion_and_unknown_safe() != 0)
+    {
+        return 1;
+    }
+    if (test_forward_recovery_uses_estimator_motion_threshold() != 0)
     {
         return 1;
     }
@@ -665,11 +650,7 @@ int main(void)
     {
         return 1;
     }
-    if (test_forward_recovery_times_out_without_fresh_motion() != 0)
-    {
-        return 1;
-    }
-    if (test_forward_to_reverse_qualifies_only_from_final_pwm_delta() != 0)
+    if (test_final_pwm_delta_qualifies_brake() != 0)
     {
         return 1;
     }
@@ -701,11 +682,11 @@ int main(void)
     {
         return 1;
     }
-    if (test_reversal_timeout_fault_and_neutral_recovery() != 0)
+    if (test_stop_then_resume_original_direction_is_permitted() != 0)
     {
         return 1;
     }
-    if (test_stop_then_resume_original_direction_is_permitted() != 0)
+    if (test_armed_stop_can_resume_original_direction_after_dwell() != 0)
     {
         return 1;
     }

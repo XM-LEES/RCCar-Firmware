@@ -21,15 +21,6 @@ static EscMotionEstimatorConfig_t valid_config(void)
     EscMotionEstimatorConfig_t config;
 
     memset(&config, 0, sizeof(config));
-    config.calibration_valid = 1U;
-    config.magnitude_config_valid = 1U;
-    config.stop_config_valid = 1U;
-    config.wheel_rpm_per_raw_valid = 1U;
-    config.wheel_radius_valid = 1U;
-    config.telemetry_timeout_valid = 1U;
-    config.stopped_threshold_valid = 1U;
-    config.stopped_samples_valid = 1U;
-    config.stopped_coverage_valid = 1U;
     config.wheel_rpm_per_raw = 0.14115f;
     config.wheel_radius_m = 0.115f;
     config.telemetry_timeout_ms = 100U;
@@ -76,7 +67,7 @@ static float expected_speed_mps(uint32_t rpm_raw,
     return wheel_axle_rpm * TEST_TWO_PI_F * config->wheel_radius_m / 60.0f;
 }
 
-static int test_config_splits_magnitude_and_stop_validity(void)
+static int test_config_validity_is_derived_from_values(void)
 {
     EscMotionEstimatorConfig_t config = valid_config();
     EscMotionEstimator_t estimator;
@@ -88,7 +79,7 @@ static int test_config_splits_magnitude_and_stop_validity(void)
     EXPECT_TRUE(EscMotionEstimator_StopConfigIsValid(&config, &reason) != 0U);
 
     config = valid_config();
-    config.stop_config_valid = 0U;
+    config.stopped_min_samples = 1U;
     EXPECT_TRUE(EscMotionEstimator_ConfigIsValid(&config, &reason) != 0U);
     EXPECT_TRUE(EscMotionEstimator_StopConfigIsValid(&config, &reason) == 0U);
     EXPECT_TRUE(reason == ESC_MOTION_REASON_CONFIG_INVALID);
@@ -105,7 +96,7 @@ static int test_config_splits_magnitude_and_stop_validity(void)
     EXPECT_TRUE(estimate.stopped == 0U);
 
     config = valid_config();
-    config.magnitude_config_valid = 0U;
+    config.wheel_rpm_per_raw = 0.0f;
     EXPECT_TRUE(EscMotionEstimator_ConfigIsValid(&config, &reason) == 0U);
     EXPECT_TRUE(reason == ESC_MOTION_REASON_CONFIG_INVALID);
     EXPECT_TRUE(EscMotionEstimator_StopConfigIsValid(&config, &reason) == 0U);
@@ -132,7 +123,7 @@ static int test_config_splits_magnitude_and_stop_validity(void)
     EXPECT_TRUE(EscMotionEstimator_ConfigIsValid(&config, &reason) == 0U);
 
     config = valid_config();
-    config.stopped_min_samples = 1U;
+    config.stopped_speed_threshold_mps = 0.0f;
     EXPECT_TRUE(EscMotionEstimator_ConfigIsValid(&config, &reason) != 0U);
     EXPECT_TRUE(EscMotionEstimator_StopConfigIsValid(&config, &reason) == 0U);
 
@@ -336,7 +327,7 @@ static int test_action_boundary_invalidates_old_stop_samples(void)
     EXPECT_TRUE(estimate.stopped == 1U);
 
     EscMotionEstimator_CommitAppliedActionAt(&estimator,
-                                             ESC_MOTION_APPLIED_ACTION_REVERSE_FIRST_STRIKE,
+                                             ESC_MOTION_APPLIED_ACTION_BRAKE,
                                              100U);
     EXPECT_TRUE(observe(&estimator, 4U, 90U, 1U, 0U, 100U) ==
                 ESC_MOTION_REASON_OK);
@@ -398,52 +389,6 @@ static int test_repeated_applied_action_does_not_refresh_stop_epoch(void)
     return 0;
 }
 
-static int test_first_strike_to_neutral_requires_new_stop_evidence(void)
-{
-    EscMotionEstimatorConfig_t config = valid_config();
-    EscMotionEstimator_t estimator;
-    EscMotionEstimate_t estimate;
-
-    config.stopped_min_samples = 2U;
-    config.stopped_min_coverage_ms = 20U;
-    EscMotionEstimator_Init(&estimator, &config);
-
-    EscMotionEstimator_CommitAppliedActionAt(&estimator,
-                                             ESC_MOTION_APPLIED_ACTION_REVERSE_FIRST_STRIKE,
-                                             100U);
-    EXPECT_TRUE(observe(&estimator, 1U, 120U, 1U, 0U, 120U) ==
-                ESC_MOTION_REASON_OK);
-    EXPECT_TRUE(observe(&estimator, 2U, 140U, 1U, 0U, 140U) ==
-                ESC_MOTION_REASON_OK);
-    estimate = EscMotionEstimator_GetEstimate(&estimator, 140U);
-    EXPECT_TRUE(estimate.stopped == 1U);
-
-    EscMotionEstimator_CommitAppliedActionAt(&estimator,
-                                             ESC_MOTION_APPLIED_ACTION_NEUTRAL,
-                                             160U);
-    estimate = EscMotionEstimator_GetEstimate(&estimator, 160U);
-    EXPECT_TRUE(estimate.stopped == 0U);
-    EXPECT_TRUE(estimate.stop_sample_count == 0U);
-
-    EXPECT_TRUE(observe(&estimator, 3U, 150U, 1U, 0U, 160U) ==
-                ESC_MOTION_REASON_OK);
-    EXPECT_TRUE(observe(&estimator, 4U, 160U, 1U, 0U, 160U) ==
-                ESC_MOTION_REASON_OK);
-    estimate = EscMotionEstimator_GetEstimate(&estimator, 160U);
-    EXPECT_TRUE(estimate.stopped == 0U);
-    EXPECT_TRUE(estimate.stop_sample_count == 0U);
-
-    EXPECT_TRUE(observe(&estimator, 5U, 180U, 1U, 0U, 180U) ==
-                ESC_MOTION_REASON_OK);
-    EXPECT_TRUE(observe(&estimator, 6U, 200U, 1U, 0U, 200U) ==
-                ESC_MOTION_REASON_OK);
-    estimate = EscMotionEstimator_GetEstimate(&estimator, 200U);
-    EXPECT_TRUE(estimate.stopped == 1U);
-    EXPECT_TRUE(estimate.stop_established_tick_ms == 200U);
-
-    return 0;
-}
-
 static int test_set_config_change_invalidates_old_measurement(void)
 {
     EscMotionEstimatorConfig_t config = valid_config();
@@ -487,7 +432,7 @@ static int test_set_config_change_invalidates_old_measurement(void)
     EXPECT_TRUE(fabsf(estimate.speed_magnitude_mps -
                       expected_speed_mps(300U, &config)) < 0.0001f);
 
-    config.calibration_valid = 0U;
+    config.wheel_rpm_per_raw = 0.0f;
     EXPECT_TRUE(EscMotionEstimator_SetConfig(&estimator, &config) ==
                 ESC_MOTION_REASON_CONFIG_INVALID);
     estimate = EscMotionEstimator_GetEstimate(&estimator, 20U);
@@ -499,7 +444,7 @@ static int test_set_config_change_invalidates_old_measurement(void)
 
 int main(void)
 {
-    if (test_config_splits_magnitude_and_stop_validity() != 0)
+    if (test_config_validity_is_derived_from_values() != 0)
     {
         return 1;
     }
@@ -528,10 +473,6 @@ int main(void)
         return 1;
     }
     if (test_repeated_applied_action_does_not_refresh_stop_epoch() != 0)
-    {
-        return 1;
-    }
-    if (test_first_strike_to_neutral_requires_new_stop_evidence() != 0)
     {
         return 1;
     }

@@ -15,18 +15,12 @@ extern "C" {
 
 #include <stdint.h>
 
-#define SERVO_CMD_SET_SERVO_ANGLE 0x53U
-#define SERVO_CMD_SET_SERVO_PULSE 0x50U
-#define SERVO_CMD_SET_ESC_PULSE   0x45U
-
 #define ESC_PWM_MIN_PULSE_US        1000U
 #define ESC_PWM_NEUTRAL_PULSE_US    1500U
 #define ESC_PWM_MAX_PULSE_US        2000U
-#define ESC_PULSE_STEP_US           1U
 
 #define SERVO_MIN_PULSE_US          ESC_PWM_MIN_PULSE_US
 #define SERVO_MAX_PULSE_US          2000U
-#define SERVO_PULSE_STEP_US         5U
 
 typedef enum
 {
@@ -40,7 +34,6 @@ typedef struct
 	uint16_t servo_pulse_us;
 	servo_control_mode_t control_mode;
 	uint8_t rc_takeover_pending;
-	uint8_t emergency_stop;
 } servo_basic_state_t;
 
 typedef struct
@@ -95,7 +88,6 @@ typedef struct
 	uint8_t esc_uplink_speed_valid;
 	uint8_t esc_direction_known;
 	uint8_t rc_override_active;
-	uint8_t rc_emergency_active;
 	uint8_t orin_command_timeout;
 	uint8_t orin_auto_enabled;
 	uint8_t orin_brake_active;
@@ -111,7 +103,6 @@ void ServoBasic_Init(void);
 void ServoBasic_ProcessControl(void);
 uint8_t ServoBasic_GetControlSnapshot(servo_basic_control_snapshot_t *snapshot);
 uint8_t ServoBasic_IsRcOverrideActive(void);
-uint8_t ServoBasic_IsRcEmergencyActive(void);
 uint8_t ServoBasic_IsOrinCommandTimeout(void);
 uint8_t ServoBasic_IsOrinAutoEnabled(void);
 uint8_t ServoBasic_IsOrinBrakeActive(void);

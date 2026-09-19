@@ -21,7 +21,6 @@ typedef enum
     ESC_MOTION_APPLIED_ACTION_NEUTRAL = 0,
     ESC_MOTION_APPLIED_ACTION_FORWARD,
     ESC_MOTION_APPLIED_ACTION_BRAKE,
-    ESC_MOTION_APPLIED_ACTION_REVERSE_FIRST_STRIKE,
     ESC_MOTION_APPLIED_ACTION_REVERSE,
     ESC_MOTION_APPLIED_ACTION_EXTERNAL_OVERRIDE
 } EscMotionAppliedAction_t;
@@ -41,28 +40,6 @@ typedef enum
 
 typedef struct
 {
-    uint8_t calibration_valid;
-    uint8_t magnitude_config_valid;
-    uint8_t stop_config_valid;
-    uint8_t wheel_rpm_per_raw_valid;
-    uint8_t wheel_radius_valid;
-
-    /* Deprecated transition fields. They are kept so callers can migrate in
-     * small steps, but the estimator no longer uses them for speed conversion.
-     */
-    uint8_t pole_pairs_valid;
-    uint8_t gear_ratio_valid;
-    uint8_t wheel_ratio_valid;
-    uint8_t wheel_circumference_valid;
-    uint8_t telemetry_timeout_valid;
-    uint8_t stopped_threshold_valid;
-    uint8_t stopped_samples_valid;
-    uint8_t stopped_coverage_valid;
-
-    uint16_t motor_pole_pairs;
-    float gear_ratio;
-    float wheel_ratio;
-    float wheel_circumference_m;
     float wheel_rpm_per_raw;
     float wheel_radius_m;
     uint32_t telemetry_timeout_ms;
@@ -141,9 +118,9 @@ EscMotionReason_t EscMotionEstimator_ObserveSample(EscMotionEstimator_t *estimat
 EscMotionEstimate_t EscMotionEstimator_GetEstimate(const EscMotionEstimator_t *estimator,
                                                    uint32_t now_tick_ms);
 /* Call after every real output application. The estimator uses applied_tick_ms
- * to reject older stop evidence; continuous BRAKE/FIRST_STRIKE applications
- * share the first tick of that action until the applied action changes. The
- * FIRST_STRIKE->NEUTRAL edge also requires new stop evidence after neutral.
+ * to reject older stop evidence; continuous applications share the first tick
+ * of that action until the applied action changes. A BRAKE->NEUTRAL edge also
+ * requires new stop evidence after neutral.
  */
 void EscMotionEstimator_CommitAppliedActionAt(EscMotionEstimator_t *estimator,
                                               EscMotionAppliedAction_t action,

@@ -38,17 +38,12 @@ typedef enum
 
 typedef struct
 {
-    uint8_t config_valid;
-
     uint16_t center_pwm_us;
     uint16_t min_pwm_us;
     uint16_t max_pwm_us;
     uint16_t forward_limit_pwm_us;
     uint16_t reverse_limit_pwm_us;
 
-    float min_control_speed_mps;
-    float forward_speed_cap_mps;
-    float reverse_speed_cap_mps;
     float target_slew_rate_mps2;
 
     uint8_t pi_enabled;
@@ -56,13 +51,10 @@ typedef struct
     float pi_ki_us_per_mps_s;
     uint16_t pi_trim_limit_us;
 
-    uint8_t tracking_brake_enabled;
     float tracking_brake_kp;
     float tracking_brake_max;
     float tracking_brake_enter_error_mps;
     float tracking_brake_release_error_mps;
-
-    float stop_brake_request;
 } LongitudinalControllerConfig_t;
 
 typedef struct
@@ -85,7 +77,6 @@ typedef struct
     uint8_t config_valid;
     uint8_t inhibited;
     uint8_t feedback_valid;
-    uint8_t target_limited;
     uint8_t slew_limited;
     uint8_t duplicate_sample;
     uint8_t pi_active;
@@ -94,13 +85,14 @@ typedef struct
     LongitudinalReason_t reason;
 
     float requested_target_mps;
-    float limited_target_mps;
+    float command_target_mps;
     float slewed_target_mps;
     float feedback_signed_mps;
     float speed_error_mps;
     float tracking_error_mps;
     float pi_integral_mps_s;
     float pi_trim_us;
+    uint16_t feedforward_pwm_us;
 } LongitudinalControllerDiagnostics_t;
 
 typedef struct

@@ -18,26 +18,20 @@ static LongitudinalControllerConfig_t valid_config(void)
     LongitudinalControllerConfig_t config;
 
     memset(&config, 0, sizeof(config));
-    config.config_valid = 1U;
     config.center_pwm_us = 1500U;
     config.min_pwm_us = 1000U;
     config.max_pwm_us = 2000U;
     config.forward_limit_pwm_us = 1600U;
     config.reverse_limit_pwm_us = 1400U;
-    config.min_control_speed_mps = 0.05f;
-    config.forward_speed_cap_mps = 10.0f;
-    config.reverse_speed_cap_mps = 3.0f;
     config.target_slew_rate_mps2 = 100.0f;
     config.pi_enabled = 1U;
     config.pi_kp_us_per_mps = 10.0f;
     config.pi_ki_us_per_mps_s = 4.0f;
     config.pi_trim_limit_us = 20U;
-    config.tracking_brake_enabled = 1U;
     config.tracking_brake_kp = 1.0f;
     config.tracking_brake_max = 0.70f;
     config.tracking_brake_enter_error_mps = 0.20f;
     config.tracking_brake_release_error_mps = 0.10f;
-    config.stop_brake_request = 0.80f;
     return config;
 }
 
@@ -78,8 +72,37 @@ static int test_acceleration_uses_slew_and_forward_feedforward(void)
     EXPECT_TRUE(output.target_direction == LONGITUDINAL_DIRECTION_FORWARD);
     EXPECT_TRUE(output.drive_pwm_us > config.center_pwm_us);
     EXPECT_TRUE(output.drive_pwm_us <= config.forward_limit_pwm_us);
+    EXPECT_TRUE(output.diagnostics.feedforward_pwm_us > config.center_pwm_us);
+    EXPECT_TRUE(output.diagnostics.feedforward_pwm_us <=
+                config.forward_limit_pwm_us);
     EXPECT_TRUE(output.diagnostics.slew_limited == 1U);
     EXPECT_TRUE(fabsf(output.diagnostics.slewed_target_mps - 0.4f) < 0.001f);
+
+    return 0;
+}
+
+static int test_small_nonzero_target_is_not_deadbanded(void)
+{
+    LongitudinalControllerConfig_t config = valid_config();
+    LongitudinalController_t controller;
+    LongitudinalControllerInput_t input = input_at(0U);
+    LongitudinalControllerOutput_t output;
+
+    LongitudinalController_Init(&controller, &config);
+
+    input.target_speed_mps = 0.01f;
+    output = LongitudinalController_Evaluate(&controller, &input);
+    EXPECT_TRUE(output.intent == LONGITUDINAL_INTENT_NEUTRAL);
+
+    input.now_tick_ms = 100U;
+    input.feedback_sample_tick_ms = 100U;
+    input.feedback_sample_id = 2U;
+    output = LongitudinalController_Evaluate(&controller, &input);
+    EXPECT_TRUE(output.intent == LONGITUDINAL_INTENT_DRIVE);
+    EXPECT_TRUE(output.target_direction == LONGITUDINAL_DIRECTION_FORWARD);
+    EXPECT_TRUE(fabsf(output.diagnostics.command_target_mps - 0.01f) < 0.0001f);
+    EXPECT_TRUE(fabsf(output.diagnostics.slewed_target_mps - 0.01f) < 0.0001f);
+    EXPECT_TRUE(output.diagnostics.feedforward_pwm_us == 1546U);
 
     return 0;
 }
@@ -170,8 +193,7 @@ static int test_zero_target_brakes_until_stopped(void)
     input.speed_magnitude_mps = 0.5f;
     output = LongitudinalController_Evaluate(&controller, &input);
     EXPECT_TRUE(output.intent == LONGITUDINAL_INTENT_STOP_BRAKE);
-    EXPECT_TRUE(fabsf(output.normalized_brake_request -
-                      config.stop_brake_request) < 0.001f);
+    EXPECT_TRUE(output.normalized_brake_request == 0.0f);
 
     input.stopped = 1U;
     input.current_direction = LONGITUDINAL_DIRECTION_UNKNOWN;
@@ -334,6 +356,10 @@ static int test_drive_outputs_are_bounded_by_direction_limits(void)
 int main(void)
 {
     if (test_acceleration_uses_slew_and_forward_feedforward() != 0)
+    {
+        return 1;
+    }
+    if (test_small_nonzero_target_is_not_deadbanded() != 0)
     {
         return 1;
     }

@@ -25,8 +25,6 @@ COMMAND_ACKERMANN = 0x01
 COMMAND_SIZE = 11
 TELEMETRY_SIZE = 24
 TELEMETRY_PROTOCOL_ID = 0xA1
-MIN_COMMAND_SPEED_MPS = 0.3
-MAX_COMMAND_SPEED_MPS = 3.0
 MAX_STEERING_ANGLE_RAD = 0.349
 
 FLAG_ENABLE = 1 << 0
@@ -84,8 +82,6 @@ def build_command_frame(
 ) -> bytes:
     if not math.isfinite(speed_mps) or not math.isfinite(steering_angle_rad):
         raise ValueError("speed and steering must be finite")
-    if abs(speed_mps) > MAX_COMMAND_SPEED_MPS:
-        raise ValueError("speed exceeds the confirmed +/-3.0 m/s command boundary")
     if abs(steering_angle_rad) > MAX_STEERING_ANGLE_RAD:
         raise ValueError("steering exceeds the confirmed +/-0.349 rad boundary")
 
@@ -98,11 +94,10 @@ def build_command_frame(
         steering_angle_rad = 0.0
     if not enable:
         speed_mps = 0.0
-    if 0.0 < abs(speed_mps) < MIN_COMMAND_SPEED_MPS:
-        speed_mps = 0.0
-
     speed_mmps = quantize_milli(speed_mps)
     steering_mrad = quantize_milli(steering_angle_rad)
+    if speed_mmps < -32768 or speed_mmps > 32767:
+        raise ValueError("speed exceeds the signed 16-bit mm/s wire range")
     frame = bytearray(COMMAND_SIZE)
     frame[0] = FRAME_HEADER
     frame[1] = COMMAND_ACKERMANN

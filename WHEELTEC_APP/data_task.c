@@ -210,8 +210,7 @@ void RobotDataTransmitTask(void* param)
             yaw_rate_rad_s = (control_snapshot.signed_speed_valid != 0U) ?
                 control_snapshot.yaw_rate_rad_s : 0.0f;
             rc_override_active = control_snapshot.rc_override_active;
-            stop_override_active = (control_snapshot.rc_emergency_active != 0U ||
-                control_snapshot.orin_emergency_active != 0U) ? 1U : 0U;
+            stop_override_active = control_snapshot.orin_emergency_active;
             command_timeout = control_snapshot.orin_command_timeout;
             brake_active = control_snapshot.orin_brake_active;
             auto_enabled = control_snapshot.orin_auto_enabled;

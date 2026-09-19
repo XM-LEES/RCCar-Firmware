@@ -133,40 +133,9 @@ static uint16_t limit_drive_pwm(const LongitudinalControllerConfig_t *config,
     return clamp_pwm_i32(config, pwm_us);
 }
 
-static float clamp_abs_target(const LongitudinalControllerConfig_t *config,
-                              float target_mps,
-                              uint8_t *limited)
+static uint8_t target_is_valid(float target_mps)
 {
-    float out = target_mps;
-
-    if (limited != NULL)
-    {
-        *limited = 0U;
-    }
-
-    if (out > config->forward_speed_cap_mps)
-    {
-        out = config->forward_speed_cap_mps;
-        if (limited != NULL)
-        {
-            *limited = 1U;
-        }
-    }
-    else if (out < -config->reverse_speed_cap_mps)
-    {
-        out = -config->reverse_speed_cap_mps;
-        if (limited != NULL)
-        {
-            *limited = 1U;
-        }
-    }
-
-    if (fabsf(out) < config->min_control_speed_mps)
-    {
-        out = 0.0f;
-    }
-
-    return out;
+    return isfinite(target_mps) ? 1U : 0U;
 }
 
 static LongitudinalDirection_t direction_from_target(float target_mps)
@@ -400,6 +369,8 @@ static LongitudinalControllerOutput_t make_output(
         output.diagnostics.pi_integral_mps_s = controller->pi_integral_mps_s;
         output.diagnostics.tracking_brake_active =
             controller->tracking_brake_active;
+        output.diagnostics.feedforward_pwm_us =
+            controller->config.center_pwm_us;
     }
     return output;
 }
@@ -420,21 +391,15 @@ uint8_t LongitudinalController_ConfigIsValid(
         return 0U;
     }
 
-    if (config->config_valid == 0U ||
-        config->min_pwm_us >= config->center_pwm_us ||
+    if (config->min_pwm_us >= config->center_pwm_us ||
         config->max_pwm_us <= config->center_pwm_us ||
         config->forward_limit_pwm_us < config->center_pwm_us ||
         config->forward_limit_pwm_us > config->max_pwm_us ||
         config->reverse_limit_pwm_us > config->center_pwm_us ||
         config->reverse_limit_pwm_us < config->min_pwm_us ||
-        finite_nonnegative(config->min_control_speed_mps) == 0U ||
-        finite_positive(config->forward_speed_cap_mps) == 0U ||
-        finite_positive(config->reverse_speed_cap_mps) == 0U ||
         finite_positive(config->target_slew_rate_mps2) == 0U ||
         finite_nonnegative(config->pi_kp_us_per_mps) == 0U ||
-        finite_nonnegative(config->pi_ki_us_per_mps_s) == 0U ||
-        unit_value(config->stop_brake_request) == 0U ||
-        config->stop_brake_request <= 0.0f)
+        finite_nonnegative(config->pi_ki_us_per_mps_s) == 0U)
     {
         valid = 0U;
     }
@@ -442,18 +407,15 @@ uint8_t LongitudinalController_ConfigIsValid(
     {
         valid = 0U;
     }
-    else if (config->tracking_brake_enabled != 0U)
-    {
-        if (finite_positive(config->tracking_brake_kp) == 0U ||
-            unit_value(config->tracking_brake_max) == 0U ||
-            config->tracking_brake_max <= 0.0f ||
-            finite_positive(config->tracking_brake_enter_error_mps) == 0U ||
-            finite_nonnegative(config->tracking_brake_release_error_mps) == 0U ||
-            config->tracking_brake_release_error_mps >=
+    else if (finite_positive(config->tracking_brake_kp) == 0U ||
+             unit_value(config->tracking_brake_max) == 0U ||
+             config->tracking_brake_max <= 0.0f ||
+             finite_positive(config->tracking_brake_enter_error_mps) == 0U ||
+             finite_nonnegative(config->tracking_brake_release_error_mps) == 0U ||
+             config->tracking_brake_release_error_mps >=
                 config->tracking_brake_enter_error_mps)
-        {
-            valid = 0U;
-        }
+    {
+        valid = 0U;
     }
 
     if (valid == 0U)
@@ -634,6 +596,7 @@ static void apply_drive_output(LongitudinalController_t *controller,
     output->target_direction = target_direction;
     output->propulsion_permitted = 1U;
     output->diagnostics.pi_active = (config->pi_enabled != 0U) ? 1U : 0U;
+    output->diagnostics.feedforward_pwm_us = base_pwm;
     output->diagnostics.speed_error_mps = error_mps;
 
     new_sample = feedback_sample_is_new(controller, input, &dt_s);
@@ -702,7 +665,6 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
     float feedback_mps;
     LongitudinalDirection_t target_direction;
     LongitudinalDirection_t requested_direction;
-    uint8_t target_limited = 0U;
 
     if (controller == NULL || input == NULL)
     {
@@ -745,12 +707,17 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
     feedback_mps = signed_feedback_mps(input);
     output.diagnostics.feedback_signed_mps = feedback_mps;
 
+    if (target_is_valid(input->target_speed_mps) == 0U)
+    {
+        reset_dynamic_state(controller);
+        return make_output(controller,
+                           LONGITUDINAL_INTENT_NEUTRAL,
+                           LONGITUDINAL_REASON_INVALID_ARGUMENT);
+    }
+
     target_mps = (input->stop_requested != 0U) ? 0.0f :
-        clamp_abs_target(&controller->config,
-                         input->target_speed_mps,
-                         &target_limited);
-    output.diagnostics.target_limited = target_limited;
-    output.diagnostics.limited_target_mps = target_mps;
+        input->target_speed_mps;
+    output.diagnostics.command_target_mps = target_mps;
 
     requested_direction = direction_from_target(target_mps);
     if (input->stopped == 0U &&
@@ -772,8 +739,6 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
         output.reason = LONGITUDINAL_REASON_REVERSAL_REQUIRED;
         output.target_direction = requested_direction;
         output.brake_permitted = 1U;
-        output.normalized_brake_request =
-            controller->config.stop_brake_request;
         output.diagnostics.slew_limited = 1U;
         output.diagnostics.slewed_target_mps = 0.0f;
         output.diagnostics.reason = output.reason;
@@ -791,8 +756,7 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
         controller->tracking_brake_active = 0U;
         output.diagnostics.tracking_brake_active = 0U;
 
-        if (input->stopped != 0U || input->speed_magnitude_mps <=
-            controller->config.min_control_speed_mps)
+        if (input->stopped != 0U)
         {
             output.reason = (input->stop_requested != 0U) ?
                 LONGITUDINAL_REASON_STOP_REQUESTED :
@@ -804,13 +768,10 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
         output.intent = LONGITUDINAL_INTENT_STOP_BRAKE;
         output.reason = LONGITUDINAL_REASON_STOP_REQUESTED;
         output.brake_permitted = 1U;
-        output.normalized_brake_request =
-            controller->config.stop_brake_request;
         output.diagnostics.reason = output.reason;
         return output;
     }
 
-    if (controller->config.tracking_brake_enabled != 0U)
     {
         const float tracking_error_mps =
             input->speed_magnitude_mps - fabsf(target_mps);

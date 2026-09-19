@@ -56,7 +56,7 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="170.0" y="293.5" fill="#0f172a">转向与纵向分别处理</text>
   <rect stroke-width="1.6" x="365" y="175" width="290" height="145" rx="8" fill="#eff6ff" stroke="#2563eb" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="510.0" y="212.5" fill="#0f172a">参考速度 v参考</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="239.5" fill="#0f172a">正反速度上限</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="239.5" fill="#0f172a">非零目标不设软件死区 / 上限</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="266.5" fill="#0f172a">参考加速 / 减速斜坡</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="510.0" y="293.5" fill="#0f172a">换向先停车，再反向起步</text>
   <rect stroke-width="1.6" x="725" y="205" width="60" height="75" rx="8" fill="#eff6ff" stroke="#2563eb" />
@@ -131,8 +131,8 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1073.5" fill="#0f172a">超速时用正向侧主动刹车</text>
   <rect stroke-width="1.6" x="70" y="1235" width="290" height="115" rx="8" fill="#f8fafc" stroke="#64748b" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="215.0" y="1271.0" fill="#0f172a">上电 / 恢复等待</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1298.0" fill="#0f172a">受限正向探测</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1325.0" fill="#0f172a">运动样本确认或超时回中</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1298.0" fill="#0f172a">用户正向目标经斜坡输出</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="215.0" y="1325.0" fill="#0f172a">新鲜运动样本确认方向</text>
   <rect stroke-width="1.6" x="510" y="1235" width="290" height="115" rx="8" fill="#eff6ff" stroke="#2563eb" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="655.0" y="1271.0" fill="#0f172a">中点等待</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="655.0" y="1298.0" fill="#0f172a">目标 0：保持中点</text>
@@ -149,12 +149,12 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1535.0" y="1486.0" fill="#0f172a">倒车制动</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1512.0" fill="#0f172a">正向侧信号主动刹车</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1538.0" fill="#0f172a">停稳、回中后才可前进</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1564.0" fill="#0f172a">明确换向请求设超时边界</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1535.0" y="1564.0" fill="#0f172a">命令 / 反馈失效才回中</text>
   <rect stroke-width="1.6" x="70" y="1445" width="1160" height="125" rx="8" fill="#f8fafc" stroke="#64748b" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="650.0" y="1473.5" fill="#0f172a">动作约束</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1499.5" fill="#0f172a">回中后不自动补发同侧刹车；同侧信号此时可能已是推进。</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1525.5" fill="#0f172a">夹入零速命令不能绕过换向停稳；双向主动刹车分别标定。</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1551.5" fill="#0f172a">未知状态禁止负向动作；受限正向探测须由新鲜运动样本确认。</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="650.0" y="1551.5" fill="#0f172a">未知状态禁止负向动作；用户正向目标经斜坡输出须由新鲜运动样本确认。</text>
   <rect stroke-width="1.6" x="365" y="1008" width="140" height="28" rx="8" fill="#ffffff" stroke="none" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="16" font-weight="700" text-anchor="middle" x="435.0" y="1026.0" fill="#b91c1c">超速 / 停车</text>
   <rect stroke-width="1.6" x="798" y="1008" width="155" height="28" rx="8" fill="#ffffff" stroke="none" />

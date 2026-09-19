@@ -10,6 +10,8 @@
 
 static pOLEDInterface_t oled = &UserOLED;
 
+extern volatile uint32_t g_rc_aux_present;
+
 #define SHOW_KEY_POLL_MS       20U
 #define SHOW_KEY_DEBOUNCE_MS   40U
 #define SHOW_REFRESH_MS       100U
@@ -66,8 +68,8 @@ static void show_runtime_page(
         "RC  " : "AUTO");
     oled->ShowString(56, 0, "R");
     oled->ShowNumber(64, 0, control_snapshot->rc_override_active, 1, 12);
-    oled->ShowString(80, 0, "G");
-    oled->ShowNumber(88, 0, control_snapshot->rc_emergency_active, 1, 12);
+    oled->ShowString(80, 0, "X");
+    oled->ShowNumber(88, 0, g_rc_aux_present, 1, 12);
 
     show_clear_line(12);
     oled->ShowString(0, 12, "E");

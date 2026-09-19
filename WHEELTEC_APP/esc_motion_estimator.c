@@ -65,12 +65,7 @@ static void esc_motion_clear_sample_and_stop(EscMotionEstimator_t *estimator)
 static uint8_t esc_motion_magnitude_config_equals(const EscMotionEstimatorConfig_t *left,
                                                   const EscMotionEstimatorConfig_t *right)
 {
-    return (left->calibration_valid == right->calibration_valid &&
-            left->magnitude_config_valid == right->magnitude_config_valid &&
-            left->wheel_rpm_per_raw_valid == right->wheel_rpm_per_raw_valid &&
-            left->wheel_radius_valid == right->wheel_radius_valid &&
-            left->telemetry_timeout_valid == right->telemetry_timeout_valid &&
-            left->wheel_rpm_per_raw == right->wheel_rpm_per_raw &&
+    return (left->wheel_rpm_per_raw == right->wheel_rpm_per_raw &&
             left->wheel_radius_m == right->wheel_radius_m &&
             left->telemetry_timeout_ms == right->telemetry_timeout_ms) ? 1U : 0U;
 }
@@ -78,11 +73,7 @@ static uint8_t esc_motion_magnitude_config_equals(const EscMotionEstimatorConfig
 static uint8_t esc_motion_stop_config_equals(const EscMotionEstimatorConfig_t *left,
                                              const EscMotionEstimatorConfig_t *right)
 {
-    return (left->stop_config_valid == right->stop_config_valid &&
-            left->stopped_threshold_valid == right->stopped_threshold_valid &&
-            left->stopped_samples_valid == right->stopped_samples_valid &&
-            left->stopped_coverage_valid == right->stopped_coverage_valid &&
-            left->stopped_speed_threshold_mps == right->stopped_speed_threshold_mps &&
+    return (left->stopped_speed_threshold_mps == right->stopped_speed_threshold_mps &&
             left->stopped_min_samples == right->stopped_min_samples &&
             left->stopped_min_coverage_ms == right->stopped_min_coverage_ms) ? 1U : 0U;
 }
@@ -102,12 +93,7 @@ uint8_t EscMotionEstimator_ConfigIsValid(const EscMotionEstimatorConfig_t *confi
         return 0U;
     }
 
-    if (config->calibration_valid == 0U ||
-        config->magnitude_config_valid == 0U ||
-        config->wheel_rpm_per_raw_valid == 0U ||
-        config->wheel_radius_valid == 0U ||
-        config->telemetry_timeout_valid == 0U ||
-        esc_motion_float_is_positive_finite(config->wheel_rpm_per_raw) == 0U ||
+    if (esc_motion_float_is_positive_finite(config->wheel_rpm_per_raw) == 0U ||
         esc_motion_float_is_positive_finite(config->wheel_radius_m) == 0U ||
         esc_motion_duration_is_valid(config->telemetry_timeout_ms) == 0U)
     {
@@ -156,10 +142,6 @@ uint8_t EscMotionEstimator_StopConfigIsValid(const EscMotionEstimatorConfig_t *c
     }
 
     if (EscMotionEstimator_ConfigIsValid(config, &local_reason) == 0U ||
-        config->stop_config_valid == 0U ||
-        config->stopped_threshold_valid == 0U ||
-        config->stopped_samples_valid == 0U ||
-        config->stopped_coverage_valid == 0U ||
         esc_motion_float_is_positive_finite(config->stopped_speed_threshold_mps) == 0U ||
         config->stopped_min_samples < 2U ||
         esc_motion_duration_is_valid(config->stopped_min_coverage_ms) == 0U)
@@ -508,8 +490,8 @@ void EscMotionEstimator_CommitAppliedActionAt(EscMotionEstimator_t *estimator,
     estimator->last_applied_action = action;
 
     /*
-     * Call this after every real output application. Repeated BRAKE and
-     * REVERSE_FIRST_STRIKE ticks share the first applied tick as their
+     * Call this after every real output application. Repeated BRAKE ticks
+     * share the first applied tick as their
      * stop-evidence epoch so fresh zero-speed telemetry can accumulate while
      * braking. Propulsion or external-override ticks keep stop evidence
      * invalidated because the physical state is still being driven or unknown.
@@ -534,27 +516,12 @@ void EscMotionEstimator_CommitAppliedActionAt(EscMotionEstimator_t *estimator,
             estimator->stop_epoch_tick_ms = applied_tick_ms;
         }
         break;
-    case ESC_MOTION_APPLIED_ACTION_REVERSE_FIRST_STRIKE:
-        if (action_edge != 0U)
-        {
-            esc_motion_clear_stop(estimator);
-            estimator->stop_epoch_valid = 1U;
-            estimator->stop_epoch_tick_ms = applied_tick_ms;
-        }
-        break;
     case ESC_MOTION_APPLIED_ACTION_EXTERNAL_OVERRIDE:
         esc_motion_clear_stop(estimator);
         estimator->stop_epoch_valid = 1U;
         estimator->stop_epoch_tick_ms = applied_tick_ms;
         break;
     case ESC_MOTION_APPLIED_ACTION_NEUTRAL:
-        if (action_edge != 0U &&
-            previous_action == ESC_MOTION_APPLIED_ACTION_REVERSE_FIRST_STRIKE)
-        {
-            esc_motion_clear_stop(estimator);
-            estimator->stop_epoch_valid = 1U;
-            estimator->stop_epoch_tick_ms = applied_tick_ms;
-        }
         break;
     default:
         break;

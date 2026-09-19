@@ -12,13 +12,13 @@ extern volatile uint32_t g_rc_capture_active_high;
 void ServoRC_Capture_Init(void);
 uint16_t ServoRC_GetThrottlePulse(void);
 uint16_t ServoRC_GetSteeringPulse(void);
-uint16_t ServoRC_GetGuardPulse(void);
+uint16_t ServoRC_GetAuxPulse(void);
 uint8_t ServoRC_IsThrottleActive(uint32_t timeout_ms);
 uint8_t ServoRC_IsSteeringActive(uint32_t timeout_ms);
-uint8_t ServoRC_IsGuardActive(uint32_t timeout_ms);
+uint8_t ServoRC_IsAuxActive(uint32_t timeout_ms);
 uint8_t ServoRC_HasThrottleFault(void);
 uint8_t ServoRC_HasSteeringFault(void);
-uint8_t ServoRC_HasGuardFault(void);
+uint8_t ServoRC_HasAuxFault(void);
 
 #ifdef __cplusplus
 }
