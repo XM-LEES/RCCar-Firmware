@@ -75,13 +75,10 @@ typedef struct
 {
     uint16_t throttle_us;
     uint16_t steering_us;
-    uint16_t aux_us;
     uint8_t throttle_active;
     uint8_t steering_active;
-    uint8_t aux_active;
     uint8_t throttle_fault;
     uint8_t steering_fault;
-    uint8_t aux_fault;
 } HostRcState_t;
 
 extern volatile uint32_t g_rc_signal_timeout_ms;
@@ -101,9 +98,6 @@ extern volatile uint32_t g_rc_override_enter_threshold_us;
 extern volatile uint32_t g_rc_override_exit_threshold_us;
 extern volatile uint32_t g_rc_override_enter_samples;
 extern volatile uint32_t g_rc_override_release_hold_ms;
-extern volatile uint32_t g_rc_aux_pulse_us;
-extern volatile uint32_t g_rc_aux_present;
-extern volatile uint32_t g_rc_aux_fault;
 extern volatile uint32_t g_orin_pwm_timeout_ms;
 extern volatile uint32_t g_orin_ackermann_wheelbase_mm;
 extern volatile uint32_t g_orin_ackermann_track_width_mm;
@@ -298,11 +292,6 @@ uint16_t ServoRC_GetSteeringPulse(void)
     return s_rc.steering_us;
 }
 
-uint16_t ServoRC_GetAuxPulse(void)
-{
-    return s_rc.aux_us;
-}
-
 uint8_t ServoRC_IsThrottleActive(uint32_t timeout_ms)
 {
     (void)timeout_ms;
@@ -315,12 +304,6 @@ uint8_t ServoRC_IsSteeringActive(uint32_t timeout_ms)
     return s_rc.steering_active;
 }
 
-uint8_t ServoRC_IsAuxActive(uint32_t timeout_ms)
-{
-    (void)timeout_ms;
-    return s_rc.aux_active;
-}
-
 uint8_t ServoRC_HasThrottleFault(void)
 {
     return s_rc.throttle_fault;
@@ -329,11 +312,6 @@ uint8_t ServoRC_HasThrottleFault(void)
 uint8_t ServoRC_HasSteeringFault(void)
 {
     return s_rc.steering_fault;
-}
-
-uint8_t ServoRC_HasAuxFault(void)
-{
-    return s_rc.aux_fault;
 }
 
 void HallSpeed_Init(void)
@@ -415,10 +393,6 @@ static void reset_tunables_to_defaults(void)
     g_rc_override_exit_threshold_us = APP_RC_OVERRIDE_EXIT_THRESHOLD_US;
     g_rc_override_enter_samples = APP_RC_OVERRIDE_ENTER_SAMPLES;
     g_rc_override_release_hold_ms = APP_RC_OVERRIDE_RELEASE_HOLD_MS;
-    g_rc_aux_pulse_us = 0U;
-    g_rc_aux_present = 0U;
-    g_rc_aux_fault = 0U;
-
     g_orin_pwm_timeout_ms = APP_ORIN_PWM_TIMEOUT_DEFAULT_MS;
     g_orin_ackermann_wheelbase_mm = APP_ORIN_ACKERMANN_WHEELBASE_MM;
     g_orin_ackermann_track_width_mm = APP_ORIN_ACKERMANN_TRACK_WIDTH_MM;
@@ -893,40 +867,6 @@ static int test_rc_hall_direction_renewed_motion_revokes_brake_stop(void)
     set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
     run_control_at(1100U);
     EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-
-    return 0;
-}
-
-static int test_rc_aux_does_not_change_partial_hall_reversal_sequence(void)
-{
-    reset_fixture();
-    g_rc_debounce_deadband_us = 0U;
-    g_rc_debounce_smooth_div = 1U;
-    g_rc_throttle_jump_confirm_us = 1000U;
-
-    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
-    run_control_at(1000U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
-
-    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
-    run_control_at(1020U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-
-    g_hall_speed_state.stationary_confirmed = 1U;
-    run_control_at(1040U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-
-    s_rc.aux_us = 2000U;
-    s_rc.aux_active = 1U;
-    run_control_at(1060U);
-    EXPECT_TRUE(g_rc_aux_present != 0U);
-    EXPECT_TRUE(g_rc_aux_pulse_us == 2000U);
-
-    set_rc(APP_RC_OVERRIDE_CENTER_US, APP_RC_OVERRIDE_CENTER_US, 1U);
-    run_control_at(1080U);
-    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
-    run_control_at(1100U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
 
     return 0;
 }
@@ -1863,33 +1803,6 @@ static int test_control_snapshot_rx_invalidation_clears_valid_and_stop(void)
     return 0;
 }
 
-static int test_control_snapshot_records_rc_aux_without_changing_authority(void)
-{
-    servo_basic_control_snapshot_t before;
-    servo_basic_control_snapshot_t after;
-
-    reset_fixture();
-    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&before) != 0U);
-    s_rc.aux_us = 2000U;
-    s_rc.aux_active = 1U;
-    run_control_at(1000U);
-
-    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&after) != 0U);
-    EXPECT_TRUE(after.publish_sequence > before.publish_sequence);
-    EXPECT_TRUE(after.control_tick_ms == 1000U);
-    EXPECT_TRUE(after.rc_override_active == 0U);
-    EXPECT_TRUE(g_rc_aux_present != 0U);
-    EXPECT_TRUE(g_rc_aux_pulse_us == 2000U);
-    EXPECT_EQ_U16(after.state.esc_pulse_us, APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_U16(after.state.servo_pulse_us, APP_ORIN_SERVO_CENTER_US);
-
-    run_data_task_once(1000U);
-    EXPECT_TRUE((s_base_telemetry_frame[1] & TELEMETRY_FLAG_RC_OVERRIDE_ACTIVE) == 0U);
-    EXPECT_TRUE((s_base_telemetry_frame[1] & TELEMETRY_FLAG_STOP_OVERRIDE_ACTIVE) == 0U);
-
-    return 0;
-}
-
 static int test_forward_recovery_requires_fresh_motion_before_signed_speed(void)
 {
     servo_basic_control_snapshot_t snapshot;
@@ -2097,10 +2010,6 @@ int main(void)
     {
         return 1;
     }
-    if (test_rc_aux_does_not_change_partial_hall_reversal_sequence() != 0)
-    {
-        return 1;
-    }
     if (test_steering_direction_limit_and_rate_limit() != 0)
     {
         return 1;
@@ -2194,10 +2103,6 @@ int main(void)
         return 1;
     }
     if (test_control_snapshot_rx_invalidation_clears_valid_and_stop() != 0)
-    {
-        return 1;
-    }
-    if (test_control_snapshot_records_rc_aux_without_changing_authority() != 0)
     {
         return 1;
     }

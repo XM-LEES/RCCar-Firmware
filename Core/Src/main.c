@@ -128,7 +128,6 @@ static void App_StartInputInterrupts(void)
 {
   HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_1);
   HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_2);
-  HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_3);
 
   HAL_UART_Receive_IT(&huart4, &rosbuffer, 1);
   (void)EscTelemetryStm32_Start();

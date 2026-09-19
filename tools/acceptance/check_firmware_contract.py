@@ -600,6 +600,12 @@ def check_control_output_fallbacks(root: Path) -> list[Check]:
 
 def check_fault_recovery(root: Path) -> list[Check]:
     servo_text = read_text(root, "WHEELTEC_APP/servo_basic_control.c")
+    rc_capture_text = read_text(root, "WHEELTEC_APP/servo_rc_capture.c")
+    rc_capture_header_text = read_text(root, "WHEELTEC_APP/Inc/servo_rc_capture.h")
+    show_text = read_text(root, "WHEELTEC_APP/show_task.c")
+    main_text = read_text(root, "Core/Src/main.c")
+    tim_text = read_text(root, "Core/Src/tim.c")
+    ioc_text = read_text(root, "WHEELTEC.ioc")
     serial_text = read_text(root, "WHEELTEC_APP/SerialControl_task.c")
     data_text = read_text(root, "WHEELTEC_APP/data_task.c")
     hall_text = read_text(root, "WHEELTEC_APP/hall_speed.c")
@@ -652,17 +658,27 @@ def check_fault_recovery(root: Path) -> list[Check]:
         "throttle_fault_persistent",
         "steering_fault_persistent",
     ]), "RC capture faults become live only after the configured glitch-freeze interval")
-    add(results, "rc_aux_is_observation_only", all(needle in servo_text for needle in [
-        "g_rc_aux_present = ServoRC_IsAuxActive(timeout_ms)",
-        "g_rc_aux_pulse_us = (g_rc_aux_present != 0U) ? ServoRC_GetAuxPulse() : 0U",
-        "g_rc_aux_fault = aux_fault",
-        "g_rc_input_fault_active = (throttle_fault_persistent != 0U ||",
-        "steering_fault_persistent != 0U) ? 1U : 0U",
-    ]) and all(needle not in servo_text for needle in [
-        "rc_guard_input_is_active",
-        "g_rc_guard_active",
-        "ServoRC_IsGuardActive",
-    ]), "PD14 RC AUX is captured for diagnosis but does not affect authority or faults")
+    add(results, "pd14_is_unconfigured", all(needle in main_text for needle in [
+        "HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_1)",
+        "HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_2)",
+    ]) and all(needle not in "\n".join([
+        servo_text,
+        rc_capture_text,
+        rc_capture_header_text,
+        show_text,
+        main_text,
+        tim_text,
+        ioc_text,
+    ]) for needle in [
+        "ServoRC_GetAuxPulse",
+        "ServoRC_IsAuxActive",
+        "ServoRC_HasAuxFault",
+        "g_rc_aux",
+        "HAL_TIM_ACTIVE_CHANNEL_3",
+        "TIM_CHANNEL_3",
+        "S_TIM4_CH3",
+        "PD14.Signal",
+    ]), "unconnected PD14 has no guard/AUX API, TIM4 CH3 setup, or runtime state")
     add(results, "transient_rc_glitch_not_reported_live", contains(
         servo_text, "diagnostics.steering_fault = (g_rc_input_fault_active != 0U) ? 1U : 0U;"
     ), "diagnostics report the persistent RC input fault, not the immediate glitch watch value")

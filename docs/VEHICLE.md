@@ -60,7 +60,7 @@
 | ESC 信号电平（V） | | |
 | ESC / 转向 PWM | PC6 / TIM8 CH1；PC7 / TIM8 CH2 | `servo_basic_output.c` |
 | RC 油门 / 转向 | PD12 / TIM4 CH1；PD13 / TIM4 CH2 | 既有输入捕获路径 |
-| RC AUX | PD14 / TIM4 CH3 | 保留PWM输入捕获；真实用途待确认，当前不参与接管、停止或故障判断 |
+| 未使用引脚 | PD14 | 实物确认未接线；固件不配置TIM4 CH3，不存在guard输入 |
 | OLED页面开关 | PD3；输入上拉 | 拨动开关，低电平运行页、高电平诊断页；40 ms消抖，不使用EXTI |
 | 电池 ADC | PC2 / ADC1_IN12 | 原上行电压来源 |
 | ADC 换算 | `raw / 4095 × 3.3 × 11` V | 原参考电压与换算倍率，不代表电池额定电压 |

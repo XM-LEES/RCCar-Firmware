@@ -166,10 +166,10 @@
         <mxCell id="esc" value="&lt;b&gt;HOBBYWING MAX5 HV G2&lt;/b&gt;&lt;br&gt;模式二：前进 / 刹车 / 倒车&lt;br&gt;遥测 eRPM / V / A / 温度&lt;br&gt;遥测链路（未验证）" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1640" y="445" width="320" height="180" />
         </mxCell>
-        <mxCell id="rc" value="&lt;b&gt;RC 接收输入&lt;/b&gt;&lt;br&gt;保留基线控制路径&lt;br&gt;油门 / 转向 / AUX&lt;br&gt;AUX 仅采集，用途待确认" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="rc" value="&lt;b&gt;RC 接收输入&lt;/b&gt;&lt;br&gt;保留基线控制路径&lt;br&gt;油门 / 转向&lt;br&gt;PD14 未接线" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="40" y="475" width="290" height="145" />
         </mxCell>
-        <mxCell id="rc_capture" value="&lt;b&gt;RC 采集与有效性&lt;/b&gt;&lt;br&gt;PD12 油门 / PD13 转向&lt;br&gt;PD14 AUX（只采集）&lt;br&gt;脉宽捕获、滤波与异常诊断" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="rc_capture" value="&lt;b&gt;RC 采集与有效性&lt;/b&gt;&lt;br&gt;PD12 油门 / PD13 转向&lt;br&gt;TIM4 CH1 / CH2&lt;br&gt;脉宽捕获、滤波与异常诊断" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="415" y="475" width="325" height="145" />
         </mxCell>
         <mxCell id="battery" value="&lt;b&gt;电池电压采样&lt;/b&gt;&lt;br&gt;板载分压输入&lt;br&gt;既有 battery_mv 来源" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">

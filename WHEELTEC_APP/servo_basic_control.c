@@ -164,9 +164,6 @@ volatile uint32_t g_rc_override_enter_threshold_us = RC_OVERRIDE_ENTER_THRESHOLD
 volatile uint32_t g_rc_override_exit_threshold_us = RC_OVERRIDE_EXIT_THRESHOLD_DEFAULT_US;
 volatile uint32_t g_rc_override_enter_samples = RC_OVERRIDE_ENTER_SAMPLES_DEFAULT;
 volatile uint32_t g_rc_override_release_hold_ms = RC_OVERRIDE_RELEASE_HOLD_DEFAULT_MS;
-volatile uint32_t g_rc_aux_pulse_us = 0U;
-volatile uint32_t g_rc_aux_present = 0U;
-volatile uint32_t g_rc_aux_fault = 0U;
 volatile uint32_t g_rc_throttle_last_good_us = ESC_PWM_NEUTRAL_PULSE_US;
 volatile uint32_t g_rc_steering_last_good_us = ESC_PWM_NEUTRAL_PULSE_US;
 volatile uint32_t g_rc_throttle_glitch_active = 0U;
@@ -338,9 +335,6 @@ static void rc_debounce_reset(void)
 	memset(&g_rc_steering_state, 0, sizeof(g_rc_steering_state));
 	g_rc_throttle_current = 0U;
 	g_rc_steering_current = 0U;
-	g_rc_aux_pulse_us = 0U;
-	g_rc_aux_present = 0U;
-	g_rc_aux_fault = 0U;
 	g_rc_throttle_last_good_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_rc_steering_last_good_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_rc_throttle_glitch_active = 0U;
@@ -946,7 +940,6 @@ static void refresh_rc_inputs(void)
 	const uint8_t raw_steering_present = ServoRC_IsSteeringActive(timeout_ms);
 	const uint8_t throttle_fault = ServoRC_HasThrottleFault();
 	const uint8_t steering_fault = ServoRC_HasSteeringFault();
-	const uint8_t aux_fault = ServoRC_HasAuxFault();
 	uint8_t throttle_fault_persistent;
 	uint8_t steering_fault_persistent;
 
@@ -968,9 +961,6 @@ static void refresh_rc_inputs(void)
 	g_rc_input_fault_active = (throttle_fault_persistent != 0U ||
 		steering_fault_persistent != 0U) ? 1U : 0U;
 
-	g_rc_aux_present = ServoRC_IsAuxActive(timeout_ms);
-	g_rc_aux_pulse_us = (g_rc_aux_present != 0U) ? ServoRC_GetAuxPulse() : 0U;
-	g_rc_aux_fault = aux_fault;
 }
 
 static uint8_t rc_manual_override_requested(void)

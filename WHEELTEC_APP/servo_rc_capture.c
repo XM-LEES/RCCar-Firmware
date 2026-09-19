@@ -1,6 +1,6 @@
 /**
  * @file servo_rc_capture.c
- * @brief RC input capture using TIM4 CH1~CH3 (throttle, steering, AUX).
+ * @brief RC input capture using TIM4 CH1~CH2 (throttle and steering).
  */
 
 #include "servo_rc_capture.h"
@@ -20,7 +20,6 @@ typedef struct
 
 static servo_rc_channel_state_t g_rc_throttle = {0};
 static servo_rc_channel_state_t g_rc_steering = {0};
-static servo_rc_channel_state_t g_rc_aux = {0};
 
 static uint32_t rc_capture_first_polarity(void);
 static uint32_t rc_capture_second_polarity(void);
@@ -39,18 +38,10 @@ void ServoRC_Capture_Init(void)
 	g_rc_steering.last_update_ms = 0U;
 	g_rc_steering.fault_active = 0U;
 
-	g_rc_aux.last_capture = 0U;
-	g_rc_aux.pulse_ticks = 1500U;
-	g_rc_aux.waiting_for_falling = 0U;
-	g_rc_aux.last_update_ms = 0U;
-	g_rc_aux.fault_active = 0U;
-
 	TIM_RESET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_1);
 	TIM_SET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_1, rc_capture_first_polarity());
 	TIM_RESET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_2);
 	TIM_SET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_2, rc_capture_first_polarity());
-	TIM_RESET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_3);
-	TIM_SET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_3, rc_capture_first_polarity());
 }
 
 uint16_t ServoRC_GetThrottlePulse(void)
@@ -61,11 +52,6 @@ uint16_t ServoRC_GetThrottlePulse(void)
 uint16_t ServoRC_GetSteeringPulse(void)
 {
 	return g_rc_steering.pulse_ticks;
-}
-
-uint16_t ServoRC_GetAuxPulse(void)
-{
-	return g_rc_aux.pulse_ticks;
 }
 
 static uint32_t rc_capture_diff(uint32_t start, uint32_t end, uint32_t period)
@@ -165,11 +151,6 @@ uint8_t ServoRC_IsSteeringActive(uint32_t timeout_ms)
 	return ServoRC_IsActive(&g_rc_steering, timeout_ms);
 }
 
-uint8_t ServoRC_IsAuxActive(uint32_t timeout_ms)
-{
-	return ServoRC_IsActive(&g_rc_aux, timeout_ms);
-}
-
 uint8_t ServoRC_HasThrottleFault(void)
 {
 	return g_rc_throttle.fault_active;
@@ -178,11 +159,6 @@ uint8_t ServoRC_HasThrottleFault(void)
 uint8_t ServoRC_HasSteeringFault(void)
 {
 	return g_rc_steering.fault_active;
-}
-
-uint8_t ServoRC_HasAuxFault(void)
-{
-	return g_rc_aux.fault_active;
 }
 
 void ServoRC_IC_CaptureCallback(TIM_HandleTypeDef *htim)
@@ -199,9 +175,6 @@ void ServoRC_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_2:
 			ServoRC_HandleChannel(&g_rc_steering, htim, TIM_CHANNEL_2);
-			break;
-		case HAL_TIM_ACTIVE_CHANNEL_3:
-			ServoRC_HandleChannel(&g_rc_aux, htim, TIM_CHANNEL_3);
 			break;
 		default:
 			break;
