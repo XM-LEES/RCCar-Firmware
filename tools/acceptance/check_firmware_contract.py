@@ -218,6 +218,7 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
     data_text = read_text(root, "WHEELTEC_APP/data_task.c")
     show_text = read_text(root, "WHEELTEC_APP/show_task.c")
     esc_telemetry_text = read_text(root, "WHEELTEC_APP/esc_telemetry.c")
+    rc_direction_text = read_text(root, "WHEELTEC_APP/rc_direction_observer.c")
     results: list[Check] = []
     add(results, "auto_uses_esc_motion_not_hall_speed", all(needle in text for needle in [
         "EscTelemetry_GetSnapshot(&snapshot)",
@@ -229,17 +230,28 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "HallSpeed_GetSignedSpeedMps",
         "HallSpeed_SetCommandDirection(command_direction)",
     ]), "automatic Ackermann speed, PI, and gate consume ESC samples rather than Hall speed")
-    add(results, "rc_hall_mode2_direction_sequence", all(needle in text for needle in [
-        "static int8_t get_rc_throttle_direction(void)",
-        "g_rc_throttle_current",
-        "center_us + neutral_hold_us",
+    add(results, "rc_direction_observer_unifies_hall_and_esc", all(needle in text for needle in [
+        '#include "rc_direction_observer.h"',
+        "servo_basic_update_rc_direction_observer(now_ms)",
+        "RcDirectionObserver_Update(",
+        "input.state_raw",
+        "input.moving_evidence",
+        "input.applied_pwm_us = g_state.esc_pulse_us",
+        "s_vehicle_direction = (int8_t)s_rc_direction_result.direction",
+        "s_rc_direction_result.direction_known != 0U",
+        "s_esc_stop_confirmed == 0U",
+    ]) and all(needle in rc_direction_text for needle in [
+        "RC_DIRECTION_OBSERVER_STATE_NEUTRAL",
+        "RC_DIRECTION_OBSERVER_STATE_DRIVE",
+        "RC_DIRECTION_OBSERVER_STATE_BRAKE",
+        "observer->saw_non_drive_since_confirmed",
+        "observer->pending_count >= 2U",
+    ]) and all(needle not in text for needle in [
         "RC_HALL_MODE2_BRAKING",
         "RC_HALL_MODE2_BRAKE_STOPPED",
         "RC_HALL_MODE2_OPPOSITE_ARMED",
-        "HallSpeed_GetState().stationary_confirmed",
         "rc_hall_mode2_update()",
-    ]) and "HallSpeed_SetCommandDirection(get_rc_throttle_direction())" not in text,
-        "RC Hall direction changes only after brake-stop-neutral-opposite sequence")
+    ]), "RC Hall and ESC signs share the FE32 action/PWM-side observer without the old symmetric command-history state machine")
     add(results, "auto_hall_direction_uses_confirmed_mode2_direction", all(needle in text for needle in [
         "g_orin_state.software_stop == 0U &&",
         "s_vehicle_direction_known != 0U)",
@@ -563,6 +575,20 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
             "<FilePath>..\\WHEELTEC_APP\\longitudinal_controller.c</FilePath>",
         ]),
         "CMake host/ARM and Keil projects compile the longitudinal controller",
+    )
+    add(
+        results,
+        "rc_direction_observer_in_both_projects",
+        all(needle in cmake_text for needle in [
+            "WHEELTEC_APP/rc_direction_observer.c",
+            "test_rc_direction_observer",
+            "target_link_libraries(WHEELTEC.elf PRIVATE",
+            "rc_direction_observer",
+        ]) and all(needle in keil_text for needle in [
+            "<FileName>rc_direction_observer.c</FileName>",
+            "<FilePath>..\\WHEELTEC_APP\\rc_direction_observer.c</FilePath>",
+        ]),
+        "CMake host/ARM and Keil projects compile the RC direction observer",
     )
     add(
         results,

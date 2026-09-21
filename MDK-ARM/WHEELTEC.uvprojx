@@ -1195,6 +1195,11 @@
               <FilePath>..\WHEELTEC_APP\servo_basic_control.c</FilePath>
             </File>
             <File>
+              <FileName>rc_direction_observer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\WHEELTEC_APP\rc_direction_observer.c</FilePath>
+            </File>
+            <File>
               <FileName>servo_rc_capture.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\WHEELTEC_APP\servo_rc_capture.c</FilePath>

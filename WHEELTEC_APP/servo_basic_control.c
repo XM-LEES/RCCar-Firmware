@@ -15,6 +15,7 @@
 #include "hall_speed.h"
 #include "longitudinal_controller.h"
 #include "mode2_drive_gate.h"
+#include "rc_direction_observer.h"
 #include "servo_rc_capture.h"
 
 #if defined(STM32F407xx)
@@ -197,14 +198,6 @@ typedef struct
 	uint8_t stable_present;
 } rc_channel_filter_state_t;
 
-typedef enum
-{
-	RC_HALL_MODE2_TRACKING = 0,
-	RC_HALL_MODE2_BRAKING,
-	RC_HALL_MODE2_BRAKE_STOPPED,
-	RC_HALL_MODE2_OPPOSITE_ARMED
-} rc_hall_mode2_phase_t;
-
 static orin_pwm_state_t g_orin_state = {
 	.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US,
 	.last_update_ms = 0U,
@@ -255,11 +248,10 @@ static uint32_t s_esc_last_observed_epoch = 0U;
 static EscFe32Sample_t s_esc_latest_raw_sample;
 static uint8_t s_esc_latest_raw_sample_valid = 0U;
 static EscTelemetryReceiverHealth_t s_esc_receiver_health;
+static RcDirectionObserver_t s_rc_direction_observer;
+static RcDirectionObserverResult_t s_rc_direction_result;
 static uint8_t s_vehicle_direction_known = 0U;
 static int8_t s_vehicle_direction = 0;
-static int8_t s_rc_hall_direction = 0;
-static int8_t s_rc_hall_pending_direction = 0;
-static rc_hall_mode2_phase_t s_rc_hall_mode2_phase = RC_HALL_MODE2_TRACKING;
 static uint8_t s_auto_history_boundary_valid = 0U;
 static uint32_t s_auto_history_boundary_ms = 0U;
 
@@ -664,133 +656,6 @@ static uint16_t get_orin_esc_reverse_limit_pulse(void)
 	return (pulse > center) ? center : pulse;
 }
 
-static int8_t get_vx_direction(float vx_mps)
-{
-	if (vx_mps > 0.0f)
-	{
-		return 1;
-	}
-	if (vx_mps < 0.0f)
-	{
-		return -1;
-	}
-	return 0;
-}
-
-static int8_t get_rc_throttle_direction(void)
-{
-	const uint32_t center_us = get_rc_override_center_us();
-	const uint32_t neutral_hold_us = get_rc_throttle_neutral_hold_us();
-	const uint32_t throttle_us = (uint32_t)g_rc_throttle_current;
-
-	if (g_rc_throttle_present == 0U || throttle_us == 0U)
-	{
-		return 0;
-	}
-	if (throttle_us > (center_us + neutral_hold_us))
-	{
-		return 1;
-	}
-	if ((throttle_us + neutral_hold_us) < center_us)
-	{
-		return -1;
-	}
-	return 0;
-}
-
-static void rc_hall_mode2_reset(int8_t direction)
-{
-	s_rc_hall_direction = get_vx_direction((float)direction);
-	s_rc_hall_pending_direction = 0;
-	s_rc_hall_mode2_phase = RC_HALL_MODE2_TRACKING;
-}
-
-static int8_t rc_hall_mode2_update(void)
-{
-	const int8_t requested_direction = get_rc_throttle_direction();
-
-	if (s_rc_hall_direction == 0)
-	{
-		if (requested_direction != 0)
-		{
-			s_rc_hall_direction = requested_direction;
-		}
-		return requested_direction;
-	}
-
-	switch (s_rc_hall_mode2_phase)
-	{
-	case RC_HALL_MODE2_BRAKING:
-		if (requested_direction == s_rc_hall_direction)
-		{
-			rc_hall_mode2_reset(s_rc_hall_direction);
-			return s_rc_hall_direction;
-		}
-		if (requested_direction == 0)
-		{
-			/* Releasing the brake before a confirmed stop cannot unlock reversal. */
-			rc_hall_mode2_reset(s_rc_hall_direction);
-			return 0;
-		}
-		if (requested_direction == s_rc_hall_pending_direction &&
-			HallSpeed_GetState().stationary_confirmed != 0U)
-		{
-			s_rc_hall_mode2_phase = RC_HALL_MODE2_BRAKE_STOPPED;
-		}
-		return 0;
-
-	case RC_HALL_MODE2_BRAKE_STOPPED:
-		if (requested_direction == s_rc_hall_direction)
-		{
-			rc_hall_mode2_reset(s_rc_hall_direction);
-			return s_rc_hall_direction;
-		}
-		if (HallSpeed_GetState().stationary_confirmed == 0U)
-		{
-			/* Any renewed wheel motion cancels the completed-brake evidence. */
-			rc_hall_mode2_reset(s_rc_hall_direction);
-			return 0;
-		}
-		if (requested_direction == 0)
-		{
-			s_rc_hall_mode2_phase = RC_HALL_MODE2_OPPOSITE_ARMED;
-		}
-		return 0;
-
-	case RC_HALL_MODE2_OPPOSITE_ARMED:
-		if (requested_direction == s_rc_hall_pending_direction)
-		{
-			if (HallSpeed_GetState().stationary_confirmed == 0U)
-			{
-				rc_hall_mode2_reset(s_rc_hall_direction);
-				return 0;
-			}
-			rc_hall_mode2_reset(requested_direction);
-			return requested_direction;
-		}
-		if (requested_direction == s_rc_hall_direction)
-		{
-			rc_hall_mode2_reset(s_rc_hall_direction);
-			return s_rc_hall_direction;
-		}
-		return 0;
-
-	case RC_HALL_MODE2_TRACKING:
-	default:
-		if (requested_direction == 0)
-		{
-			return 0;
-		}
-		if (requested_direction == s_rc_hall_direction)
-		{
-			return s_rc_hall_direction;
-		}
-		s_rc_hall_pending_direction = requested_direction;
-		s_rc_hall_mode2_phase = RC_HALL_MODE2_BRAKING;
-		return 0;
-	}
-}
-
 static uint16_t limit_auto_propulsion_pulse(uint16_t pulse_us)
 {
 	uint16_t center;
@@ -1008,12 +873,7 @@ static void set_rc_override_state(
 	uint8_t override_active, uint8_t release_hold_required)
 {
 	const uint8_t was_active = g_rc_override_active;
-	int8_t initial_hall_direction = 0;
 
-	if (was_active == 0U && override_active != 0U && s_vehicle_direction_known != 0U)
-	{
-		initial_hall_direction = s_vehicle_direction;
-	}
 	g_rc_override_active = (override_active != 0U) ? 1U : 0U;
 	g_rc_override_release_hold_required =
 		(g_rc_override_active != 0U && release_hold_required != 0U) ? 1U : 0U;
@@ -1022,13 +882,15 @@ static void set_rc_override_state(
 	g_state.rc_takeover_pending = 0U;
 	g_rc_override_release_start_ms = 0U;
 	g_rc_override_enter_count = 0U;
-	if (was_active == 0U && g_rc_override_active != 0U)
+	if (was_active != g_rc_override_active)
 	{
-		rc_hall_mode2_reset(initial_hall_direction);
+		servo_basic_invalidate_auto_history(HAL_GetTick());
 	}
-	else if (was_active != 0U && g_rc_override_active == 0U)
+	if (was_active != 0U && g_rc_override_active == 0U)
 	{
-		rc_hall_mode2_reset(0);
+		RcDirectionObserver_ResetDirection(&s_rc_direction_observer);
+		memset(&s_rc_direction_result, 0, sizeof(s_rc_direction_result));
+		servo_basic_clear_vehicle_direction();
 		HallSpeed_SetCommandDirection(0);
 	}
 }
@@ -1194,6 +1056,9 @@ static uint8_t longitudinal_config_equal(const LongitudinalControllerConfig_t *l
 
 static void servo_basic_clear_esc_observation_state(void)
 {
+	RcDirectionObserver_Init(&s_rc_direction_observer);
+	s_rc_direction_result =
+		RcDirectionObserver_GetResult(&s_rc_direction_observer);
 	s_esc_feedback_available = 0U;
 	s_esc_stop_confirmed = 0U;
 	s_esc_sample_stale = 0U;
@@ -1442,7 +1307,6 @@ void ServoBasic_Init(void)
 	g_rc_override_release_hold_required = 0U;
 	g_rc_throttle_present = 0U;
 	g_rc_steering_present = 0U;
-	rc_hall_mode2_reset(0);
 	rc_debounce_reset();
 	g_orin_state.servo_pulse_us = ESC_PWM_NEUTRAL_PULSE_US;
 	g_orin_state.last_update_ms = 0U;
@@ -2411,6 +2275,48 @@ static void apply_rc_passthrough_outputs(void)
 	apply_servo_pulse(servo_pulse);
 }
 
+static void servo_basic_update_rc_direction_observer(uint32_t now_ms)
+{
+	RcDirectionObserverInput_t input;
+
+	memset(&input, 0, sizeof(input));
+	input.rc_active = g_rc_override_active;
+	input.applied_pwm_us = g_state.esc_pulse_us;
+	if (s_esc_latest_raw_sample_valid != 0U &&
+		s_esc_rx_invalidated == 0U &&
+		servo_basic_esc_fe32_is_fresh(now_ms) != 0U)
+	{
+		input.telemetry_fresh = 1U;
+		input.sample_id = s_esc_latest_raw_sample.sample_id;
+		input.state_raw =
+			(s_esc_latest_raw_sample.state_candidate_valid != 0U) ?
+			s_esc_latest_raw_sample.state_raw : 0xFFU;
+		input.rpm_valid = s_esc_latest_raw_sample.rpm_valid;
+		input.rpm_raw = s_esc_latest_raw_sample.rpm_raw;
+		input.moving_evidence =
+			(s_esc_motion_estimate.last_sample_id ==
+			 s_esc_latest_raw_sample.sample_id &&
+			 s_esc_motion_estimate.moving_observed != 0U) ? 1U : 0U;
+	}
+
+	s_rc_direction_result = RcDirectionObserver_Update(
+		&s_rc_direction_observer,
+		&input);
+	if (g_rc_override_active == 0U)
+	{
+		return;
+	}
+	if (s_rc_direction_result.direction_known != 0U)
+	{
+		s_vehicle_direction_known = 1U;
+		s_vehicle_direction = (int8_t)s_rc_direction_result.direction;
+	}
+	else
+	{
+		servo_basic_clear_vehicle_direction();
+	}
+}
+
 void ServoBasic_ProcessControl(void)
 {
 	uint8_t orin_active;
@@ -2424,8 +2330,6 @@ void ServoBasic_ProcessControl(void)
 	orin_active = orin_pwm_is_active();
 	if (g_rc_override_active != 0U)
 	{
-		servo_basic_invalidate_auto_history(now_ms);
-		servo_basic_clear_vehicle_direction();
 		speed_pi_reset_controller();
 	}
 	else if (orin_active == 0U)
@@ -2497,9 +2401,14 @@ void ServoBasic_ProcessControl(void)
 			now_ms);
 	}
 
+	servo_basic_update_rc_direction_observer(now_ms);
+
 	if (g_rc_override_active != 0U)
 	{
-		HallSpeed_SetCommandDirection(rc_hall_mode2_update());
+		HallSpeed_SetCommandDirection(
+			(s_rc_direction_result.direction_known != 0U &&
+			 s_esc_stop_confirmed == 0U) ?
+			(int8_t)s_rc_direction_result.direction : 0);
 	}
 	else if (orin_active != 0U &&
 		g_orin_state.software_stop == 0U &&
