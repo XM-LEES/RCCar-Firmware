@@ -797,7 +797,9 @@ def check_uart(root: Path) -> list[Check]:
         "HAL_GPIO_ReadPin(UserKey_GPIO_Port, UserKey_Pin)",
         "(stable_level == 0U) ?",
         "SHOW_PAGE_RUNTIME : SHOW_PAGE_DIAGNOSTIC",
-    ]), "PD3 maintained switch selects debounced runtime/diagnostic OLED pages without EXTI")
+    ]) and show_text.count("control_snapshot->state.esc_pulse_us") >= 2
+        and show_text.count("control_snapshot->state.servo_pulse_us") >= 2,
+        "PD3 selects debounced OLED pages and both pages retain live ESC/servo PWM")
     return results
 
 
