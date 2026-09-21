@@ -254,6 +254,46 @@ static int test_opposite_signed_target_requests_reversal(void)
     return 0;
 }
 
+static int test_stopped_command_sign_change_clears_old_signed_ramp(void)
+{
+    LongitudinalControllerConfig_t config = valid_config();
+    LongitudinalController_t controller;
+    LongitudinalControllerInput_t input = input_at(0U);
+    LongitudinalControllerOutput_t output;
+
+    config.target_slew_rate_mps2 = 4.0f;
+    LongitudinalController_Init(&controller, &config);
+
+    input.target_speed_mps = -2.0f;
+    (void)LongitudinalController_Evaluate(&controller, &input);
+    input.now_tick_ms = 250U;
+    input.feedback_sample_tick_ms = 250U;
+    input.feedback_sample_id = 2U;
+    output = LongitudinalController_Evaluate(&controller, &input);
+    EXPECT_TRUE(output.target_direction == LONGITUDINAL_DIRECTION_REVERSE);
+    EXPECT_TRUE(output.diagnostics.slewed_target_mps < -0.9f);
+
+    input.target_speed_mps = 1.0f;
+    input.now_tick_ms = 270U;
+    input.feedback_sample_tick_ms = 270U;
+    input.feedback_sample_id = 3U;
+    output = LongitudinalController_Evaluate(&controller, &input);
+    EXPECT_TRUE(output.target_direction == LONGITUDINAL_DIRECTION_UNKNOWN);
+    EXPECT_TRUE(output.intent == LONGITUDINAL_INTENT_NEUTRAL);
+    EXPECT_TRUE(output.drive_pwm_us == config.center_pwm_us);
+    EXPECT_TRUE(output.diagnostics.slewed_target_mps == 0.0f);
+
+    input.now_tick_ms = 290U;
+    input.feedback_sample_tick_ms = 290U;
+    input.feedback_sample_id = 4U;
+    output = LongitudinalController_Evaluate(&controller, &input);
+    EXPECT_TRUE(output.target_direction == LONGITUDINAL_DIRECTION_FORWARD);
+    EXPECT_TRUE(output.intent == LONGITUDINAL_INTENT_DRIVE);
+    EXPECT_TRUE(output.drive_pwm_us > config.center_pwm_us);
+
+    return 0;
+}
+
 static int test_invalid_feedback_inhibits_automatic_output(void)
 {
     LongitudinalControllerConfig_t config = valid_config();
@@ -376,6 +416,10 @@ int main(void)
         return 1;
     }
     if (test_opposite_signed_target_requests_reversal() != 0)
+    {
+        return 1;
+    }
+    if (test_stopped_command_sign_change_clears_old_signed_ramp() != 0)
     {
         return 1;
     }

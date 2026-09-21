@@ -154,10 +154,10 @@
         <mxCell id="steering" value="&lt;b&gt;转向映射&lt;/b&gt;&lt;br&gt;角度与变化率限制&lt;br&gt;沿用端点线性插值&lt;br&gt;请求输出受原脉宽边界约束" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="815" y="195" width="320" height="145" />
         </mxCell>
-        <mxCell id="longitudinal" value="&lt;b&gt;自动纵向控制&lt;/b&gt;&lt;br&gt;非零目标直入唯一参考斜坡&lt;br&gt;单一前馈表 + PI 微调（µs）&lt;br&gt;独立制动与模式二换向&lt;br&gt;闭环关系见第 2 页" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="longitudinal" value="&lt;b&gt;自动纵向控制&lt;/b&gt;&lt;br&gt;方向取最新命令，变号清零&lt;br&gt;速度幅值独立斜坡&lt;br&gt;单一前馈表 + PI 微调（µs）&lt;br&gt;独立制动与模式二换向" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="815" y="410" width="320" height="180" />
         </mxCell>
-        <mxCell id="outputs" value="&lt;b&gt;输出仲裁与PWM边界&lt;/b&gt;&lt;br&gt;RC 接管 ＞ 串口控制源&lt;br&gt;无生效控制源 → 中点&lt;br&gt;转向：PC7 / TIM8 CH2&lt;br&gt;电调：PC6 / TIM8 CH1&lt;br&gt;各路径共用输出边界&lt;br&gt;保留接管与输入诊断" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="outputs" value="&lt;b&gt;输出仲裁与PWM边界&lt;/b&gt;&lt;br&gt;RC 接管 ＞ 串口控制源&lt;br&gt;RC油门保留接收机完整行程&lt;br&gt;无生效控制源 → 中点&lt;br&gt;转向：PC7 / TIM8 CH2&lt;br&gt;电调：PC6 / TIM8 CH1&lt;br&gt;保留接管与输入诊断" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1230" y="210" width="300" height="380" />
         </mxCell>
         <mxCell id="servos" value="&lt;b&gt;两只转向舵机&lt;/b&gt;&lt;br&gt;一个现有逻辑 PWM 通道&lt;br&gt;应用角由实际输出反算" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
@@ -367,7 +367,7 @@
         <mxCell id="command" value="&lt;b&gt;目标命令&lt;/b&gt;&lt;br&gt;v目标：正前进、负倒车&lt;br&gt;0 或 BRAKE：受控停车&lt;br&gt;转向与纵向分别处理" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="45" y="175" width="250" height="145" />
         </mxCell>
-        <mxCell id="reference" value="&lt;b&gt;参考速度 v参考&lt;/b&gt;&lt;br&gt;非零目标无软件死区 / 上限&lt;br&gt;参考加速 / 减速斜坡&lt;br&gt;换向先停车，再反向起步" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
+        <mxCell id="reference" value="&lt;b&gt;参考速度 v参考&lt;/b&gt;&lt;br&gt;方向取最新命令，变号清零&lt;br&gt;速度幅值使用加速 / 减速斜坡&lt;br&gt;换向先停车，再反向起步" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="365" y="175" width="290" height="145" />
         </mxCell>
         <mxCell id="sum" value="&lt;b&gt;Σ&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=28;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
@@ -379,7 +379,7 @@
         <mxCell id="pi" value="&lt;b&gt;前馈 + PI 微调（µs）&lt;/b&gt;&lt;br&gt;p前馈 = F方向(v参考)&lt;br&gt;e = v参考 − v反馈&lt;br&gt;Δp = clip(Kp·e + Ki·∫e dt)&lt;br&gt;p推进 = p前馈 + Δp" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="850" y="175" width="275" height="155" />
         </mxCell>
-        <mxCell id="actions" value="&lt;b&gt;电调动作约束&lt;/b&gt;&lt;br&gt;推进 / 制动 / 倒车 / 中点&lt;br&gt;推进与刹车分别限幅&lt;br&gt;PI 微调不能跨入另一动作区&lt;br&gt;制动独立映射，不套倒车限幅" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="actions" value="&lt;b&gt;电调动作约束&lt;/b&gt;&lt;br&gt;推进 / 制动 / 倒车 / 中点&lt;br&gt;换向刹车使用1000 / 2000 µs&lt;br&gt;PI 微调不能跨入另一动作区&lt;br&gt;制动独立映射，不套倒车限幅" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1210" y="175" width="280" height="155" />
         </mxCell>
         <mxCell id="plant" value="&lt;b&gt;执行与传动&lt;/b&gt;&lt;br&gt;PWM → ESC → 电机&lt;br&gt;波箱 → 轮端 → 车轮&lt;br&gt;响应包含饱和与时延" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
@@ -418,7 +418,7 @@
         <mxCell id="forward" value="&lt;b&gt;前进驱动&lt;/b&gt;&lt;br&gt;正向 PWM：推进&lt;br&gt;新鲜运动样本确认正向历史" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#eff6ff;strokeColor=#2563eb;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="70" y="985" width="290" height="115" />
         </mxCell>
-        <mxCell id="braking" value="&lt;b&gt;前进制动&lt;/b&gt;&lt;br&gt;第一次负向 PWM：刹车&lt;br&gt;同次制动连续保持负向区" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#b91c1c;spacing=8;" vertex="1" parent="1">
+        <mxCell id="braking" value="&lt;b&gt;前进制动&lt;/b&gt;&lt;br&gt;第一次负向 PWM：1000 µs刹车&lt;br&gt;同次制动连续保持负向区" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fef2f2;strokeColor=#b91c1c;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="510" y="985" width="290" height="115" />
         </mxCell>
         <mxCell id="neutral_dwell" value="&lt;b&gt;回中驻留&lt;/b&gt;&lt;br&gt;刹车达标并取得新停稳证据&lt;br&gt;保持中点至驻留完成" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
@@ -436,13 +436,13 @@
         <mxCell id="first_hit" value="&lt;b&gt;证据不足禁止&lt;/b&gt;&lt;br&gt;刹车未达力度或保持时间&lt;br&gt;回中后不自动补发同侧信号" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="950" y="1235" width="290" height="115" />
         </mxCell>
-        <mxCell id="reconfirm" value="&lt;b&gt;双向对称资格&lt;/b&gt;&lt;br&gt;F→R 与 R→F 阈值独立&lt;br&gt;最终实际 PWM 连续达标" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
+        <mxCell id="reconfirm" value="&lt;b&gt;双向对称资格&lt;/b&gt;&lt;br&gt;双向均要求完整500 µs差值&lt;br&gt;最终实际 PWM 连续达标" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1390" y="1235" width="290" height="115" />
         </mxCell>
         <mxCell id="coast" value="&lt;b&gt;倒车制动&lt;/b&gt;&lt;br&gt;正向侧信号主动刹车&lt;br&gt;停稳、回中后才可前进&lt;br&gt;命令 / 反馈失效才回中" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="1390" y="1460" width="290" height="120" />
         </mxCell>
-        <mxCell id="constraints" value="&lt;b&gt;动作约束&lt;/b&gt;&lt;br&gt;回中后不自动补发同侧刹车；同侧信号此时可能已是推进。&lt;br&gt;夹入零速命令不能绕过换向停稳；双向主动刹车分别标定。&lt;br&gt;未知状态禁止负向动作；用户正向目标经斜坡输出须由新鲜运动样本确认。" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
+        <mxCell id="constraints" value="&lt;b&gt;动作约束&lt;/b&gt;&lt;br&gt;回中后不自动补发同侧刹车；同侧信号此时可能已是推进。&lt;br&gt;夹入零速命令不能绕过换向停稳；双向换向刹车使用完整行程。&lt;br&gt;未知状态禁止负向动作；用户正向目标经斜坡输出须由新鲜运动样本确认。" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#f8fafc;strokeColor=#64748b;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="70" y="1445" width="1160" height="125" />
         </mxCell>
         <mxCell id="fwd_brake" value="&lt;b&gt;超速 / 停车&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=16;fontColor=#0f172a;fillColor=#ffffff;strokeColor=#b91c1c;spacing=8;strokeColor=none;" vertex="1" parent="1">

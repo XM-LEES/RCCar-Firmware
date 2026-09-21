@@ -263,7 +263,7 @@ static rc_hall_mode2_phase_t s_rc_hall_mode2_phase = RC_HALL_MODE2_TRACKING;
 static uint8_t s_auto_history_boundary_valid = 0U;
 static uint32_t s_auto_history_boundary_ms = 0U;
 
-static uint16_t limit_esc_safe_pulse(uint16_t pulse_us);
+static uint16_t limit_auto_propulsion_pulse(uint16_t pulse_us);
 static uint16_t limit_servo_safe_pulse(uint16_t pulse_us);
 static void speed_pi_reset_controller(void);
 static uint32_t get_rc_override_center_us(void);
@@ -324,7 +324,10 @@ static uint16_t rc_select_pulse(uint16_t pulse_us, uint8_t is_esc)
 {
 	if (is_esc != 0U)
 	{
-		return limit_esc_safe_pulse(pulse_us);
+		/* A valid receiver throttle pulse is already bounded by the capture
+		 * contract. Preserve its complete travel instead of applying the
+		 * automatic controller's calibrated propulsion endpoints. */
+		return pulse_us;
 	}
 	return limit_servo_safe_pulse(clamp_servo_pulse(pulse_us));
 }
@@ -430,7 +433,8 @@ static uint16_t finalize_rc_channel_pulse(rc_channel_filter_state_t *state, uint
 
 	if (is_throttle != 0U)
 	{
-		filtered = rc_debounce_apply(pulse_us, &state->filter_state);
+		filtered = pulse_us;
+		state->filter_state = filtered;
 		if (pulse_is_inside_center(filtered, get_rc_override_center_us(), get_rc_throttle_neutral_hold_us()) != 0U)
 		{
 			filtered = (uint16_t)get_rc_override_center_us();
@@ -787,7 +791,7 @@ static int8_t rc_hall_mode2_update(void)
 	}
 }
 
-static uint16_t limit_esc_safe_pulse(uint16_t pulse_us)
+static uint16_t limit_auto_propulsion_pulse(uint16_t pulse_us)
 {
 	uint16_t center;
 	uint16_t forward_limit;
@@ -1521,7 +1525,7 @@ static uint16_t longitudinal_drive_output_to_pwm(
 		return get_orin_esc_center_pulse();
 	}
 
-	final_pulse = limit_esc_safe_pulse(output->drive_pwm_us);
+	final_pulse = limit_auto_propulsion_pulse(output->drive_pwm_us);
 	g_speed_pi_base_us = base_pulse;
 	g_speed_pi_final_us = final_pulse;
 	g_speed_pi_saturated =
@@ -1681,10 +1685,12 @@ static uint8_t servo_basic_mode2_application_config_valid(void)
 }
 
 static uint16_t mode2_brake_request_to_pwm(Mode2DriveAction_t action,
+										   Mode2DrivePhase_t phase,
 										   float request,
 										   float *actual_normalized_brake)
 {
 	const uint16_t center_us = s_mode2_drive_gate.config.center_pwm_us;
+	uint16_t full_pwm_us;
 	int32_t final_us;
 	int32_t brake_span_us;
 	int32_t actual_delta_us;
@@ -1702,12 +1708,18 @@ static uint16_t mode2_brake_request_to_pwm(Mode2DriveAction_t action,
 
 	if (action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE)
 	{
-		brake_span_us = (int32_t)s_mode2_drive_gate.config.rev_to_fwd_brake_full_pwm_us -
+		full_pwm_us = (phase == MODE2_DRIVE_PHASE_IDLE) ?
+			get_orin_esc_forward_limit_pulse() :
+			s_mode2_drive_gate.config.rev_to_fwd_brake_full_pwm_us;
+		brake_span_us = (int32_t)full_pwm_us -
 			(int32_t)center_us;
 	}
 	else
 	{
-		brake_span_us = (int32_t)s_mode2_drive_gate.config.fwd_to_rev_brake_full_pwm_us -
+		full_pwm_us = (phase == MODE2_DRIVE_PHASE_IDLE) ?
+			get_orin_esc_reverse_limit_pulse() :
+			s_mode2_drive_gate.config.fwd_to_rev_brake_full_pwm_us;
+		brake_span_us = (int32_t)full_pwm_us -
 			(int32_t)center_us;
 	}
 	final_us = (int32_t)center_us +
@@ -1724,21 +1736,19 @@ static uint16_t mode2_brake_request_to_pwm(Mode2DriveAction_t action,
 		{
 			actual_delta_us = final_us - (int32_t)center_us;
 		}
-		span_abs_us = (int32_t)s_mode2_drive_gate.config.rev_to_fwd_brake_full_pwm_us -
+		span_abs_us = (int32_t)full_pwm_us -
 			(int32_t)center_us;
 	}
 	else if (final_us >= (int32_t)center_us)
 	{
 		final_us = (int32_t)center_us;
 		actual_delta_us = 0;
-		span_abs_us = (int32_t)center_us -
-			(int32_t)s_mode2_drive_gate.config.fwd_to_rev_brake_full_pwm_us;
+		span_abs_us = (int32_t)center_us - (int32_t)full_pwm_us;
 	}
 	else
 	{
 		actual_delta_us = (int32_t)center_us - final_us;
-		span_abs_us = (int32_t)center_us -
-			(int32_t)s_mode2_drive_gate.config.fwd_to_rev_brake_full_pwm_us;
+		span_abs_us = (int32_t)center_us - (int32_t)full_pwm_us;
 	}
 	if (actual_normalized_brake != NULL)
 	{
@@ -1776,6 +1786,7 @@ static Mode2DriveAction_t mode2_actual_action_from_output(Mode2DriveAction_t req
 }
 
 static uint16_t mode2_drive_output_to_esc_pwm(Mode2DriveAction_t action,
+											  Mode2DrivePhase_t phase,
 											  float normalized_brake_request,
 											  const LongitudinalControllerOutput_t *control_output,
 											  float *actual_normalized_brake)
@@ -1793,6 +1804,7 @@ static uint16_t mode2_drive_output_to_esc_pwm(Mode2DriveAction_t action,
 	case MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE:
 	case MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE:
 		return mode2_brake_request_to_pwm(action,
+			phase,
 			normalized_brake_request,
 			actual_normalized_brake);
 	case MODE2_DRIVE_ACTION_NEUTRAL:
@@ -2412,14 +2424,12 @@ void ServoBasic_ProcessControl(void)
 	orin_active = orin_pwm_is_active();
 	if (g_rc_override_active != 0U)
 	{
-		HallSpeed_SetCommandDirection(rc_hall_mode2_update());
 		servo_basic_invalidate_auto_history(now_ms);
 		servo_basic_clear_vehicle_direction();
 		speed_pi_reset_controller();
 	}
 	else if (orin_active == 0U)
 	{
-		HallSpeed_SetCommandDirection(0);
 		speed_pi_reset_controller();
 		if (g_orin_state.active != 0U)
 		{
@@ -2462,6 +2472,7 @@ void ServoBasic_ProcessControl(void)
 				now_ms);
 			final_esc_pulse = mode2_drive_output_to_esc_pwm(
 				s_mode2_drive_output.action,
+				s_mode2_drive_output.phase,
 				s_mode2_drive_output.normalized_brake_request,
 				&control_output,
 				&actual_normalized_brake);
@@ -2484,6 +2495,21 @@ void ServoBasic_ProcessControl(void)
 		EscMotionEstimator_CommitAppliedActionAt(&s_esc_motion_estimator,
 			ESC_MOTION_APPLIED_ACTION_NEUTRAL,
 			now_ms);
+	}
+
+	if (g_rc_override_active != 0U)
+	{
+		HallSpeed_SetCommandDirection(rc_hall_mode2_update());
+	}
+	else if (orin_active != 0U &&
+		g_orin_state.software_stop == 0U &&
+		s_vehicle_direction_known != 0U)
+	{
+		HallSpeed_SetCommandDirection(s_vehicle_direction);
+	}
+	else
+	{
+		HallSpeed_SetCommandDirection(0);
 	}
 
 	servo_basic_publish_control_snapshot(now_ms);

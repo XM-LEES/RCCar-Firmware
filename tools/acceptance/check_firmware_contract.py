@@ -240,6 +240,12 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "rc_hall_mode2_update()",
     ]) and "HallSpeed_SetCommandDirection(get_rc_throttle_direction())" not in text,
         "RC Hall direction changes only after brake-stop-neutral-opposite sequence")
+    add(results, "auto_hall_direction_uses_confirmed_mode2_direction", all(needle in text for needle in [
+        "g_orin_state.software_stop == 0U &&",
+        "s_vehicle_direction_known != 0U)",
+        "HallSpeed_SetCommandDirection(s_vehicle_direction)",
+        "HallSpeed_SetCommandDirection(0)",
+    ]), "automatic Hall sign follows only the direction confirmed by the Mode2 action state")
     add(results, "hall_speed_telemetry_uses_coherent_snapshot", all(needle in hall_header_text for needle in [
         "HallSpeed_GetSnapshotSpeedMps(const hall_speed_state_t *snapshot",
     ]) and all(needle in data_text for needle in [
@@ -403,6 +409,12 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "float local_dt_s = (float)dt_ms / 1000.0f",
     ]),
         "PI sample timing handles HAL tick zero and same-tick distinct samples without fabricating integration time")
+    add(results, "command_sign_change_clears_old_signed_ramp", all(needle in longitudinal_text for needle in [
+        "last_command_direction",
+        "requested_direction != controller->last_command_direction",
+        "controller->slewed_target_mps = 0.0f",
+        "controller->has_update_tick = 0U",
+    ]), "a new command direction starts from zero instead of retaining the old signed speed ramp")
     add(results, "mode2_qualification_uses_final_pwm", all(needle in text for needle in [
         "Mode2DriveGate_CommitAppliedActionWithPwmEvidence(&s_mode2_drive_gate",
         "final_esc_pulse",
@@ -454,14 +466,14 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ESC_STOPPED_THRESHOLD_MPS_DEFAULT      0.05f",
         "#define APP_ESC_STOPPED_MIN_SAMPLES_DEFAULT           3U",
         "#define APP_ESC_STOPPED_MIN_COVERAGE_MS_DEFAULT     150U",
-        "#define APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT       0.70f",
-        "#define APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT       0.70f",
+        "#define APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT       1.00f",
+        "#define APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT       1.00f",
         "#define APP_MODE2_FWD_TO_REV_BRAKE_HOLD_MS_DEFAULT        100U",
         "#define APP_MODE2_REV_TO_FWD_BRAKE_HOLD_MS_DEFAULT        100U",
-        "#define APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT   100U",
-        "#define APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT   100U",
-        "#define APP_MODE2_FWD_TO_REV_BRAKE_FULL_PWM_US_DEFAULT 1350U",
-        "#define APP_MODE2_REV_TO_FWD_BRAKE_FULL_PWM_US_DEFAULT 1650U",
+        "#define APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT   500U",
+        "#define APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT   500U",
+        "#define APP_MODE2_FWD_TO_REV_BRAKE_FULL_PWM_US_DEFAULT 1000U",
+        "#define APP_MODE2_REV_TO_FWD_BRAKE_FULL_PWM_US_DEFAULT 2000U",
         "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
@@ -508,21 +520,25 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
             "tracking_brake_release_error_mps",
             "LONGITUDINAL_INTENT_TRACKING_BRAKE",
             "controller->config.tracking_brake_kp * tracking_error_mps",
+        ]) and all(needle in control_text for needle in [
+            "phase == MODE2_DRIVE_PHASE_IDLE",
+            "get_orin_esc_forward_limit_pulse()",
+            "get_orin_esc_reverse_limit_pulse()",
         ]) and "speed_limit" not in control_text,
-        "tracking brake is the only speed-error brake and retains hysteresis",
+        "tracking brake is the only speed-error brake, retains hysteresis, and stays on calibrated tracking endpoints",
     )
     add(
         results,
-        "propulsion_keeps_legacy_soft_pwm_limits",
+        "propulsion_keeps_calibrated_pwm_endpoints",
         all(needle in control_text for needle in [
-            "final_pulse = limit_esc_safe_pulse(output->drive_pwm_us);",
+            "final_pulse = limit_auto_propulsion_pulse(output->drive_pwm_us);",
             "g_speed_pi_final_us = final_pulse;",
         ]) and all(needle in longitudinal_text for needle in [
             "config->forward_limit_pwm_us",
             "config->reverse_limit_pwm_us",
             "output->drive_pwm_us = limit_drive_pwm",
         ]),
-        "automatic forward/reverse propulsion still applies the legacy soft PWM limits after PI",
+        "automatic propulsion remains within the calibrated feedforward endpoints after PI",
     )
     add(
         results,
@@ -595,6 +611,12 @@ def check_control_output_fallbacks(root: Path) -> list[Check]:
         "set_rc_override_state(1U, 1U)",
         "set_rc_override_state(1U, 0U)",
     ]), "idle RC passthrough releases immediately, but a real manual override keeps the 500 ms hold")
+    add(results, "manual_rc_throttle_preserves_full_receiver_travel", all(needle in text for needle in [
+        "A valid receiver throttle pulse is already bounded by the capture",
+        "return pulse_us;",
+        "const uint16_t esc_pulse = (g_rc_throttle_present != 0U) ?",
+        "rc_select_pulse(g_rc_throttle_current, 1U)",
+    ]), "manual RC throttle bypasses automatic propulsion endpoints and preserves the validated receiver pulse")
     return results
 
 

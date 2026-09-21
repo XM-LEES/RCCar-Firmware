@@ -70,13 +70,13 @@
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="313.5" fill="#0f172a">请求输出受原脉宽边界约束</text>
   <rect stroke-width="1.6" x="815" y="410" width="320" height="180" rx="8" fill="#eff6ff" stroke="#2563eb" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="700" text-anchor="middle" x="975.0" y="451.5" fill="#0f172a">自动纵向控制</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="478.5" fill="#0f172a">非零目标直入唯一参考斜坡</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="478.5" fill="#0f172a">方向取新命令 / 幅值独立斜坡</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="505.5" fill="#0f172a">前馈标定表 + PI 微调（µs）</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="532.5" fill="#0f172a">独立制动与模式二换向</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="19" font-weight="400" text-anchor="middle" x="975.0" y="559.5" fill="#0f172a">闭环关系见第 2 页</text>
   <rect stroke-width="1.6" x="1230" y="210" width="300" height="380" rx="8" fill="#fff7ed" stroke="#b45309" />
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="700" text-anchor="middle" x="1380.0" y="327.0" fill="#0f172a">输出仲裁与限幅</text>
-  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="353.0" fill="#0f172a">RC 接管 ＞ 串口控制源</text>
+  <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="353.0" fill="#0f172a">RC 完整行程 ＞ 串口控制源</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="379.0" fill="#0f172a">无生效控制源 → 中点</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="405.0" fill="#0f172a">转向：PC7 / TIM8 CH2</text>
   <text font-family="Noto Sans CJK SC, sans-serif" font-size="18" font-weight="400" text-anchor="middle" x="1380.0" y="431.0" fill="#0f172a">电调：PC6 / TIM8 CH1</text>

@@ -336,6 +336,7 @@ static void reset_dynamic_state(LongitudinalController_t *controller)
     controller->has_update_tick = 0U;
     controller->last_update_tick_ms = 0U;
     controller->slewed_target_mps = 0.0f;
+    controller->last_command_direction = LONGITUDINAL_DIRECTION_UNKNOWN;
     controller->have_feedback_sample = 0U;
     controller->last_feedback_sample_id = 0U;
     controller->last_feedback_sample_tick_ms = 0U;
@@ -720,6 +721,20 @@ LongitudinalControllerOutput_t LongitudinalController_Evaluate(
     output.diagnostics.command_target_mps = target_mps;
 
     requested_direction = direction_from_target(target_mps);
+    if (requested_direction != LONGITUDINAL_DIRECTION_UNKNOWN &&
+        controller->last_command_direction != LONGITUDINAL_DIRECTION_UNKNOWN &&
+        requested_direction != controller->last_command_direction)
+    {
+        /* Direction follows the newest command immediately. Magnitude starts
+         * again from zero so a stale signed ramp can never request propulsion
+         * in the previous direction while Mode2 is stopped or armed. */
+        controller->slewed_target_mps = 0.0f;
+        controller->has_update_tick = 0U;
+        controller->last_update_tick_ms = input->now_tick_ms;
+        reset_pi(controller);
+        controller->tracking_brake_active = 0U;
+    }
+    controller->last_command_direction = requested_direction;
     if (input->stopped == 0U &&
         input->current_direction != LONGITUDINAL_DIRECTION_UNKNOWN &&
         requested_direction != LONGITUDINAL_DIRECTION_UNKNOWN &&

@@ -117,6 +117,7 @@ typedef struct
     uint8_t has_update_tick;
     uint32_t last_update_tick_ms;
     float slewed_target_mps;
+    LongitudinalDirection_t last_command_direction;
 
     uint8_t have_feedback_sample;
     uint32_t last_feedback_sample_id;
