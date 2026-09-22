@@ -13,6 +13,12 @@ extern "C" {
 #define ESC_TELEMETRY_DMA_BUFFER_LEN 128U
 #define ESC_TELEMETRY_PENDING_CHUNK_SIZE 64U
 #define ESC_TELEMETRY_PENDING_CHUNKS 16U
+#define ESC_TELEMETRY_OBSERVED_SAMPLE_QUEUE_LEN 8U
+
+#define ESC_TELEMETRY_CONTEXT_PWM_MASK 0x00000FFFUL
+#define ESC_TELEMETRY_CONTEXT_RC_ACTIVE_MASK 0x00001000UL
+#define ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT 13U
+#define ESC_TELEMETRY_CONTEXT_SOURCE_MASK 0xFFFFE000UL
 
 typedef enum
 {
@@ -42,7 +48,16 @@ typedef struct
 
 typedef struct
 {
+    EscFe32Sample_t sample;
     uint32_t receive_epoch;
+    uint32_t delivery_epoch;
+    uint32_t output_context;
+} EscTelemetryObservedSample_t;
+
+typedef struct
+{
+    uint32_t receive_epoch;
+    uint32_t delivery_epoch;
     uint32_t dma_events[ESC_TELEMETRY_RX_EVENT_COUNT];
     uint32_t duplicate_dma_events;
     uint32_t ambiguous_dma_events;
@@ -67,6 +82,15 @@ typedef struct
     uint32_t parser_prefix_rejected_candidates;
     uint32_t parser_discarded_bytes;
     uint32_t parser_output_overrun_frames;
+    uint32_t observed_samples_queued;
+    uint32_t observed_samples_consumed;
+    uint32_t observed_samples_discarded;
+    uint32_t observed_queue_overflows;
+    uint32_t observed_queue_depth_peak;
+    uint32_t observed_context_rejected;
+    uint32_t observed_generation_boundaries;
+    uint32_t output_context_updates;
+    uint32_t output_context_generation;
 } EscTelemetryDiagnostics_t;
 
 typedef struct
@@ -90,6 +114,9 @@ void EscTelemetry_RecordBytes(const uint8_t *data,
                               size_t length,
                               uint32_t received_tick_ms);
 void EscTelemetry_RecordRxError(uint32_t tick_ms, uint32_t error_flags);
+uint8_t EscTelemetry_ProcessReceivedByte(uint8_t byte,
+                                         uint32_t received_tick_ms,
+                                         uint32_t output_context);
 void EscTelemetry_ProcessPending(void);
 uint8_t EscTelemetry_GetSnapshot(EscTelemetrySnapshot_t *snapshot);
 uint8_t EscTelemetry_GetFreshSample(uint32_t now_tick_ms,
@@ -97,6 +124,17 @@ uint8_t EscTelemetry_GetFreshSample(uint32_t now_tick_ms,
                                     EscFe32Sample_t *sample);
 void EscTelemetry_GetDiagnostics(EscTelemetryDiagnostics_t *diagnostics);
 void EscTelemetry_GetReceiverHealth(EscTelemetryReceiverHealth_t *health);
+uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us,
+                                           uint8_t rc_active);
+uint32_t EscTelemetry_GetOutputContext(void);
+uint16_t EscTelemetry_ContextPwm(uint32_t output_context);
+uint8_t EscTelemetry_ContextRcActive(uint32_t output_context);
+uint32_t EscTelemetry_ContextSource(uint32_t output_context);
+uint8_t EscTelemetry_ContextIsValid(uint32_t output_context);
+size_t EscTelemetry_PendingSamples(void);
+uint8_t EscTelemetry_PopSample(EscTelemetryObservedSample_t *sample);
+void EscTelemetry_DiscardSamples(void);
+uint32_t EscTelemetry_GetDeliveryEpoch(void);
 
 #ifdef __cplusplus
 }

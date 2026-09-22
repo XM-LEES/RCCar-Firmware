@@ -31,6 +31,7 @@ typedef struct
 {
     uint8_t byte;
     uint32_t received_tick_ms;
+    uint32_t output_context;
 } EscSoftUartRingItem_t;
 
 #if defined(ESC_SOFT_UART_STM32_HOST_TEST)
@@ -70,6 +71,7 @@ static volatile uint32_t s_fault_flags;
 static volatile uint8_t s_enabled;
 static uint32_t s_start_timer_tick;
 static EscSoftUartStm32Diagnostics_t s_diagnostics;
+static EscSoftUartStm32OutputContextProvider_t s_output_context_provider;
 static const uint16_t s_sample_offsets[ESC_SOFT_UART_RX_SAMPLES_PER_FRAME] = {
     365U, 1094U, 1823U, 2552U, 3281U,
     4010U, 4740U, 5469U, 6198U, 6927U};
@@ -165,6 +167,7 @@ ESC_SOFT_UART_INLINE void esc_soft_uart_push_byte(uint8_t byte)
 {
     uint16_t next_head = (uint16_t)((s_ring_head + 1U) &
                                     ESC_SOFT_UART_RING_MASK);
+    uint32_t output_context = 0UL;
 
     if (next_head == s_ring_tail)
     {
@@ -173,8 +176,15 @@ ESC_SOFT_UART_INLINE void esc_soft_uart_push_byte(uint8_t byte)
         return;
     }
 
+    if (s_output_context_provider !=
+        (EscSoftUartStm32OutputContextProvider_t)0)
+    {
+        output_context = s_output_context_provider();
+    }
+
     s_ring[s_ring_head].byte = byte;
     s_ring[s_ring_head].received_tick_ms = uwTick;
+    s_ring[s_ring_head].output_context = output_context;
     s_ring_head = next_head;
     s_diagnostics.bytes_received++;
 }
@@ -245,6 +255,17 @@ void EscSoftUartStm32_Init(void)
     s_fault_flags = 0UL;
     s_enabled = 0U;
     s_start_timer_tick = 0UL;
+    s_output_context_provider =
+        (EscSoftUartStm32OutputContextProvider_t)0;
+}
+
+void EscSoftUartStm32_SetOutputContextProvider(
+    EscSoftUartStm32OutputContextProvider_t provider)
+{
+    EscSoftUartIrqState_t state = esc_soft_uart_enter_critical();
+
+    s_output_context_provider = provider;
+    esc_soft_uart_exit_critical(state);
 }
 
 uint8_t EscSoftUartStm32_Start(uint32_t tick_ms)
@@ -334,6 +355,7 @@ uint8_t EscSoftUartStm32_ReadByte(EscSoftUartStm32Byte_t *item)
     {
         item->byte = s_ring[s_ring_tail].byte;
         item->received_tick_ms = s_ring[s_ring_tail].received_tick_ms;
+        item->output_context = s_ring[s_ring_tail].output_context;
         s_ring_tail = (uint16_t)((s_ring_tail + 1U) &
                                  ESC_SOFT_UART_RING_MASK);
         has_item = 1U;

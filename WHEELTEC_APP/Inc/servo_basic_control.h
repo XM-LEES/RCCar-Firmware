@@ -15,18 +15,12 @@ extern "C" {
 
 #include <stdint.h>
 
-#define SERVO_CMD_SET_SERVO_ANGLE 0x53U
-#define SERVO_CMD_SET_SERVO_PULSE 0x50U
-#define SERVO_CMD_SET_ESC_PULSE   0x45U
-
 #define ESC_PWM_MIN_PULSE_US        1000U
 #define ESC_PWM_NEUTRAL_PULSE_US    1500U
 #define ESC_PWM_MAX_PULSE_US        2000U
-#define ESC_PULSE_STEP_US           1U
 
 #define SERVO_MIN_PULSE_US          ESC_PWM_MIN_PULSE_US
 #define SERVO_MAX_PULSE_US          2000U
-#define SERVO_PULSE_STEP_US         5U
 
 typedef enum
 {
@@ -34,13 +28,20 @@ typedef enum
 	SERVO_CTRL_MODE_AUTONOMOUS     = 1U,
 } servo_control_mode_t;
 
+typedef enum
+{
+	SERVO_ESC_ACTION_UNKNOWN = 0U,
+	SERVO_ESC_ACTION_NEUTRAL = 1U,
+	SERVO_ESC_ACTION_DRIVE = 2U,
+	SERVO_ESC_ACTION_BRAKE = 3U,
+} servo_esc_action_t;
+
 typedef struct
 {
 	uint16_t esc_pulse_us;
 	uint16_t servo_pulse_us;
 	servo_control_mode_t control_mode;
 	uint8_t rc_takeover_pending;
-	uint8_t emergency_stop;
 } servo_basic_state_t;
 
 typedef struct
@@ -57,9 +58,21 @@ typedef struct
 	uint8_t esc_rpm_raw_valid;
 	uint8_t esc_speed_magnitude_valid;
 	uint8_t esc_speed_calibration_valid;
+	uint8_t esc_action;
 	uint8_t vehicle_direction_known;
 	uint8_t esc_soft_uart_rx_error;
 	uint8_t mode2_config_valid;
+	uint8_t auto_propulsion_authorized;
+	uint8_t closed_loop_active;
+	uint8_t tracking_brake_active;
+	uint8_t mode2_opposite_armed;
+	uint8_t mode2_state_ambiguous;
+	uint8_t mode2_control_inhibited;
+	uint8_t mode2_state;
+	uint8_t mode2_reason;
+	uint8_t longitudinal_intent;
+	uint8_t longitudinal_reason;
+	float longitudinal_slewed_target_mps;
 	uint8_t esc_sample_stale;
 	uint8_t esc_rx_invalidated;
 	int8_t esc_feedback_direction;
@@ -84,7 +97,6 @@ typedef struct
 	uint8_t esc_uplink_speed_valid;
 	uint8_t esc_direction_known;
 	uint8_t rc_override_active;
-	uint8_t rc_emergency_active;
 	uint8_t orin_command_timeout;
 	uint8_t orin_auto_enabled;
 	uint8_t orin_brake_active;
@@ -96,11 +108,30 @@ typedef struct
 	uint32_t esc_sample_tick_ms;
 } servo_basic_control_snapshot_t;
 
+/* Internal observation timing/accounting; not part of the 24-byte protocol. */
+typedef struct
+{
+	uint32_t samples_processed;
+	uint32_t samples_expired;
+	uint32_t samples_wrong_source;
+	uint32_t samples_magnitude_only;
+	uint32_t delivery_gaps;
+	uint32_t last_sample_id;
+	uint32_t max_sample_age_ms;
+	uint32_t max_publish_age_ms;
+	uint32_t max_batch_cycles;
+	uint32_t max_batch_samples;
+	uint32_t max_control_lateness_ticks;
+	uint32_t control_deadlines_skipped;
+} servo_basic_observation_diagnostics_t;
+
+void ServoBasic_ProcessEscObservation(void);
+servo_basic_observation_diagnostics_t ServoBasic_GetObservationDiagnostics(void);
+
 void ServoBasic_Init(void);
 void ServoBasic_ProcessControl(void);
 uint8_t ServoBasic_GetControlSnapshot(servo_basic_control_snapshot_t *snapshot);
 uint8_t ServoBasic_IsRcOverrideActive(void);
-uint8_t ServoBasic_IsRcEmergencyActive(void);
 uint8_t ServoBasic_IsOrinCommandTimeout(void);
 uint8_t ServoBasic_IsOrinAutoEnabled(void);
 uint8_t ServoBasic_IsOrinBrakeActive(void);

@@ -84,7 +84,8 @@ void MX_FREERTOS_Init(void)
 
     InitTaskHandle = osThreadNew(StartInitTask, NULL, &InitTask_attributes);
 
-    ret = xTaskCreate(ServoBasic_Task, "ServoTask", 128 * 2, NULL, osPriorityHigh, &g_servoTaskHandle);
+    /* Includes frame observation and floating-point snapshot call chains. */
+    ret = xTaskCreate(ServoBasic_Task, "ServoTask", 128 * 4, NULL, osPriorityHigh, &g_servoTaskHandle);
     if (ret != pdPASS)
     {
         Error_Handler();

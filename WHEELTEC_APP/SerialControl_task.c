@@ -90,10 +90,6 @@ static void serial_control_try_clear_diagnostics(uint8_t enable,
 	{
 		return;
 	}
-	if (ServoBasic_IsRcEmergencyActive() != 0U)
-	{
-		return;
-	}
 	if (ServoBasic_IsRcOverrideActive() != 0U)
 	{
 		return;

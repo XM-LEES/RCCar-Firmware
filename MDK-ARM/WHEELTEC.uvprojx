@@ -138,7 +138,7 @@
             <DriverSelection>4101</DriverSelection>
           </Flash1>
           <bUseTDR>1</bUseTDR>
-          <Flash2>BIN\CMSIS_AGDI.dll</Flash2>
+          <Flash2>BIN\UL2V8M.DLL</Flash2>
           <Flash3>"" ()</Flash3>
           <Flash4></Flash4>
           <pFcarmOut></pFcarmOut>
@@ -1195,6 +1195,11 @@
               <FilePath>..\WHEELTEC_APP\servo_basic_control.c</FilePath>
             </File>
             <File>
+              <FileName>rc_direction_observer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\WHEELTEC_APP\rc_direction_observer.c</FilePath>
+            </File>
+            <File>
               <FileName>servo_rc_capture.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\WHEELTEC_APP\servo_rc_capture.c</FilePath>
@@ -1238,6 +1243,11 @@
               <FileName>mode2_drive_gate.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\WHEELTEC_APP\mode2_drive_gate.c</FilePath>
+            </File>
+            <File>
+              <FileName>longitudinal_controller.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\WHEELTEC_APP\longitudinal_controller.c</FilePath>
             </File>
           </Files>
         </Group>

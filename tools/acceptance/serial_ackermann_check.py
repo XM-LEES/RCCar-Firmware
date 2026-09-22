@@ -25,8 +25,6 @@ COMMAND_ACKERMANN = 0x01
 COMMAND_SIZE = 11
 TELEMETRY_SIZE = 24
 TELEMETRY_PROTOCOL_ID = 0xA1
-MIN_COMMAND_SPEED_MPS = 0.3
-MAX_COMMAND_SPEED_MPS = 3.0
 MAX_STEERING_ANGLE_RAD = 0.349
 
 FLAG_ENABLE = 1 << 0
@@ -40,11 +38,13 @@ STATUS_ESC_RPM_RAW_VALID = 1 << 21
 STATUS_ESC_SPEED_CALIBRATION_VALID = 1 << 22
 STATUS_VEHICLE_DIRECTION_KNOWN = 1 << 23
 STATUS_ESC_SOFT_UART_RX_ERROR = 1 << 24
+ESC_ACTION_NAMES = ("UNKNOWN", "NEUTRAL", "DRIVE", "BRAKE")
 
 
 @dataclass
 class Telemetry:
     status_flags: int
+    esc_action: str
     seq: int
     hall_speed_mps: float
     speed_mps: float
@@ -84,8 +84,6 @@ def build_command_frame(
 ) -> bytes:
     if not math.isfinite(speed_mps) or not math.isfinite(steering_angle_rad):
         raise ValueError("speed and steering must be finite")
-    if abs(speed_mps) > MAX_COMMAND_SPEED_MPS:
-        raise ValueError("speed exceeds the confirmed +/-3.0 m/s command boundary")
     if abs(steering_angle_rad) > MAX_STEERING_ANGLE_RAD:
         raise ValueError("steering exceeds the confirmed +/-0.349 rad boundary")
 
@@ -98,11 +96,10 @@ def build_command_frame(
         steering_angle_rad = 0.0
     if not enable:
         speed_mps = 0.0
-    if 0.0 < abs(speed_mps) < MIN_COMMAND_SPEED_MPS:
-        speed_mps = 0.0
-
     speed_mmps = quantize_milli(speed_mps)
     steering_mrad = quantize_milli(steering_angle_rad)
+    if speed_mmps < -32768 or speed_mmps > 32767:
+        raise ValueError("speed exceeds the signed 16-bit mm/s wire range")
     frame = bytearray(COMMAND_SIZE)
     frame[0] = FRAME_HEADER
     frame[1] = COMMAND_ACKERMANN
@@ -170,7 +167,8 @@ def parse_telemetry(frame: bytes) -> Telemetry:
         raise TelemetryContractError("Hall wire speed must be zero when invalid or stopped")
 
     return Telemetry(
-        status_flags=frame[1],
+        status_flags=frame[1] & 0x3F,
+        esc_action=ESC_ACTION_NAMES[frame[1] >> 6],
         seq=frame[2],
         hall_speed_mps=hall_speed_mps,
         speed_mps=speed_mps,
@@ -276,7 +274,8 @@ def print_frames(frames: list[Telemetry], contract_errors: int) -> None:
             f"hall_speed_mps={frame.hall_speed_mps:.3f} "
             f"hall_valid={bool(frame.status_bits & STATUS_HALL_SPEED_VALID)} "
             f"hall_standstill={bool(frame.status_bits & STATUS_HALL_STOP_CONFIRMED)} "
-            f"status_flags=0x{frame.status_flags:02X} status_bits=0x{frame.status_bits:08X} "
+            f"esc_action={frame.esc_action} status_flags=0x{frame.status_flags:02X} "
+            f"status_bits=0x{frame.status_bits:08X} "
             f"protocol_id=0x{frame.protocol_id:02X}"
         )
     if contract_errors:

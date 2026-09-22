@@ -25,6 +25,13 @@ static void show_u4_zero_padded(uint8_t x, uint8_t y, uint32_t value)
     oled->ShowNumber((uint8_t)(x + 24U), y, value % 10U, 1, 12);
 }
 
+static void show_u2_zero_padded(uint8_t x, uint8_t y, uint32_t value)
+{
+    value %= 100U;
+    oled->ShowNumber(x, y, (value / 10U) % 10U, 1, 12);
+    oled->ShowNumber((uint8_t)(x + 8U), y, value % 10U, 1, 12);
+}
+
 static void show_i4_zero_padded(uint8_t x, uint8_t y, int32_t value)
 {
     uint32_t magnitude;
@@ -59,8 +66,6 @@ static void show_runtime_page(
         "RC  " : "AUTO");
     oled->ShowString(56, 0, "R");
     oled->ShowNumber(64, 0, control_snapshot->rc_override_active, 1, 12);
-    oled->ShowString(80, 0, "G");
-    oled->ShowNumber(88, 0, control_snapshot->rc_emergency_active, 1, 12);
 
     show_clear_line(12);
     oled->ShowString(0, 12, "E");
@@ -106,19 +111,24 @@ static void show_diagnostic_page(
     (void)HallSpeed_GetSnapshotSpeedMps(hall, &hall_speed_mps);
 
     show_clear_line(0);
-    oled->ShowString(0, 0, "F");
-    show_u4_zero_padded(8, 0,
-        control_snapshot->diagnostics.esc_valid_frame_count);
-    oled->ShowString(48, 0, "R");
-    oled->ShowNumber(56, 0, control_snapshot->diagnostics.esc_rpm_raw, 5, 12);
+    oled->ShowString(0, 0, "E");
+    oled->ShowNumber(8, 0, control_snapshot->state.esc_pulse_us, 4, 12);
+    oled->ShowString(56, 0, "S");
+    oled->ShowNumber(64, 0, control_snapshot->state.servo_pulse_us, 4, 12);
 
     show_clear_line(12);
     oled->ShowString(0, 12, "U");
-    show_u4_zero_padded(8, 12,
+    show_u2_zero_padded(8, 12,
         control_snapshot->diagnostics.esc_soft_uart_error_count);
-    oled->ShowString(48, 12, "X");
-    show_u4_zero_padded(56, 12,
+    oled->ShowString(32, 12, "X");
+    show_u2_zero_padded(40, 12,
         control_snapshot->diagnostics.esc_soft_uart_error_flags);
+    oled->ShowString(64, 12, "M");
+    show_u2_zero_padded(72, 12,
+        control_snapshot->diagnostics.mode2_state);
+    oled->ShowString(96, 12, "Q");
+    show_u2_zero_padded(104, 12,
+        control_snapshot->diagnostics.mode2_reason);
 
     show_clear_line(24);
     oled->ShowString(0, 24, "T");
@@ -140,16 +150,11 @@ static void show_diagnostic_page(
     oled->ShowFloat(72, 36, hall_speed_mps, 1, 2);
 
     show_clear_line(48);
-    oled->ShowString(0, 48, "A");
-    oled->ShowNumber(8, 48,
-        (HAL_GPIO_ReadPin(HallA_GPIO_Port, HallA_Pin) == GPIO_PIN_RESET) ? 0U : 1U,
-        1, 12);
-    oled->ShowString(24, 48, "B");
-    oled->ShowNumber(32, 48,
-        (HAL_GPIO_ReadPin(HallB_GPIO_Port, HallB_Pin) == GPIO_PIN_RESET) ? 0U : 1U,
-        1, 12);
-    oled->ShowString(48, 48, "C");
-    show_i4_zero_padded(56, 48, hall->event_count_total);
+    oled->ShowString(0, 48, "F");
+    show_u4_zero_padded(8, 48,
+        control_snapshot->diagnostics.esc_valid_frame_count);
+    oled->ShowString(48, 48, "R");
+    oled->ShowNumber(56, 48, control_snapshot->diagnostics.esc_rpm_raw, 5, 12);
 }
 
 static void show_status_page(uint8_t page)
