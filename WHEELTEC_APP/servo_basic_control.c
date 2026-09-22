@@ -27,15 +27,18 @@ typedef uint32_t ServoBasicIrqState_t;
 
 static ServoBasicIrqState_t servo_basic_enter_critical(void)
 {
-	ServoBasicIrqState_t state = __get_PRIMASK();
+	ServoBasicIrqState_t state = __get_BASEPRI();
 
-	__disable_irq();
+	/* Protect task snapshots without delaying priority-3 PD15 bit sampling. */
+	__set_BASEPRI_MAX(configMAX_SYSCALL_INTERRUPT_PRIORITY);
+	__DSB();
+	__ISB();
 	return state;
 }
 
 static void servo_basic_exit_critical(ServoBasicIrqState_t state)
 {
-	__set_PRIMASK(state);
+	__set_BASEPRI(state);
 }
 #else
 typedef uint8_t ServoBasicIrqState_t;
@@ -250,6 +253,11 @@ static uint8_t s_esc_latest_raw_sample_valid = 0U;
 static EscTelemetryReceiverHealth_t s_esc_receiver_health;
 static RcDirectionObserver_t s_rc_direction_observer;
 static RcDirectionObserverResult_t s_rc_direction_result;
+static uint32_t s_rc_output_context;
+static uint32_t s_rc_delivery_epoch;
+static servo_basic_observation_diagnostics_t s_observation_diagnostics;
+static uint32_t s_rc_last_published_sample_id;
+static uint32_t s_rc_last_published_receive_epoch;
 static uint8_t s_vehicle_direction_known = 0U;
 static int8_t s_vehicle_direction = 0;
 static uint8_t s_auto_history_boundary_valid = 0U;
@@ -277,6 +285,8 @@ static servo_esc_action_t servo_basic_current_esc_action(uint32_t now_ms);
 static uint8_t orin_pwm_is_active_at(uint32_t now_ms);
 static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms);
 static void servo_basic_publish_control_snapshot(uint32_t now_ms);
+static void servo_basic_update_rc_feedback(uint32_t now_ms);
+static void servo_basic_reset_rc_evidence(void);
 
 __attribute__((weak)) void ServoBasic_OutputEscPulse(uint16_t pulse_us)
 {
@@ -887,6 +897,13 @@ static void set_rc_override_state(
 	if (was_active != g_rc_override_active)
 	{
 		servo_basic_invalidate_auto_history(HAL_GetTick());
+		EscTelemetry_DiscardSamples();
+		s_rc_delivery_epoch = EscTelemetry_GetDeliveryEpoch();
+		servo_basic_reset_rc_evidence();
+		/* A previous source's sample must not establish this source's stop. */
+		EscMotionEstimator_Init(&s_esc_motion_estimator, &s_esc_motion_config);
+		s_esc_latest_raw_sample_valid = 0U;
+		s_esc_last_observed_sample_id = 0U;
 	}
 	if (was_active != 0U && g_rc_override_active == 0U)
 	{
@@ -901,6 +918,7 @@ static void apply_esc_pulse(uint16_t pulse_us)
 {
 	g_state.esc_pulse_us = pulse_us;
 	ServoBasic_OutputEscPulse(pulse_us);
+	s_rc_output_context = EscTelemetry_PublishOutputContext(pulse_us, g_rc_override_active);
 }
 
 static void speed_pi_reset_controller(void)
@@ -1058,6 +1076,11 @@ static uint8_t longitudinal_config_equal(const LongitudinalControllerConfig_t *l
 
 static void servo_basic_clear_esc_observation_state(void)
 {
+	s_rc_output_context = 0U;
+	s_rc_delivery_epoch = 0U;
+	s_rc_last_published_sample_id = 0U;
+	s_rc_last_published_receive_epoch = 0U;
+	memset(&s_observation_diagnostics, 0, sizeof(s_observation_diagnostics));
 	RcDirectionObserver_Init(&s_rc_direction_observer);
 	s_rc_direction_result =
 		RcDirectionObserver_GetResult(&s_rc_direction_observer);
@@ -2228,6 +2251,19 @@ static void servo_basic_publish_control_snapshot(uint32_t now_ms)
 		(s_esc_latest_raw_sample_valid != 0U) ?
 		s_esc_latest_raw_sample.received_tick_ms : s_esc_motion_estimate.last_sample_tick_ms;
 	snapshot.publish_sequence = ++s_control_snapshot_next_sequence;
+	if (g_rc_override_active != 0U && s_esc_latest_raw_sample_valid != 0U &&
+		(snapshot.esc_sample_id != s_rc_last_published_sample_id ||
+		 snapshot.esc_receive_epoch != s_rc_last_published_receive_epoch))
+	{
+		uint32_t age_ms;
+		if (servo_basic_tick_delta_ms(HAL_GetTick(), snapshot.esc_sample_tick_ms,
+			&age_ms) != 0U && age_ms > s_observation_diagnostics.max_publish_age_ms)
+		{
+			s_observation_diagnostics.max_publish_age_ms = age_ms;
+		}
+		s_rc_last_published_sample_id = snapshot.esc_sample_id;
+		s_rc_last_published_receive_epoch = snapshot.esc_receive_epoch;
+	}
 
 	irq_state = servo_basic_enter_critical();
 	s_control_snapshot = snapshot;
@@ -2343,13 +2379,13 @@ static void apply_rc_passthrough_outputs(void)
 	apply_servo_pulse(servo_pulse);
 }
 
-static void servo_basic_update_rc_direction_observer(uint32_t now_ms)
+static void servo_basic_update_rc_direction_observer(uint32_t now_ms, uint16_t pwm_us)
 {
 	RcDirectionObserverInput_t input;
 
 	memset(&input, 0, sizeof(input));
 	input.rc_active = g_rc_override_active;
-	input.applied_pwm_us = g_state.esc_pulse_us;
+	input.applied_pwm_us = pwm_us;
 	if (s_esc_latest_raw_sample_valid != 0U &&
 		s_esc_rx_invalidated == 0U &&
 		servo_basic_esc_fe32_is_fresh(now_ms) != 0U)
@@ -2372,6 +2408,175 @@ static void servo_basic_update_rc_direction_observer(uint32_t now_ms)
 		&input);
 }
 
+static void servo_basic_reset_rc_evidence(void)
+{
+	RcDirectionObserver_ResetDirection(&s_rc_direction_observer);
+	s_rc_direction_result = RcDirectionObserver_GetResult(&s_rc_direction_observer);
+	EscMotionEstimator_InvalidateStopEvidence(&s_esc_motion_estimator);
+}
+
+static uint32_t servo_basic_observation_cycles(void)
+{
+#if defined(STM32F407xx)
+	return DWT->CYCCNT;
+#else
+	return 0U;
+#endif
+}
+
+static void servo_basic_update_rc_feedback(uint32_t now_ms)
+{
+	EscTelemetrySnapshot_t latest;
+	EscTelemetryObservedSample_t item;
+	size_t remaining = EscTelemetry_PendingSamples();
+	uint32_t epoch = EscTelemetry_GetDeliveryEpoch();
+	uint32_t processed = 0U;
+	const uint32_t start_cycles = servo_basic_observation_cycles();
+	uint32_t elapsed_cycles;
+
+	EscTelemetry_GetReceiverHealth(&s_esc_receiver_health);
+	if (s_rc_delivery_epoch != epoch)
+	{
+		s_observation_diagnostics.delivery_gaps++;
+		servo_basic_reset_rc_evidence();
+		s_rc_delivery_epoch = epoch;
+	}
+	if (EscTelemetry_GetSnapshot(&latest) == 0U)
+	{
+		s_esc_rx_invalidated = 1U;
+		s_esc_latest_raw_sample_valid = 0U;
+		servo_basic_reset_rc_evidence();
+		servo_basic_update_cached_estimate(now_ms);
+		return;
+	}
+	s_esc_rx_invalidated = 0U;
+	s_esc_receive_epoch = latest.receive_epoch;
+	s_esc_receive_epoch_valid = 1U;
+
+	/* Bound work to the batch available on entry; do not chase the producer. */
+	while (remaining-- != 0U && EscTelemetry_PopSample(&item) != 0U)
+	{
+		uint32_t age_ms;
+		const int8_t old_direction = s_rc_direction_result.direction_known != 0U ?
+			(int8_t)s_rc_direction_result.direction : 0;
+		if (item.receive_epoch != latest.receive_epoch ||
+			EscTelemetry_ContextSource(item.output_context) !=
+				EscTelemetry_ContextSource(s_rc_output_context) ||
+			EscTelemetry_ContextRcActive(item.output_context) == 0U)
+		{
+			s_observation_diagnostics.samples_wrong_source++;
+			continue;
+		}
+		if (s_rc_delivery_epoch != item.delivery_epoch)
+		{
+			s_observation_diagnostics.delivery_gaps++;
+			servo_basic_reset_rc_evidence();
+			s_rc_delivery_epoch = item.delivery_epoch;
+		}
+		if (servo_basic_tick_delta_ms(now_ms, item.sample.received_tick_ms, &age_ms) == 0U ||
+			g_esc_speed_fresh_timeout_ms == 0U || age_ms > g_esc_speed_fresh_timeout_ms)
+		{
+			s_observation_diagnostics.samples_expired++;
+			servo_basic_reset_rc_evidence();
+			continue;
+		}
+		if (item.sample.sample_id == s_esc_last_observed_sample_id &&
+			item.receive_epoch == s_esc_last_observed_epoch)
+		{
+			continue;
+		}
+		s_esc_latest_raw_sample = item.sample;
+		s_esc_latest_raw_sample_valid = 1U;
+		(void)EscMotionEstimator_ObserveSample(&s_esc_motion_estimator, &item.sample, now_ms);
+		s_esc_last_observed_sample_id = item.sample.sample_id;
+		s_esc_last_observed_epoch = item.receive_epoch;
+		servo_basic_update_cached_estimate(now_ms);
+		servo_basic_update_rc_direction_observer(now_ms,
+			EscTelemetry_ContextPwm(item.output_context));
+		/* Preserve Hall period invalidation even if a batch changes direction twice. */
+		if (s_rc_direction_result.direction_known != 0U &&
+			(int8_t)s_rc_direction_result.direction != old_direction &&
+			s_esc_stop_confirmed == 0U)
+		{
+			HallSpeed_SetCommandDirection((int8_t)s_rc_direction_result.direction);
+		}
+		s_observation_diagnostics.samples_processed++;
+		s_observation_diagnostics.last_sample_id = item.sample.sample_id;
+		if (age_ms > s_observation_diagnostics.max_sample_age_ms)
+		{
+			s_observation_diagnostics.max_sample_age_ms = age_ms;
+		}
+		processed++;
+	}
+	/* Context rejection must not hide a valid RPM measurement. Raw snapshot
+	 * and FIFO are published atomically; an unqueued latest sample has no
+	 * usable RC context, so publish magnitude only and reset sign/stop proof. */
+	if ((latest.sample.sample_id != s_esc_last_observed_sample_id ||
+		 latest.receive_epoch != s_esc_last_observed_epoch) &&
+		EscTelemetry_PendingSamples() == 0U)
+	{
+		uint32_t age_ms;
+		servo_basic_reset_rc_evidence();
+		if (servo_basic_tick_delta_ms(now_ms, latest.sample.received_tick_ms, &age_ms) != 0U &&
+			g_esc_speed_fresh_timeout_ms != 0U && age_ms <= g_esc_speed_fresh_timeout_ms)
+		{
+			s_esc_latest_raw_sample = latest.sample;
+			s_esc_latest_raw_sample_valid = 1U;
+			(void)EscMotionEstimator_ObserveSample(&s_esc_motion_estimator, &latest.sample, now_ms);
+			EscMotionEstimator_InvalidateStopEvidence(&s_esc_motion_estimator);
+			s_esc_last_observed_sample_id = latest.sample.sample_id;
+			s_esc_last_observed_epoch = latest.receive_epoch;
+			s_observation_diagnostics.samples_magnitude_only++;
+		}
+	}
+	/* Silence/receiver errors still invalidate evidence without a new frame. */
+	if (servo_basic_esc_fe32_is_fresh(now_ms) == 0U)
+	{
+		servo_basic_reset_rc_evidence();
+	}
+	epoch = EscTelemetry_GetDeliveryEpoch();
+	if (epoch != s_rc_delivery_epoch)
+	{
+		s_observation_diagnostics.delivery_gaps++;
+		servo_basic_reset_rc_evidence();
+		s_rc_delivery_epoch = epoch;
+	}
+	servo_basic_update_cached_estimate(now_ms);
+	if (processed > s_observation_diagnostics.max_batch_samples)
+	{
+		s_observation_diagnostics.max_batch_samples = processed;
+	}
+	elapsed_cycles = servo_basic_observation_cycles() - start_cycles;
+	if (elapsed_cycles > s_observation_diagnostics.max_batch_cycles)
+	{
+		s_observation_diagnostics.max_batch_cycles = elapsed_cycles;
+	}
+}
+
+void ServoBasic_ProcessEscObservation(void)
+{
+	const uint32_t now_ms = HAL_GetTick();
+	if (g_rc_override_active == 0U)
+	{
+		/* AUTO's estimator/PI/gate must run only at the control deadline. */
+		return;
+	}
+	servo_basic_update_rc_feedback(now_ms);
+	HallSpeed_SetCommandDirection(
+		(s_rc_direction_result.direction_known != 0U && s_esc_stop_confirmed == 0U) ?
+		(int8_t)s_rc_direction_result.direction : 0);
+	servo_basic_publish_control_snapshot(now_ms);
+}
+
+servo_basic_observation_diagnostics_t ServoBasic_GetObservationDiagnostics(void)
+{
+	servo_basic_observation_diagnostics_t result;
+	ServoBasicIrqState_t irq_state = servo_basic_enter_critical();
+	result = s_observation_diagnostics;
+	servo_basic_exit_critical(irq_state);
+	return result;
+}
+
 void ServoBasic_ProcessControl(void)
 {
 	uint8_t orin_active;
@@ -2379,7 +2584,15 @@ void ServoBasic_ProcessControl(void)
 
 	now_ms = HAL_GetTick();
 	servo_basic_refresh_esc_configs(now_ms);
-	servo_basic_update_esc_feedback(now_ms);
+	if (g_rc_override_active != 0U)
+	{
+		servo_basic_update_rc_feedback(now_ms);
+	}
+	else
+	{
+		EscTelemetry_DiscardSamples();
+		servo_basic_update_esc_feedback(now_ms);
+	}
 	refresh_rc_inputs();
 	update_control_mode_from_rc();
 	orin_active = orin_pwm_is_active();
@@ -2458,8 +2671,6 @@ void ServoBasic_ProcessControl(void)
 			now_ms);
 	}
 
-	servo_basic_update_rc_direction_observer(now_ms);
-
 	if (g_rc_override_active != 0U)
 	{
 		HallSpeed_SetCommandDirection(
@@ -2485,12 +2696,36 @@ void ServoBasic_Task(void *param)
 {
 	(void)param;
 
-	TickType_t last_wake = xTaskGetTickCount();
+	TickType_t next_control = xTaskGetTickCount();
 	const TickType_t period_ticks = pdMS_TO_TICKS(20U);
 	for (;;)
 	{
-		ServoBasic_ProcessControl();
-		vTaskDelayUntil(&last_wake, period_ticks);
+		TickType_t now = xTaskGetTickCount();
+		const TickType_t lateness = now - next_control;
+		if (lateness < (TickType_t)0x80000000UL)
+		{
+			TickType_t periods;
+			if (lateness > s_observation_diagnostics.max_control_lateness_ticks)
+			{
+				s_observation_diagnostics.max_control_lateness_ticks = lateness;
+			}
+			ServoBasic_ProcessControl();
+			/* Advance the original deadline, without replaying missed commands. */
+			now = xTaskGetTickCount();
+			periods = (now - next_control) / period_ticks + 1U;
+			s_observation_diagnostics.control_deadlines_skipped += periods - 1U;
+			next_control += periods * period_ticks;
+		}
+		else
+		{
+			ServoBasic_ProcessEscObservation();
+		}
+		now = xTaskGetTickCount();
+		if ((TickType_t)(next_control - now) < (TickType_t)0x80000000UL &&
+			next_control != now)
+		{
+			(void)ulTaskNotifyTake(pdTRUE, next_control - now);
+		}
 	}
 }
 

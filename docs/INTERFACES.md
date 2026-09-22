@@ -84,9 +84,9 @@ Hall速度采用原有周期法：`v = (0.23 × π / 10) / 相邻有效脉冲间
 | 15–16 / 17–18 | 小端 u16 × 0.1 → V / A |
 | 19 / 21 | ESC 温度 / 电机温度，°C |
 
-`FFFF` / `FF` 表示相应字段无效。每份遥测携带有效性、样本标识和接收时间，晚处理不能使旧数据变新。帧定义参考 [MAX5 G2 Plus](https://github.com/JumpMaster/Hobbywing2CRSF)、[MAX4 HV](https://github.com/plc2man/hobbywing-ezrun-max4-hv-telemetry-protocol)、[XR8 / XR10](https://github.com/EclipseVision/HWTelemetry)；这些型号的资料不等同于本车 MAX5 HV G2 的实测结果。
+`FFFF` / `FF` 表示相应字段无效。每份遥测携带有效性、样本标识、接收时间、receive epoch和接收时的软件PWM上下文。晚处理不能使旧数据变新；上下文描述字节到达C63A时的固件输出环境，不是ESC内部采样时刻。帧定义参考 [MAX5 G2 Plus](https://github.com/JumpMaster/Hobbywing2CRSF)、[MAX4 HV](https://github.com/plc2man/hobbywing-ezrun-max4-hv-telemetry-protocol)、[XR8 / XR10](https://github.com/EclipseVision/HWTelemetry)；这些型号的资料不等同于本车 MAX5 HV G2 的实测结果。
 
-控制权与观测分开：AUTO、经过C63A的RC或外部接收机直控都不影响FE32和RPM幅值的接收。RC运动方向只服务有符号速度和Hall，不写入AUTO方向状态。AUTO门控直接消费FE32动作：F→R保留足量刹车、停稳和回中规则；R→F看到BRAKE→DRIVE后立即撤销完整刹车。外部接收机直接控制电调而C63A不知道实际PWM时，bit23保持清零，车速字段只能提供正幅值。
+控制权与观测分开：AUTO、经过C63A的RC或外部接收机直控都不影响FE32和RPM幅值的接收。RC运动方向只服务有符号速度和Hall，不写入AUTO方向状态。RC方向按FE32事件队列顺序更新；AUTO仍按20ms控制周期读取最新FE32快照。AUTO门控直接消费FE32动作：F→R保留足量刹车、停稳和回中规则；R→F看到BRAKE→DRIVE后立即撤销完整刹车。外部接收机直接控制电调而C63A不知道实际PWM时，bit23保持清零，车速字段只能提供正幅值。
 
 主速度幅值不再等待未知极对数和拆分齿比：`轮轴RPM = rpm_raw × 0.14115`，`速度 = 轮轴RPM × 2π × 轮胎半径 / 60`。0.14115来自低档ESC/Hall配对拟合；现有轮胎半径为115 mm。该观测换算有效不等于自动推进获准，后者继续要求停稳与模式二配置。
 

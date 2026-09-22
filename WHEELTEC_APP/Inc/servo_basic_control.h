@@ -108,6 +108,26 @@ typedef struct
 	uint32_t esc_sample_tick_ms;
 } servo_basic_control_snapshot_t;
 
+/* Internal observation timing/accounting; not part of the 24-byte protocol. */
+typedef struct
+{
+	uint32_t samples_processed;
+	uint32_t samples_expired;
+	uint32_t samples_wrong_source;
+	uint32_t samples_magnitude_only;
+	uint32_t delivery_gaps;
+	uint32_t last_sample_id;
+	uint32_t max_sample_age_ms;
+	uint32_t max_publish_age_ms;
+	uint32_t max_batch_cycles;
+	uint32_t max_batch_samples;
+	uint32_t max_control_lateness_ticks;
+	uint32_t control_deadlines_skipped;
+} servo_basic_observation_diagnostics_t;
+
+void ServoBasic_ProcessEscObservation(void);
+servo_basic_observation_diagnostics_t ServoBasic_GetObservationDiagnostics(void);
+
 void ServoBasic_Init(void);
 void ServoBasic_ProcessControl(void);
 uint8_t ServoBasic_GetControlSnapshot(servo_basic_control_snapshot_t *snapshot);

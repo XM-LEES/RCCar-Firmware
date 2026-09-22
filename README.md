@@ -19,7 +19,7 @@ RC方向观测器在首次运动时用连续`DRIVE`样本确认方向；制动�
 [![系统架构](docs/diagrams/system.svg)](docs/ARCHITECTURE.md)
 
 - [架构与速度闭环](docs/ARCHITECTURE.md)：模块、数据流与控制规则。
-- [RC方向观测器](docs/RC_DIRECTION_OBSERVER.md)：RC方向状态机、证据边界与回归序列。
+- [ESC观测与速度发布](docs/ESC_OBSERVATION.md)：PD15反馈、RC方向状态机、有效位和RC/AUTO边界。
 - [接口约束](docs/INTERFACES.md)：串口、控制源与状态语义。
 - [车辆数据](docs/VEHICLE.md)：源码参数、硬件数据与标定来源。
 - [draw.io 图源](docs/diagrams/chassis.drawio)：系统架构、速度环两页。

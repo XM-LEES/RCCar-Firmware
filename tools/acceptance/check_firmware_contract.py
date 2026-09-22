@@ -241,11 +241,12 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
     ]), "automatic Ackermann speed, PI, and gate consume ESC samples rather than Hall speed")
     add(results, "rc_direction_observer_unifies_hall_and_esc", all(needle in text for needle in [
         '#include "rc_direction_observer.h"',
-        "servo_basic_update_rc_direction_observer(now_ms)",
+        "servo_basic_update_rc_direction_observer(now_ms,",
         "RcDirectionObserver_Update(",
         "input.state_raw",
         "input.moving_evidence",
-        "input.applied_pwm_us = g_state.esc_pulse_us",
+        "input.applied_pwm_us = pwm_us",
+        "EscTelemetry_ContextPwm(item.output_context)",
         "return (s_rc_direction_result.direction_known != 0U) ?",
         "(int8_t)s_rc_direction_result.direction : 0",
         "s_rc_direction_result.direction_known != 0U",
@@ -813,8 +814,11 @@ def check_uart(root: Path) -> list[Check]:
         "EscSoftUartStm32_TakeFaults",
         "EscTelemetry_RecordRxError",
         "EscSoftUartStm32_ReadByte",
-        "EscTelemetry_RecordBytes",
-    ]), "soft UART faults invalidate epoch and bytes enter existing parser pending queue")
+        "EscTelemetry_ProcessReceivedByte",
+        "item.received_tick_ms",
+        "item.output_context",
+        "xTaskNotifyGive(g_servoTaskHandle)",
+    ]), "soft UART preserves byte time/context, faults invalidate epoch, and completed frames notify Servo")
     add(results, "oled_pd3_level_selected_pages", all(needle in main_header_text for needle in [
         "#define UserKey_Pin GPIO_PIN_3",
         "#define UserKey_GPIO_Port GPIOD",

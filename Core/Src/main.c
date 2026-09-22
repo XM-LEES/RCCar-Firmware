@@ -80,8 +80,8 @@ static void App_StartInputInterrupts(void);
 /* USER CODE BEGIN 0 */
 static void App_InitRuntimeServices(void)
 {
-  ServoBasic_Init();
   EscTelemetryStm32_Init();
+  ServoBasic_Init();
   DWT_Init();
   HallSpeed_Init();
   ADC_Userconfig_Init();

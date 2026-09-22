@@ -16,7 +16,10 @@ typedef struct
 {
     uint8_t byte;
     uint32_t received_tick_ms;
+    uint32_t output_context;
 } EscSoftUartStm32Byte_t;
+
+typedef uint32_t (*EscSoftUartStm32OutputContextProvider_t)(void);
 
 typedef struct
 {
@@ -32,6 +35,8 @@ typedef struct
 
 void EscSoftUartStm32_Init(void);
 uint8_t EscSoftUartStm32_Start(uint32_t tick_ms);
+void EscSoftUartStm32_SetOutputContextProvider(
+    EscSoftUartStm32OutputContextProvider_t provider);
 void EscSoftUartStm32_UpdateTickBase(uint32_t tick_ms);
 uint32_t EscSoftUartStm32_TakeFaults(void);
 uint8_t EscSoftUartStm32_ReadByte(EscSoftUartStm32Byte_t *item);

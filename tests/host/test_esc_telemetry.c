@@ -316,6 +316,219 @@ static int test_invalid_dma_position_is_counted(void)
     return 0;
 }
 
+static void feed_direct_bytes(const uint8_t *data,
+                              size_t length,
+                              uint32_t first_tick_ms,
+                              uint32_t output_context)
+{
+    size_t index;
+
+    for (index = 0U; index < length; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            data[index],
+            first_tick_ms + (uint32_t)index,
+            output_context);
+    }
+}
+
+static int test_rc_observed_sample_keeps_ordered_context(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+
+    EscTelemetry_Init();
+    (void)EscTelemetry_PublishOutputContext(1600U, 1U);
+    feed_direct_bytes(ESC_FE32_FIXTURE_BRAKE_DYN02,
+                      ESC_FE32_FRAME_LEN,
+                      700U,
+                      EscTelemetry_GetOutputContext());
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(observed.sample.sample_id == 1U);
+    EXPECT_TRUE(observed.sample.received_tick_ms ==
+                700U + ESC_FE32_FRAME_LEN - 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1600U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) != 0U);
+    EXPECT_TRUE(EscTelemetry_ContextSource(observed.output_context) ==
+                EscTelemetry_ContextSource(EscTelemetry_GetOutputContext()));
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
+    EXPECT_TRUE(diagnostics.observed_samples_consumed == 1U);
+    EXPECT_TRUE(diagnostics.observed_queue_depth_peak == 1U);
+
+    return 0;
+}
+
+static int test_pwm_change_with_same_source_uses_first_byte_context(void)
+{
+    EscTelemetryObservedSample_t observed;
+    uint32_t context;
+    size_t index;
+
+    EscTelemetry_Init();
+    context = EscTelemetry_PublishOutputContext(1600U, 1U);
+    for (index = 0U; index < ESC_FE32_FRAME_LEN / 2U; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            800U + (uint32_t)index,
+            context);
+    }
+
+    context = EscTelemetry_PublishOutputContext(1700U, 1U);
+    for (; index < ESC_FE32_FRAME_LEN; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            800U + (uint32_t)index,
+            context);
+    }
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1600U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) != 0U);
+
+    return 0;
+}
+
+static int test_cross_side_pwm_change_same_source_keeps_first_byte_context(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+    uint32_t initial_epoch;
+    uint32_t context;
+    size_t index;
+
+    EscTelemetry_Init();
+    initial_epoch = EscTelemetry_GetDeliveryEpoch();
+    context = EscTelemetry_PublishOutputContext(1600U, 1U);
+    for (index = 0U; index < ESC_FE32_FRAME_LEN / 2U; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_BRAKE_DYN02[index],
+            840U + (uint32_t)index,
+            context);
+    }
+
+    context = EscTelemetry_PublishOutputContext(1400U, 1U);
+    for (; index < ESC_FE32_FRAME_LEN; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_BRAKE_DYN02[index],
+            840U + (uint32_t)index,
+            context);
+    }
+
+    EXPECT_TRUE(EscTelemetry_GetDeliveryEpoch() == initial_epoch);
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1600U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) != 0U);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_context_rejected == 0U);
+    EXPECT_TRUE(diagnostics.observed_generation_boundaries == 0U);
+
+    return 0;
+}
+
+static int test_source_change_inside_frame_rejects_observed_context(void)
+{
+    EscTelemetrySnapshot_t snapshot;
+    EscTelemetryDiagnostics_t diagnostics;
+    uint32_t context;
+    size_t index;
+
+    EscTelemetry_Init();
+    context = EscTelemetry_PublishOutputContext(1600U, 1U);
+    for (index = 0U; index < ESC_FE32_FRAME_LEN / 2U; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            900U + (uint32_t)index,
+            context);
+    }
+
+    context = EscTelemetry_PublishOutputContext(1500U, 0U);
+    for (; index < ESC_FE32_FRAME_LEN; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByte(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            900U + (uint32_t)index,
+            context);
+    }
+
+    EXPECT_TRUE(EscTelemetry_GetSnapshot(&snapshot) == 1U);
+    EXPECT_TRUE(snapshot.sample.sample_id == 1U);
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 0U);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_context_rejected == 1U);
+    EXPECT_TRUE(diagnostics.samples_published == 1U);
+
+    return 0;
+}
+
+static int test_non_rc_frames_do_not_enter_observed_queue(void)
+{
+    EscTelemetrySnapshot_t snapshot;
+    EscTelemetryDiagnostics_t diagnostics;
+
+    EscTelemetry_Init();
+    (void)EscTelemetry_PublishOutputContext(1500U, 0U);
+    EscTelemetry_RecordBytes(ESC_FE32_FIXTURE_BRAKE_DYN02,
+                             ESC_FE32_FRAME_LEN,
+                             1000U);
+    EscTelemetry_ProcessPending();
+
+    EXPECT_TRUE(EscTelemetry_GetSnapshot(&snapshot) == 1U);
+    EXPECT_TRUE(snapshot.sample.sample_id == 1U);
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 0U);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_samples_discarded == 1U);
+
+    return 0;
+}
+
+static int test_observed_queue_overflow_starts_new_delivery_epoch(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+    uint32_t initial_epoch;
+    size_t index;
+
+    EscTelemetry_Init();
+    (void)EscTelemetry_PublishOutputContext(1600U, 1U);
+    initial_epoch = EscTelemetry_GetDeliveryEpoch();
+    for (index = 0U; index < ESC_TELEMETRY_OBSERVED_SAMPLE_QUEUE_LEN + 1U;
+         ++index)
+    {
+        EscTelemetry_RecordBytes(ESC_FE32_FIXTURE_PEAK_DYN02,
+                                 ESC_FE32_FRAME_LEN,
+                                 1100U + (uint32_t)(index * 20U));
+    }
+    EscTelemetry_ProcessPending();
+
+    EXPECT_TRUE(EscTelemetry_GetDeliveryEpoch() != initial_epoch);
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(observed.sample.sample_id ==
+                ESC_TELEMETRY_OBSERVED_SAMPLE_QUEUE_LEN + 1U);
+    EXPECT_TRUE(observed.delivery_epoch == EscTelemetry_GetDeliveryEpoch());
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_queue_overflows == 1U);
+    EXPECT_TRUE(diagnostics.observed_samples_discarded ==
+                ESC_TELEMETRY_OBSERVED_SAMPLE_QUEUE_LEN);
+
+    return 0;
+}
+
 int main(void)
 {
     if (test_dma_event_dedup_and_snapshot_time() != 0)
@@ -351,6 +564,30 @@ int main(void)
         return 1;
     }
     if (test_invalid_dma_position_is_counted() != 0)
+    {
+        return 1;
+    }
+    if (test_rc_observed_sample_keeps_ordered_context() != 0)
+    {
+        return 1;
+    }
+    if (test_pwm_change_with_same_source_uses_first_byte_context() != 0)
+    {
+        return 1;
+    }
+    if (test_cross_side_pwm_change_same_source_keeps_first_byte_context() != 0)
+    {
+        return 1;
+    }
+    if (test_source_change_inside_frame_rejects_observed_context() != 0)
+    {
+        return 1;
+    }
+    if (test_non_rc_frames_do_not_enter_observed_queue() != 0)
+    {
+        return 1;
+    }
+    if (test_observed_queue_overflow_starts_new_delivery_epoch() != 0)
     {
         return 1;
     }

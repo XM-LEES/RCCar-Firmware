@@ -137,12 +137,14 @@ static void feed_stop_low_fault(uint8_t byte)
 static int test_soft_uart_frame_reaches_parser(void)
 {
     EscTelemetrySnapshot_t snapshot;
+    EscTelemetryObservedSample_t observed;
     EscTelemetryDiagnostics_t diagnostics;
 
     reset_host_hal();
     EscTelemetryStm32_Init();
     set_tick(10U);
     EXPECT_TRUE(EscTelemetryStm32_Start() == 1U);
+    (void)EscTelemetry_PublishOutputContext(1600U, 1U);
 
     set_tick(77U);
     feed_uart_bytes(ESC_FE32_FIXTURE_BRAKE_DYN02, ESC_FE32_FRAME_LEN);
@@ -154,10 +156,16 @@ static int test_soft_uart_frame_reaches_parser(void)
     EXPECT_TRUE(snapshot.sample.received_tick_ms == 77U);
     EXPECT_TRUE(snapshot.sample.state_candidate ==
                 ESC_FE32_STATE_CANDIDATE_BRAKE);
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(observed.sample.sample_id == snapshot.sample.sample_id);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1600U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) != 0U);
 
     EscTelemetry_GetDiagnostics(&diagnostics);
-    EXPECT_TRUE(diagnostics.bytes_copied_from_receiver == ESC_FE32_FRAME_LEN);
+    EXPECT_TRUE(diagnostics.bytes_copied_from_receiver == 0U);
     EXPECT_TRUE(diagnostics.parser_decoded_frames == 1U);
+    EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
     EXPECT_TRUE(diagnostics.rx_error_count == 0U);
     return 0;
 }
