@@ -25,7 +25,8 @@ static UART_HandleTypeDef *serial = &huart4;
 #define TELEMETRY_FLAG_COMMAND_TIMEOUT     0x08U
 #define TELEMETRY_FLAG_BRAKE_ACTIVE        0x10U
 #define TELEMETRY_FLAG_FAULT_LATCHED       0x20U
-#define TELEMETRY_FLAG_STEERING_IS_MEASURED 0x40U
+#define TELEMETRY_FLAG_ESC_ACTION_SHIFT         6U
+#define TELEMETRY_FLAG_ESC_ACTION_MASK       0xC0U
 
 #define STATUS_BIT_FAULT_LATCHED           (1UL << 0)
 #define STATUS_BIT_COMMAND_TIMEOUT         (1UL << 1)
@@ -243,6 +244,8 @@ void RobotDataTransmitTask(void* param)
         if (command_timeout != 0U) { status_flags |= TELEMETRY_FLAG_COMMAND_TIMEOUT; }
         if (brake_active != 0U) { status_flags |= TELEMETRY_FLAG_BRAKE_ACTIVE; }
         if (g_app_runtime_state.fault_latched != 0U) { status_flags |= TELEMETRY_FLAG_FAULT_LATCHED; }
+        status_flags |= (uint8_t)(((uint8_t)servo_diagnostics.esc_action <<
+            TELEMETRY_FLAG_ESC_ACTION_SHIFT) & TELEMETRY_FLAG_ESC_ACTION_MASK);
 
         if (g_app_runtime_state.fault_latched != 0U) { status_bits |= STATUS_BIT_FAULT_LATCHED; }
         if (command_timeout != 0U) { status_bits |= STATUS_BIT_COMMAND_TIMEOUT; }

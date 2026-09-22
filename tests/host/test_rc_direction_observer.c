@@ -165,7 +165,7 @@ static int test_brake_and_neutral_keep_confirmed_forward_direction(void)
     return 0;
 }
 
-static int test_forward_to_reverse_waits_for_brake_or_neutral_and_two_drive_samples(void)
+static int test_forward_to_reverse_switches_on_first_drive_after_non_drive(void)
 {
     RcDirectionObserver_t observer;
     RcDirectionObserverResult_t result;
@@ -178,9 +178,9 @@ static int test_forward_to_reverse_waits_for_brake_or_neutral_and_two_drive_samp
     EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_FORWARD);
 
     result = step(&observer, 6U, 1U, 600U, TEST_REVERSE_PWM_US);
-    EXPECT_TRUE(result.direction_known == 0U);
-    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN);
-    EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_CANDIDATE_PENDING);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_REVERSE);
+    EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_OK);
 
     result = step(&observer, 7U, 1U, 620U, TEST_REVERSE_PWM_US);
     EXPECT_TRUE(result.direction_known == 1U);
@@ -221,9 +221,9 @@ static int test_reverse_to_forward_does_not_require_neutral(void)
     EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_REVERSE);
 
     result = step(&observer, 6U, 1U, 300U, TEST_FORWARD_PWM_US);
-    EXPECT_TRUE(result.direction_known == 0U);
-    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN);
-    EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_CANDIDATE_PENDING);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_FORWARD);
+    EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_OK);
 
     result = step(&observer, 7U, 1U, 320U, TEST_FORWARD_PWM_US);
     EXPECT_TRUE(result.direction_known == 1U);
@@ -241,13 +241,13 @@ static int test_opposite_drive_without_non_drive_does_not_flip_direction(void)
     confirm_forward(&observer);
 
     result = step(&observer, 5U, 1U, 650U, TEST_REVERSE_PWM_US);
-    EXPECT_TRUE(result.direction_known == 0U);
-    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_FORWARD);
     EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_AWAITING_NON_DRIVE);
 
     result = step(&observer, 6U, 1U, 680U, TEST_REVERSE_PWM_US);
-    EXPECT_TRUE(result.direction_known == 0U);
-    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_FORWARD);
     EXPECT_TRUE(result.reason == RC_DIRECTION_OBSERVER_REASON_AWAITING_NON_DRIVE);
 
     result = step(&observer, 7U, 2U, 300U, TEST_REVERSE_PWM_US);
@@ -336,8 +336,13 @@ static int test_confirmed_same_side_drive_keeps_direction_below_moving_threshold
     in = input(6U, 1U, 0U, TEST_REVERSE_PWM_US);
     in.moving_evidence = 0U;
     result = RcDirectionObserver_Update(&observer, &in);
-    EXPECT_TRUE(result.direction_known == 0U);
-    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_FORWARD);
+
+    in = input(7U, 1U, 300U, TEST_REVERSE_PWM_US);
+    result = RcDirectionObserver_Update(&observer, &in);
+    EXPECT_TRUE(result.direction_known == 1U);
+    EXPECT_TRUE(result.direction == RC_DIRECTION_OBSERVER_DIRECTION_REVERSE);
 
     return 0;
 }
@@ -358,7 +363,7 @@ int main(void)
     {
         failures++;
     }
-    if (test_forward_to_reverse_waits_for_brake_or_neutral_and_two_drive_samples() != 0)
+    if (test_forward_to_reverse_switches_on_first_drive_after_non_drive() != 0)
     {
         failures++;
     }

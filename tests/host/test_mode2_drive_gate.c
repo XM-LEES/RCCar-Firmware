@@ -75,6 +75,14 @@ static Mode2DriveMotionObservation_t stopped_observation(uint32_t stop_tick_ms)
     return observation;
 }
 
+static Mode2DriveMotionObservation_t with_esc_action(
+    Mode2DriveMotionObservation_t observation,
+    Mode2DriveEscAction_t esc_action)
+{
+    observation.esc_action = esc_action;
+    return observation;
+}
+
 static uint16_t pwm_for_action_delta(Mode2DriveAction_t action,
                                      uint16_t delta_us)
 {
@@ -409,7 +417,7 @@ static int test_underqualified_forward_brake_neutral_inhibits_reverse_no_retry(v
     return 0;
 }
 
-static int test_reverse_to_forward_is_symmetric(void)
+static int test_reverse_to_forward_releases_brake_when_esc_reports_drive(void)
 {
     Mode2DriveGateConfig_t config = valid_config();
     Mode2DriveGate_t gate;
@@ -419,21 +427,67 @@ static int test_reverse_to_forward_is_symmetric(void)
     Mode2DriveGate_Init(&gate, &config);
     establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
 
-    output = eval(&gate, &input, moving_observation(), 20U);
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(20U),
+                                  MODE2_DRIVE_ESC_ACTION_DRIVE),
+                  20U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
+
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(30U),
+                                  MODE2_DRIVE_ESC_ACTION_BRAKE),
+                  30U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
     EXPECT_TRUE(fabsf(output.normalized_brake_request - config.rev_to_fwd_brake_request) < 0.0001f);
-    commit_output(&gate, &output, 20U);
+    commit_output(&gate, &output, 30U);
 
-    output = eval(&gate, &input, moving_observation(), 70U);
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(70U),
+                                  MODE2_DRIVE_ESC_ACTION_BRAKE),
+                  70U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
     commit_output(&gate, &output, 70U);
 
-    output = eval(&gate, &input, stopped_observation(71U), 71U);
-    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_NEUTRAL);
-    commit_output(&gate, &output, 71U);
-    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_ARMED);
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(80U),
+                                  MODE2_DRIVE_ESC_ACTION_DRIVE),
+                  80U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
+    EXPECT_TRUE(output.forward_permitted == 1U);
+    EXPECT_TRUE(output.reason == MODE2_DRIVE_REASON_FORWARD_PERMITTED);
+    commit_output(&gate, &output, 80U);
+    EXPECT_TRUE(gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING);
 
-    output = eval(&gate, &input, stopped_observation(71U), 111U);
+    return 0;
+}
+
+static int test_reverse_to_forward_retains_first_brake_observation(void)
+{
+    Mode2DriveGateConfig_t config = valid_config();
+    Mode2DriveGate_t gate;
+    Mode2DriveGateInput_t input = request(MODE2_DRIVE_TARGET_FORWARD);
+    Mode2DriveGateOutput_t output;
+
+    Mode2DriveGate_Init(&gate, &config);
+    establish_known_tracking(&gate, MODE2_DRIVE_TARGET_REVERSE, 0U);
+
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(20U),
+                                  MODE2_DRIVE_ESC_ACTION_BRAKE),
+                  20U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_REV_TO_FWD_BRAKE);
+    commit_output(&gate, &output, 20U);
+
+    output = eval(&gate,
+                  &input,
+                  with_esc_action(moving_observation_at(40U),
+                                  MODE2_DRIVE_ESC_ACTION_DRIVE),
+                  40U);
     EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
     EXPECT_TRUE(output.forward_permitted == 1U);
 
@@ -662,7 +716,11 @@ int main(void)
     {
         return 1;
     }
-    if (test_reverse_to_forward_is_symmetric() != 0)
+    if (test_reverse_to_forward_releases_brake_when_esc_reports_drive() != 0)
+    {
+        return 1;
+    }
+    if (test_reverse_to_forward_retains_first_brake_observation() != 0)
     {
         return 1;
     }

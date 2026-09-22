@@ -22,6 +22,8 @@
 #define TELEMETRY_FLAG_STOP_OVERRIDE_ACTIVE 0x04U
 #define TELEMETRY_FLAG_COMMAND_TIMEOUT 0x08U
 #define TELEMETRY_FLAG_BRAKE_ACTIVE 0x10U
+#define TELEMETRY_FLAG_ESC_ACTION_SHIFT 6U
+#define TELEMETRY_FLAG_ESC_ACTION_MASK 0xC0U
 #define STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID (1UL << 6)
 #define STATUS_BIT_ESC_STOP_CONFIRMED (1UL << 12)
 #define STATUS_BIT_ESC_FE32_FRESH (1UL << 20)
@@ -502,6 +504,17 @@ static void set_esc_sample(uint32_t epoch,
     s_esc_snapshot.sample.rpm_valid = rpm_valid;
     s_esc_snapshot.sample.erpm_candidate = erpm_candidate;
     s_esc_snapshot.sample.rpm_raw = (uint16_t)(erpm_candidate / 10UL);
+    s_esc_snapshot.sample.state_candidate_valid = 1U;
+    if (erpm_candidate == 0U)
+    {
+        s_esc_snapshot.sample.state_raw = 0U;
+        s_esc_snapshot.sample.state_candidate = ESC_FE32_STATE_CANDIDATE_NEUTRAL;
+    }
+    else
+    {
+        s_esc_snapshot.sample.state_raw = 1U;
+        s_esc_snapshot.sample.state_candidate = ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS;
+    }
     s_esc_diagnostics.samples_published = sample_id;
     s_esc_diagnostics.receive_epoch = epoch;
 }
@@ -819,6 +832,38 @@ static int test_rc_direction_observer_keeps_forward_sign_during_reverse_side_bra
     return 0;
 }
 
+static int test_rc_direction_observer_keeps_sign_while_drive_state_lags_brake_pwm(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+
+    reset_fixture();
+    g_rc_debounce_deadband_us = 0U;
+    g_rc_debounce_smooth_div = 1U;
+    g_rc_throttle_jump_confirm_us = 1000U;
+
+    learn_rc_observer_neutral();
+    set_rc(1600U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    set_esc_drive_sample(3U, 1000U, 1000U);
+    run_control_at(1000U);
+    set_esc_drive_sample(4U, 1020U, 1000U);
+    run_control_at(1020U);
+
+    set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
+    set_esc_drive_sample(5U, 1040U, 900U);
+    run_control_at(1040U);
+
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known != 0U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_mps > 0.0f);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
+    run_data_task_once(1040U);
+    EXPECT_TRUE((read_u32_be_from_frame(17U) &
+                 STATUS_BIT_VEHICLE_DIRECTION_KNOWN) != 0U);
+    EXPECT_TRUE(read_i16_be_from_frame(7U) > 0);
+
+    return 0;
+}
+
 static int test_rc_direction_observer_reports_reverse_only_after_reverse_drive_state(void)
 {
     servo_basic_control_snapshot_t snapshot;
@@ -845,6 +890,7 @@ static int test_rc_direction_observer_reports_reverse_only_after_reverse_drive_s
     set_rc(1400U, APP_RC_OVERRIDE_CENTER_US, 1U);
     set_esc_drive_sample(7U, 1080U, 3000U);
     run_control_at(1080U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
     set_esc_drive_sample(8U, 1100U, 3000U);
     run_control_at(1100U);
 
@@ -911,6 +957,7 @@ static int test_rc_direction_observer_recovers_forward_when_esc_reports_forward_
     run_control_at(1040U);
     set_esc_drive_sample(6U, 1060U, 3000U);
     run_control_at(1060U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
     set_esc_drive_sample(7U, 1080U, 3000U);
     run_control_at(1080U);
 
@@ -1058,6 +1105,76 @@ static int test_missing_esc_or_mode2_parameters_keep_propulsion_off(void)
     diagnostics = ServoBasic_GetDiagnostics();
     EXPECT_TRUE(diagnostics.esc_motion_config_valid == 1U);
     EXPECT_TRUE(diagnostics.mode2_config_valid == 0U);
+
+    return 0;
+}
+
+static int test_auto_requires_known_esc_action(void)
+{
+    servo_basic_diagnostics_t diagnostics;
+
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+    set_esc_sample_with_state(1U,
+                              3U,
+                              1000U,
+                              0U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_UNKNOWN);
+    s_fake_tick_ms = 1000U;
+    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    run_control_at(1000U);
+
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    diagnostics = ServoBasic_GetDiagnostics();
+    EXPECT_TRUE(diagnostics.esc_action == SERVO_ESC_ACTION_UNKNOWN);
+    EXPECT_TRUE(diagnostics.auto_propulsion_authorized == 0U);
+
+    return 0;
+}
+
+static int test_data_task_exports_esc_action_in_status_flags(void)
+{
+    uint8_t action;
+
+    reset_fixture();
+    set_esc_neutral_sample(1U, 1000U);
+    run_control_at(1000U);
+    run_data_task_once(1000U);
+    action = (uint8_t)((s_base_telemetry_frame[1] &
+                        TELEMETRY_FLAG_ESC_ACTION_MASK) >>
+                       TELEMETRY_FLAG_ESC_ACTION_SHIFT);
+    EXPECT_TRUE(action == SERVO_ESC_ACTION_NEUTRAL);
+
+    set_esc_drive_sample(2U, 1020U, 1000U);
+    run_control_at(1020U);
+    run_data_task_once(1020U);
+    action = (uint8_t)((s_base_telemetry_frame[1] &
+                        TELEMETRY_FLAG_ESC_ACTION_MASK) >>
+                       TELEMETRY_FLAG_ESC_ACTION_SHIFT);
+    EXPECT_TRUE(action == SERVO_ESC_ACTION_DRIVE);
+
+    set_esc_brake_sample(3U, 1040U, 500U);
+    run_control_at(1040U);
+    run_data_task_once(1040U);
+    action = (uint8_t)((s_base_telemetry_frame[1] &
+                        TELEMETRY_FLAG_ESC_ACTION_MASK) >>
+                       TELEMETRY_FLAG_ESC_ACTION_SHIFT);
+    EXPECT_TRUE(action == SERVO_ESC_ACTION_BRAKE);
+
+    set_esc_sample_with_state(1U,
+                              4U,
+                              1060U,
+                              0U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_UNKNOWN);
+    run_control_at(1060U);
+    run_data_task_once(1060U);
+    action = (uint8_t)((s_base_telemetry_frame[1] &
+                        TELEMETRY_FLAG_ESC_ACTION_MASK) >>
+                       TELEMETRY_FLAG_ESC_ACTION_SHIFT);
+    EXPECT_TRUE(action == SERVO_ESC_ACTION_UNKNOWN);
 
     return 0;
 }
@@ -1447,7 +1564,7 @@ static int test_brake_endpoint_below_qualification_delta_disables_auto(void)
     return 0;
 }
 
-static int test_application_mode2_brakes_symmetrically_before_reversal(void)
+static int test_application_mode2_uses_asymmetric_esc_action_reversal(void)
 {
     reset_fixture();
     enable_valid_esc_configs();
@@ -1499,17 +1616,19 @@ static int test_application_mode2_brakes_symmetrically_before_reversal(void)
     EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
     EXPECT_EQ_I32(s_last_hall_command_direction, -1);
 
-    set_esc_sample(1U, 10U, 1220U, 0U, 1U);
+    set_esc_brake_sample(10U, 1220U, 500U);
     run_control_at(1220U);
     EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
-    set_esc_sample(1U, 11U, 1240U, 0U, 1U);
+
+    set_esc_drive_sample(11U, 1240U, 1000U);
     run_control_at(1240U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
-    run_control_at(1260U);
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-    run_control_at(1300U);
+    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MAX_PULSE_US);
+
+    run_control_at(1260U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse <= APP_ORIN_ESC_FORWARD_MAX_US);
+    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MAX_PULSE_US);
     EXPECT_EQ_I32(s_last_hall_command_direction, 1);
 
     return 0;
@@ -2179,6 +2298,10 @@ int main(void)
     {
         return 1;
     }
+    if (test_rc_direction_observer_keeps_sign_while_drive_state_lags_brake_pwm() != 0)
+    {
+        return 1;
+    }
     if (test_rc_direction_observer_reports_reverse_only_after_reverse_drive_state() != 0)
     {
         return 1;
@@ -2204,6 +2327,14 @@ int main(void)
         return 1;
     }
     if (test_missing_esc_or_mode2_parameters_keep_propulsion_off() != 0)
+    {
+        return 1;
+    }
+    if (test_auto_requires_known_esc_action() != 0)
+    {
+        return 1;
+    }
+    if (test_data_task_exports_esc_action_in_status_flags() != 0)
     {
         return 1;
     }
@@ -2251,7 +2382,7 @@ int main(void)
     {
         return 1;
     }
-    if (test_application_mode2_brakes_symmetrically_before_reversal() != 0)
+    if (test_application_mode2_uses_asymmetric_esc_action_reversal() != 0)
     {
         return 1;
     }

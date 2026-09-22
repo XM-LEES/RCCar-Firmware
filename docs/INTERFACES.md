@@ -28,7 +28,7 @@ CLEAR_FAULT 仅在以下条件同时满足时登记：速度和转角均为零�
 | 字节 | 类型 / 值 | 含义 |
 | --- | --- | --- |
 | 0 / 23 | `7B` / `7D` | 帧头 / 帧尾 |
-| 1 / 2 | u8 / u8 | 状态 flags / 帧序号 |
+| 1 / 2 | u8 / u8 | 状态与ESC动作 / 帧序号 |
 | 3–6 | i32 | Hall 速度，mm/s；由相邻 HallB 脉冲周期计算，符号按控制方向估计；无效填 0，必须结合 bit 13/19 |
 | 7–8 | i16 | ESC 车速，mm/s；方向已知时为有符号速度，bit 23 清零时为正的速度幅值 |
 | 9–10 | i16 | 从输出 PWM 与标定反算的前轮角，mrad |
@@ -37,7 +37,7 @@ CLEAR_FAULT 仅在以下条件同时满足时登记：速度和转角均为零�
 | 17–20 | u32 | status_bits |
 | 21 / 22 | `A1` / u8 | 协议标识 / 字节 0…21 的 XOR |
 
-flags 的 bit 0…6 依次为 AUTO_ENABLED、RC_OVERRIDE_ACTIVE、STOP_OVERRIDE_ACTIVE、COMMAND_TIMEOUT、BRAKE_ACTIVE、FAULT_LATCHED、STEERING_IS_MEASURED。保留基线的命令／仲裁状态口径；AUTO_ENABLED 不表示车辆已经运动，BRAKE_ACTIVE 不表示已测得制动力。无轮角传感器，实测转角位为 0。
+字节1的bit 0…5依次为AUTO_ENABLED、RC_OVERRIDE_ACTIVE、STOP_OVERRIDE_ACTIVE、COMMAND_TIMEOUT、BRAKE_ACTIVE、FAULT_LATCHED；bit 7…6编码ESC动作：`00 UNKNOWN`、`01 NEUTRAL`、`10 DRIVE`、`11 BRAKE`。原STEERING_IS_MEASURED标志取消；无轮角传感器，status_bits bit9仍保持0。AUTO_ENABLED不表示车辆已经运动，BRAKE_ACTIVE只表示串口刹车请求。
 
 | status_bits | 语义 |
 | --- | --- |
@@ -65,7 +65,7 @@ flags 的 bit 0…6 依次为 AUTO_ENABLED、RC_OVERRIDE_ACTIVE、STOP_OVERRIDE_
 
 bit 6 / 12 的历史名称带 HALL，其判定来源现为 ESC。bit 6 只表示速度幅值有效，方向可信度由 bit 23 单独给出：方向未知时仍上传正幅值，角速度填零；方向已知时前进为正、后退为负。无效车速与角速度填零并清除对应有效性，不能将无效零值解释为停稳。ESC 电压、电流、温度和原始 RPM 保留为内部独立遥测，不替换已有字段。
 
-Hall速度采用原有周期法：`v = (0.23 × π / 10) / 相邻有效脉冲间隔秒数`。方向并非传感器独立实测。RC下Hall和ESC共用一个方向观测结果：只有新鲜`DRIVE`状态、实际PWM侧和运动证据能确认或改变方向；`BRAKE`与`NEUTRAL`保留最后确认方向，以覆盖制动和滑行。换向后Hall等待新脉冲对，不能把换向前周期沿用到换向后。方向未知时Hall速度无效并填0，不能把无效零解释为停稳。字节3–6只按速度解释，不再提供旧计数增量语义。完整规则见[RC方向观测器](RC_DIRECTION_OBSERVER.md)。
+Hall速度采用原有周期法：`v = (0.23 × π / 10) / 相邻有效脉冲间隔秒数`。方向并非传感器独立实测。RC下Hall和ESC共用一个运动方向：制动开始时PWM即使已经换边、FE32仍短暂报告旧DRIVE，也继续保留原方向；BRAKE与NEUTRAL同样保留原方向。只有看到非DRIVE动作后的新DRIVE才切换方向。换向后Hall等待新脉冲对。方向未知时Hall速度无效并填0，不能把无效零解释为停稳。
 
 已确认停稳时优先置 bit 12、清 bit 6，上行车速和角速度置零；内部仍保留停稳阈值以内的低速估计。状态帧序号只计数发送帧，不表示电调产生了新的测量样本。
 
@@ -86,7 +86,7 @@ Hall速度采用原有周期法：`v = (0.23 × π / 10) / 相邻有效脉冲间
 
 `FFFF` / `FF` 表示相应字段无效。每份遥测携带有效性、样本标识和接收时间，晚处理不能使旧数据变新。帧定义参考 [MAX5 G2 Plus](https://github.com/JumpMaster/Hobbywing2CRSF)、[MAX4 HV](https://github.com/plc2man/hobbywing-ezrun-max4-hv-telemetry-protocol)、[XR8 / XR10](https://github.com/EclipseVision/HWTelemetry)；这些型号的资料不等同于本车 MAX5 HV G2 的实测结果。
 
-控制权与观测分开：AUTO、经过C63A的RC或外部接收机直控都不影响FE32和RPM幅值的接收。经过C63A的RC路径从NEUTRAL样本学习实际中位，并在DRIVE状态下结合最终输出PWM侧和连续运动样本确认方向；BRAKE和NEUTRAL不翻转方向。外部接收机直接控制电调而C63A不知道实际PWM时，bit23保持清零，车速字段只能提供正幅值。AUTO方向使用独立的模式二方向源。
+控制权与观测分开：AUTO、经过C63A的RC或外部接收机直控都不影响FE32和RPM幅值的接收。RC运动方向只服务有符号速度和Hall，不写入AUTO方向状态。AUTO门控直接消费FE32动作：F→R保留足量刹车、停稳和回中规则；R→F看到BRAKE→DRIVE后立即撤销完整刹车。外部接收机直接控制电调而C63A不知道实际PWM时，bit23保持清零，车速字段只能提供正幅值。
 
 主速度幅值不再等待未知极对数和拆分齿比：`轮轴RPM = rpm_raw × 0.14115`，`速度 = 轮轴RPM × 2π × 轮胎半径 / 60`。0.14115来自低档ESC/Hall配对拟合；现有轮胎半径为115 mm。该观测换算有效不等于自动推进获准，后者继续要求停稳与模式二配置。
 

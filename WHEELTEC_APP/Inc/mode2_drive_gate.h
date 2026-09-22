@@ -27,6 +27,14 @@ typedef enum
 
 typedef enum
 {
+    MODE2_DRIVE_ESC_ACTION_UNKNOWN = 0,
+    MODE2_DRIVE_ESC_ACTION_NEUTRAL,
+    MODE2_DRIVE_ESC_ACTION_DRIVE,
+    MODE2_DRIVE_ESC_ACTION_BRAKE
+} Mode2DriveEscAction_t;
+
+typedef enum
+{
     MODE2_DRIVE_REASON_OK = 0,
     MODE2_DRIVE_REASON_INVALID_ARGUMENT,
     MODE2_DRIVE_REASON_CONFIG_INVALID,
@@ -101,6 +109,7 @@ typedef struct
     uint8_t moving_observed;
     uint32_t stop_established_tick_ms;
     uint32_t sample_tick_ms;
+    Mode2DriveEscAction_t esc_action;
 } Mode2DriveMotionObservation_t;
 
 typedef struct
@@ -146,6 +155,7 @@ typedef struct
 
     uint8_t forward_recovery_active;
     uint32_t forward_recovery_start_ms;
+    uint8_t rev_to_fwd_esc_brake_observed;
 } Mode2DriveGate_t;
 
 uint8_t Mode2DriveGate_ConfigIsValid(const Mode2DriveGateConfig_t *config,

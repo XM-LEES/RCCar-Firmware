@@ -272,6 +272,8 @@ static uint8_t servo_basic_tick_delta_ms(uint32_t tick_ms, uint32_t reference_ms
 static uint8_t servo_basic_mode2_application_config_valid(void);
 static uint8_t servo_basic_auto_propulsion_authorized(void);
 static void servo_basic_clear_vehicle_direction(void);
+static uint8_t servo_basic_esc_fe32_is_fresh(uint32_t now_ms);
+static servo_esc_action_t servo_basic_current_esc_action(uint32_t now_ms);
 static uint8_t orin_pwm_is_active_at(uint32_t now_ms);
 static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms);
 static void servo_basic_publish_control_snapshot(uint32_t now_ms);
@@ -1542,6 +1544,43 @@ static Mode2DriveGateInput_t servo_basic_mode2_input_from_longitudinal(
 	return input;
 }
 
+static Mode2DriveEscAction_t servo_basic_mode2_esc_action(uint32_t now_ms)
+{
+	switch (servo_basic_current_esc_action(now_ms))
+	{
+	case SERVO_ESC_ACTION_NEUTRAL:
+		return MODE2_DRIVE_ESC_ACTION_NEUTRAL;
+	case SERVO_ESC_ACTION_DRIVE:
+		return MODE2_DRIVE_ESC_ACTION_DRIVE;
+	case SERVO_ESC_ACTION_BRAKE:
+		return MODE2_DRIVE_ESC_ACTION_BRAKE;
+	case SERVO_ESC_ACTION_UNKNOWN:
+	default:
+		return MODE2_DRIVE_ESC_ACTION_UNKNOWN;
+	}
+}
+
+static Mode2DriveMotionObservation_t servo_basic_build_mode2_observation(
+	uint32_t now_ms)
+{
+	Mode2DriveMotionObservation_t observation;
+
+	memset(&observation, 0, sizeof(observation));
+	observation.available =
+		(s_esc_motion_estimate.config_valid != 0U &&
+		 s_esc_motion_estimate.has_sample != 0U &&
+		 s_esc_motion_estimate.sample_fresh != 0U &&
+		 s_esc_motion_estimate.magnitude_valid != 0U) ? 1U : 0U;
+	observation.stopped = s_esc_motion_estimate.stopped;
+	observation.stop_established_valid = s_esc_motion_estimate.stopped;
+	observation.moving_observed = s_esc_motion_estimate.moving_observed;
+	observation.stop_established_tick_ms =
+		s_esc_motion_estimate.stop_established_tick_ms;
+	observation.sample_tick_ms = s_esc_motion_estimate.last_sample_tick_ms;
+	observation.esc_action = servo_basic_mode2_esc_action(now_ms);
+	return observation;
+}
+
 static uint8_t servo_basic_mode2_application_config_valid(void)
 {
 	return (s_mode2_drive_gate.config_valid != 0U &&
@@ -1713,6 +1752,7 @@ static uint8_t servo_basic_auto_propulsion_authorized(void)
 {
 	return (g_orin_state.auto_enabled != 0U &&
 		s_esc_feedback_available != 0U &&
+		servo_basic_current_esc_action(HAL_GetTick()) != SERVO_ESC_ACTION_UNKNOWN &&
 		s_esc_motion_estimator.config_valid != 0U &&
 		s_esc_motion_estimator.stop_config_valid != 0U &&
 		servo_basic_mode2_application_config_valid() != 0U) ? 1U : 0U;
@@ -1901,6 +1941,28 @@ static uint8_t servo_basic_esc_fe32_is_fresh(uint32_t now_ms)
 		age_ms <= g_esc_speed_fresh_timeout_ms) ? 1U : 0U;
 }
 
+static servo_esc_action_t servo_basic_current_esc_action(uint32_t now_ms)
+{
+	if (servo_basic_esc_fe32_is_fresh(now_ms) == 0U ||
+		s_esc_latest_raw_sample_valid == 0U ||
+		s_esc_latest_raw_sample.state_candidate_valid == 0U)
+	{
+		return SERVO_ESC_ACTION_UNKNOWN;
+	}
+
+	switch (s_esc_latest_raw_sample.state_candidate)
+	{
+	case ESC_FE32_STATE_CANDIDATE_NEUTRAL:
+		return SERVO_ESC_ACTION_NEUTRAL;
+	case ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS:
+		return SERVO_ESC_ACTION_DRIVE;
+	case ESC_FE32_STATE_CANDIDATE_BRAKE:
+		return SERVO_ESC_ACTION_BRAKE;
+	default:
+		return SERVO_ESC_ACTION_UNKNOWN;
+	}
+}
+
 static uint8_t servo_basic_compute_uplink_speed_magnitude(uint32_t now_ms,
 												  float *speed_magnitude_mps)
 {
@@ -1928,6 +1990,11 @@ static uint8_t servo_basic_compute_uplink_speed_magnitude(uint32_t now_ms,
 
 static int8_t servo_basic_estimated_vehicle_direction(void)
 {
+	if (g_rc_override_active != 0U)
+	{
+		return (s_rc_direction_result.direction_known != 0U) ?
+			(int8_t)s_rc_direction_result.direction : 0;
+	}
 	if (s_vehicle_direction_known == 0U)
 	{
 		return 0;
@@ -2067,6 +2134,7 @@ static servo_basic_diagnostics_t servo_basic_collect_diagnostics(uint32_t now_ms
 		 s_esc_stop_confirmed == 0U) ? 1U : 0U;
 	diagnostics.esc_speed_calibration_valid =
 		(s_esc_motion_estimator.config_valid != 0U) ? 1U : 0U;
+	diagnostics.esc_action = (uint8_t)servo_basic_current_esc_action(now_ms);
 	diagnostics.vehicle_direction_known = (direction != 0) ? 1U : 0U;
 	diagnostics.esc_soft_uart_rx_error =
 		(s_esc_receiver_health.rx_error_count != 0U) ? 1U : 0U;
@@ -2302,19 +2370,6 @@ static void servo_basic_update_rc_direction_observer(uint32_t now_ms)
 	s_rc_direction_result = RcDirectionObserver_Update(
 		&s_rc_direction_observer,
 		&input);
-	if (g_rc_override_active == 0U)
-	{
-		return;
-	}
-	if (s_rc_direction_result.direction_known != 0U)
-	{
-		s_vehicle_direction_known = 1U;
-		s_vehicle_direction = (int8_t)s_rc_direction_result.direction;
-	}
-	else
-	{
-		servo_basic_clear_vehicle_direction();
-	}
 }
 
 void ServoBasic_ProcessControl(void)
@@ -2359,6 +2414,7 @@ void ServoBasic_ProcessControl(void)
 			LongitudinalControllerInput_t control_input;
 			LongitudinalControllerOutput_t control_output;
 			Mode2DriveGateInput_t mode2_input;
+			Mode2DriveMotionObservation_t mode2_observation;
 			float actual_normalized_brake = 0.0f;
 			uint16_t final_esc_pulse;
 			control_input = servo_basic_build_longitudinal_input(now_ms);
@@ -2368,12 +2424,13 @@ void ServoBasic_ProcessControl(void)
 			s_longitudinal_output = control_output;
 			update_speed_watch_from_longitudinal(&control_output);
 			mode2_input = servo_basic_mode2_input_from_longitudinal(
-				&control_output);
+					&control_output);
+			mode2_observation = servo_basic_build_mode2_observation(now_ms);
 
-			s_mode2_drive_output = Mode2DriveGate_Evaluate(&s_mode2_drive_gate,
-				&mode2_input,
-				&s_esc_motion_estimate,
-				now_ms);
+			s_mode2_drive_output = Mode2DriveGate_EvaluateWithObservation(&s_mode2_drive_gate,
+					&mode2_input,
+					&mode2_observation,
+					now_ms);
 			final_esc_pulse = mode2_drive_output_to_esc_pwm(
 				s_mode2_drive_output.action,
 				s_mode2_drive_output.phase,

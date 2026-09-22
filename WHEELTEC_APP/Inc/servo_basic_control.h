@@ -28,6 +28,14 @@ typedef enum
 	SERVO_CTRL_MODE_AUTONOMOUS     = 1U,
 } servo_control_mode_t;
 
+typedef enum
+{
+	SERVO_ESC_ACTION_UNKNOWN = 0U,
+	SERVO_ESC_ACTION_NEUTRAL = 1U,
+	SERVO_ESC_ACTION_DRIVE = 2U,
+	SERVO_ESC_ACTION_BRAKE = 3U,
+} servo_esc_action_t;
+
 typedef struct
 {
 	uint16_t esc_pulse_us;
@@ -50,6 +58,7 @@ typedef struct
 	uint8_t esc_rpm_raw_valid;
 	uint8_t esc_speed_magnitude_valid;
 	uint8_t esc_speed_calibration_valid;
+	uint8_t esc_action;
 	uint8_t vehicle_direction_known;
 	uint8_t esc_soft_uart_rx_error;
 	uint8_t mode2_config_valid;

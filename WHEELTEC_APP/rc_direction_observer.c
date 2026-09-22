@@ -179,19 +179,40 @@ static RcDirectionObserverReason_t rc_direction_observe_drive(
     if (rc_direction_has_moving_evidence(input) == 0U)
     {
         rc_direction_clear_pending(observer);
+        if (observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN &&
+            candidate_direction != observer->direction)
+        {
+            observer->saw_non_drive_since_confirmed = 1U;
+        }
         observer->output_direction_known =
-            (observer->direction == candidate_direction &&
-             observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN) ? 1U : 0U;
+            (observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN) ? 1U : 0U;
         return RC_DIRECTION_OBSERVER_REASON_RPM_NOT_MOVING;
     }
 
     if (observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN &&
-        candidate_direction != observer->direction &&
-        observer->saw_non_drive_since_confirmed == 0U)
+        candidate_direction != observer->direction)
     {
+        if (observer->saw_non_drive_since_confirmed == 0U)
+        {
+            rc_direction_clear_pending(observer);
+            observer->output_direction_known = 1U;
+            return RC_DIRECTION_OBSERVER_REASON_AWAITING_NON_DRIVE;
+        }
+
+        observer->direction = candidate_direction;
+        observer->output_direction_known = 1U;
+        observer->saw_non_drive_since_confirmed = 0U;
         rc_direction_clear_pending(observer);
-        observer->output_direction_known = 0U;
-        return RC_DIRECTION_OBSERVER_REASON_AWAITING_NON_DRIVE;
+        return RC_DIRECTION_OBSERVER_REASON_OK;
+    }
+
+    if (observer->direction == candidate_direction &&
+        observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN)
+    {
+        observer->output_direction_known = 1U;
+        observer->saw_non_drive_since_confirmed = 0U;
+        rc_direction_clear_pending(observer);
+        return RC_DIRECTION_OBSERVER_REASON_OK;
     }
 
     if (observer->pending_direction != candidate_direction)

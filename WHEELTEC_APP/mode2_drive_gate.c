@@ -208,6 +208,7 @@ static void mode2_clear_brake_sequence(Mode2DriveGate_t *gate)
     gate->expect_neutral_to_arm = 0U;
     gate->expected_arm_direction = MODE2_DRIVE_TARGET_NEUTRAL;
     gate->expected_arm_stop_tick_ms = 0U;
+    gate->rev_to_fwd_esc_brake_observed = 0U;
 }
 
 static void mode2_clear_armed(Mode2DriveGate_t *gate)
@@ -471,6 +472,13 @@ static uint8_t mode2_observation_has_fresh_stop(const Mode2DriveGate_t *gate,
                                   gate->brake_session_start_ms);
 }
 
+static uint8_t mode2_observation_esc_action_is(
+    const Mode2DriveMotionObservation_t *observation,
+    Mode2DriveEscAction_t action)
+{
+    return (observation != NULL && observation->esc_action == action) ? 1U : 0U;
+}
+
 static uint8_t mode2_armed_neutral_dwell_satisfied(
     const Mode2DriveGate_t *gate,
     const Mode2DriveMotionObservation_t *observation,
@@ -590,6 +598,30 @@ static Mode2DriveGateOutput_t mode2_evaluate_reversal_target(
     Mode2DriveTargetDirection_t target_direction,
     const Mode2DriveMotionObservation_t *observation)
 {
+    if (target_direction == MODE2_DRIVE_TARGET_FORWARD)
+    {
+        if (mode2_observation_esc_action_is(observation,
+                                            MODE2_DRIVE_ESC_ACTION_BRAKE) != 0U)
+        {
+            gate->rev_to_fwd_esc_brake_observed = 1U;
+        }
+
+        if (gate->rev_to_fwd_esc_brake_observed != 0U &&
+            mode2_observation_esc_action_is(observation,
+                                            MODE2_DRIVE_ESC_ACTION_DRIVE) != 0U)
+        {
+            gate->state = MODE2_DRIVE_STATE_FORWARD_TRACKING;
+            mode2_clear_forward_recovery(gate);
+            mode2_clear_brake_sequence(gate);
+            mode2_clear_armed(gate);
+            return mode2_output(MODE2_DRIVE_ACTION_FORWARD,
+                                MODE2_DRIVE_REASON_FORWARD_PERMITTED,
+                                MODE2_DRIVE_PHASE_IDLE,
+                                gate,
+                                0.0f);
+        }
+    }
+
     if (gate->brake_sufficient != 0U &&
         mode2_observation_has_fresh_stop(gate, observation) != 0U)
     {
@@ -903,6 +935,8 @@ static void mode2_commit_brake(Mode2DriveGate_t *gate,
     {
         const Mode2DriveTargetDirection_t source_direction =
             mode2_opposite_direction(target_direction);
+        const uint8_t rev_to_fwd_esc_brake_observed =
+            gate->rev_to_fwd_esc_brake_observed;
 
         if (gate->state != mode2_tracking_state(source_direction))
         {
@@ -913,6 +947,11 @@ static void mode2_commit_brake(Mode2DriveGate_t *gate,
 
         mode2_clear_armed(gate);
         mode2_clear_brake_sequence(gate);
+        if (target_direction == MODE2_DRIVE_TARGET_FORWARD)
+        {
+            gate->rev_to_fwd_esc_brake_observed =
+                rev_to_fwd_esc_brake_observed;
+        }
         gate->state = brake_state;
         gate->brake_target_direction = target_direction;
         gate->brake_session_start_ms = now_tick_ms;

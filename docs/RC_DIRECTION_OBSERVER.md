@@ -78,7 +78,7 @@ RC 方向不再由“遥控器输入历史”预测，而由 **电调实际动�
 3. `NEUTRAL` 保留最后一次已确认的运动方向，允许正确表示滑行；它本身不确认新方向。
 4. `UNKNOWN`、遥测超时或 RC 输入失效使对外方向变为未知，不根据命令猜测。
 
-从一个已确认方向切换到相反方向还有一个时序条件：自上次确认 DRIVE 后，必须至少观察到一份新的 `BRAKE` 或 `NEUTRAL` 样本。这样，PWM刚换边时残留的一两份旧 DRIVE 遥测不会直接翻转物理方向。F→R会经过BRAKE和NEUTRAL，R→F会经过BRAKE，因此这个条件不强迫两边使用相同的回中流程。
+从一个已确认方向切换到相反方向还有一个时序条件：自上次确认DRIVE后，必须至少观察到一份新的BRAKE、NEUTRAL或低于运动阈值的样本。PWM刚换边而FE32仍短暂报告旧DRIVE时，车辆不可能在非零速度下瞬间反转，因此继续保留原物理方向和实时RPM幅值；看到非DRIVE动作后的新DRIVE才直接切换方向。
 
 这不是把 byte 11 当方向位。byte 11 只回答“电调此刻是在驱动、制动还是中位”；方向由 `DRIVE` 时实际 PWM 所在的一侧决定。
 
@@ -119,8 +119,8 @@ stateDiagram-v2
     [*] --> UNCONFIRMED
     UNCONFIRMED --> FORWARD_CONFIRMED: 连续 DRIVE 样本\n正向侧 + 运动证据
     UNCONFIRMED --> REVERSE_CONFIRMED: 连续 DRIVE 样本\n反向侧 + 运动证据
-    FORWARD_CONFIRMED --> REVERSE_CONFIRMED: 已见BRAKE/NEUTRAL\n连续反向DRIVE + 运动证据
-    REVERSE_CONFIRMED --> FORWARD_CONFIRMED: 已见BRAKE/NEUTRAL\n连续正向DRIVE + 运动证据
+    FORWARD_CONFIRMED --> REVERSE_CONFIRMED: 已见BRAKE/NEUTRAL/低速\n反向DRIVE + 运动证据
+    REVERSE_CONFIRMED --> FORWARD_CONFIRMED: 已见BRAKE/NEUTRAL/低速\n正向DRIVE + 运动证据
     FORWARD_CONFIRMED --> FORWARD_CONFIRMED: BRAKE 或 NEUTRAL
     REVERSE_CONFIRMED --> REVERSE_CONFIRMED: BRAKE 或 NEUTRAL
     FORWARD_CONFIRMED --> UNCONFIRMED: 遥测超时/未知状态/RC输入失效
@@ -136,11 +136,11 @@ stateDiagram-v2
 - 已经学到中位；
 - 实际输出 PWM 明确处于中位的一侧；
 - ESC RPM 有效且高于现有停稳阈值；
-- 连续两个不同 FE32 样本得到相同候选方向。
+- 启动后方向未知时，连续两个不同FE32样本得到相同候选方向。
 
-如果候选方向与当前已确认方向相反，还必须在两次确认之间见过新的BRAKE或NEUTRAL样本；同方向DRIVE不需要这个条件。
+如果候选方向与当前已确认方向相反，必须先见过新的BRAKE、NEUTRAL或低速样本；条件满足后的第一份相反侧DRIVE立即确认新方向。同方向DRIVE不需要重新确认。
 
-连续两帧用于隔离“PWM 已经换边、但收到的仍是切换前一帧电调状态”的时序差。只重复读取同一个样本不能增加确认计数。油门幅度可以变化，只要求两帧位于中位同一侧。
+启动时连续两帧用于隔离偶发样本。已经确认方向后，如果PWM换边而动作仍是旧DRIVE，观测器保留原方向而不把它当成反向推进；只重复读取同一个样本不会推进状态。
 
 ### 5.2 BRAKE 与 NEUTRAL
 
@@ -180,8 +180,7 @@ Hall 与 ESC 均输出正速度
 负向输入，BRAKE：方向仍=前进，速度随车辆减小
 停稳：两路速度=0
 回中，NEUTRAL：方向记忆不变
-再次负向输入；只有电调实际报告 DRIVE 且出现转速后：候选倒车
-连续第二份证据：方向=倒车，两路速度为负
+再次负向输入；电调实际报告DRIVE且出现转速：方向=倒车，两路速度为负
 ```
 
 如果第一次负向输入没有达到电调的倒车许可条件，后续负向输入仍只会得到 `BRAKE`，状态机不会把它误判为倒车。
@@ -191,8 +190,7 @@ Hall 与 ESC 均输出正速度
 ```text
 倒车 DRIVE：方向=倒车
 持续正向输入，BRAKE：方向仍=倒车，速度随车辆减小
-电调停稳后在同一正向输入下转为 DRIVE：产生前进候选
-连续第二份 DRIVE + 运动证据：方向=前进
+电调在同一正向输入下从BRAKE转为DRIVE：方向=前进
 ```
 
 软件不要求回中，也不要求第二次正向输入；是否已经从刹车切换到前进，以电调报告的 `BRAKE → DRIVE` 为准。
@@ -218,6 +216,7 @@ Hall有符号速度 = Hall速度幅值 × confirmed_direction
 - 字节 3–6 仍是 Hall 有符号速度；
 - 字节 7–8 仍是 ESC 速度；
 - `status_bits.bit23` 仍表示车辆方向可信；
+- 字节1的bit7…6上传ESC动作：UNKNOWN/NEUTRAL/DRIVE/BRAKE；
 - 方向未知时，ESC 字段仍可上传正的速度幅值且 bit 23 清零；Hall 字段填 0，并清除 Hall 有符号速度有效位。
 
 ## 8. 代码边界
@@ -237,7 +236,7 @@ Hall有符号速度 = Hall速度幅值 × confirmed_direction
 
 旧的`rc_hall_mode2_phase_t`、`s_rc_hall_direction`、`s_rc_hall_pending_direction`、`rc_hall_mode2_reset()`和`rc_hall_mode2_update()`已经删除。
 
-自动控制的`Mode2DriveGate_t`、`LongitudinalController_t`和相关状态保持独立。最终方向选择按控制源隔离：
+自动控制的`Mode2DriveGate_t`、`LongitudinalController_t`和相关方向状态保持独立；AUTO门控使用同一份FE32动作，但不读取RC观测器保存的运动方向。最终方向选择按控制源隔离：
 
 ```text
 RC 生效   -> RC direction observer
@@ -256,12 +255,12 @@ AUTO 生效 -> AUTO direction source
 3. 前进 BRAKE 期间保持正向；
 4. 前进 NEUTRAL 滑行保持正向；
 5. F→R 的第一次负向 BRAKE 不翻转；
-6. 回中后负向 DRIVE 两个新样本确认倒车；
+6. 回中后第一份负向DRIVE确认倒车；
 7. 倒车 BRAKE 期间保持负向；
-8. R→F 持续正向输入在 `BRAKE → DRIVE` 后确认前进，不要求回中；
+8. R→F持续正向输入在`BRAKE → DRIVE`后立即确认前进，不要求回中；
 9. 未达到 F→R 阈值时反复出现 BRAKE，永不误判倒车；
-10. PWM 刚换边时的一份滞后 DRIVE 样本不能单独翻转方向；
-11. 未观察到BRAKE或NEUTRAL时，连续的相反侧DRIVE样本也不能直接翻转已确认方向；
+10. PWM刚换边且动作仍为旧DRIVE时保持原方向，ESC有符号速度不中断；
+11. 未观察到BRAKE、NEUTRAL或低速时，相反侧DRIVE不能直接翻转已确认方向；
 12. 重复样本号不能增加确认计数；
 13. 遥测超时、未知状态或 RC 输入失效使方向无效；
 14. 方向未知时 Hall 不上传伪造符号，ESC 只上传无符号幅值；
@@ -292,6 +291,7 @@ AUTO 生效 -> AUTO direction source
 - ARM GCC固件构建、向量表验收和静态接口验收通过；
 - Keil工程已包含`rc_direction_observer.c`；
 - 24字节上行布局保持不变；
-- 串口自动控制继续走原有独立路径。
+- 字节1高两位上传ESC动作；
+- 串口AUTO方向状态与RC观测状态分离，R→F门控由FE32 BRAKE→DRIVE释放完整刹车。
 
 刷入固件后的短记录按9.2顺序进行，用于确认本车FE32动作切换时序和曲线显示与实现一致。

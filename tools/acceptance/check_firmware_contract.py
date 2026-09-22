@@ -191,6 +191,13 @@ def check_telemetry(root: Path) -> list[Check]:
         or "write_u16_be(&basebuffer[13], clamp_float_to_u16(g_app_runtime_state.voltage_v * 1000.0f))" in text
     )
     add(results, "telemetry_layout", all(needle in text for needle in layout_needles) and battery_slot_ok, "24-byte telemetry layout")
+    add(results, "telemetry_esc_action_flags", all(needle in text for needle in [
+        "#define TELEMETRY_FLAG_ESC_ACTION_SHIFT         6U",
+        "#define TELEMETRY_FLAG_ESC_ACTION_MASK       0xC0U",
+        "servo_diagnostics.esc_action <<",
+        "TELEMETRY_FLAG_ESC_ACTION_SHIFT",
+    ]) and "TELEMETRY_FLAG_STEERING_IS_MEASURED" not in text,
+        "byte 1 bits 7:6 encode UNKNOWN/NEUTRAL/DRIVE/BRAKE without changing the 24-byte layout")
     add(results, "battery_raw_telemetry_only", all(needle not in text for needle in [
         "STATUS_BIT_BATTERY_LOW",
         "STATUS_BIT_BATTERY_CRITICAL",
@@ -223,7 +230,9 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
     add(results, "auto_uses_esc_motion_not_hall_speed", all(needle in text for needle in [
         "EscTelemetry_GetSnapshot(&snapshot)",
         "EscMotionEstimator_ObserveSample(&s_esc_motion_estimator",
-        "Mode2DriveGate_Evaluate(&s_mode2_drive_gate",
+        "Mode2DriveGate_EvaluateWithObservation(&s_mode2_drive_gate",
+        "servo_basic_build_mode2_observation(now_ms)",
+        "observation.esc_action = servo_basic_mode2_esc_action(now_ms)",
         "s_esc_motion_estimate.speed_magnitude_mps",
         "longitudinal_direction_from_gate",
     ]) and all(needle not in text for needle in [
@@ -237,7 +246,8 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "input.state_raw",
         "input.moving_evidence",
         "input.applied_pwm_us = g_state.esc_pulse_us",
-        "s_vehicle_direction = (int8_t)s_rc_direction_result.direction",
+        "return (s_rc_direction_result.direction_known != 0U) ?",
+        "(int8_t)s_rc_direction_result.direction : 0",
         "s_rc_direction_result.direction_known != 0U",
         "s_esc_stop_confirmed == 0U",
     ]) and all(needle in rc_direction_text for needle in [
@@ -251,6 +261,7 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "RC_HALL_MODE2_BRAKE_STOPPED",
         "RC_HALL_MODE2_OPPOSITE_ARMED",
         "rc_hall_mode2_update()",
+        "s_vehicle_direction = (int8_t)s_rc_direction_result.direction",
     ]), "RC Hall and ESC signs share the FE32 action/PWM-side observer without the old symmetric command-history state machine")
     add(results, "auto_hall_direction_uses_confirmed_mode2_direction", all(needle in text for needle in [
         "g_orin_state.software_stop == 0U &&",
