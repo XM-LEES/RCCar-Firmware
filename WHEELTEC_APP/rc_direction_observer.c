@@ -172,7 +172,9 @@ static RcDirectionObserverReason_t rc_direction_observe_drive(
     if (candidate_direction == RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN)
     {
         rc_direction_clear_pending(observer);
-        observer->output_direction_known = 0U;
+        /* Neutral PWM adds no direction evidence; retain confirmed motion. */
+        observer->output_direction_known =
+            (observer->direction != RC_DIRECTION_OBSERVER_DIRECTION_UNKNOWN) ? 1U : 0U;
         return RC_DIRECTION_OBSERVER_REASON_PWM_AT_NEUTRAL;
     }
 
