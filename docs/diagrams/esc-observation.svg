@@ -1,131 +1,100 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1000" viewBox="0 0 1280 1000" role="img" aria-labelledby="title desc">
-  <title id="title">ESC观测链路与RC方向状态</title>
-  <desc id="desc">图中展示PD15事件接收、RC逐帧观测队列、20ms控制周期、50ms上行、RC方向状态和有效性边界。</desc>
-  <defs>
-    <style>
-      text { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif; fill: #1f2933; }
-      .title { font-size: 26px; font-weight: 700; }
-      .section { font-size: 18px; font-weight: 700; }
-      .label { font-size: 14px; }
-      .small { font-size: 12px; fill: #52606d; }
-      .box { fill: #ffffff; stroke: #7b8794; stroke-width: 1.5; rx: 8; }
-      .event { fill: #e0f2fe; stroke: #0284c7; }
-      .control { fill: #ecfdf5; stroke: #059669; }
-      .uplink { fill: #fff7ed; stroke: #ea580c; }
-      .state { fill: #f8fafc; stroke: #475569; }
-      .invalid { fill: #fef2f2; stroke: #dc2626; }
-      .guard { fill: #f8fafc; stroke: #94a3b8; }
-      .arrow { stroke: #334155; stroke-width: 1.7; fill: none; marker-end: url(#arrow); }
-      .dashed { stroke-dasharray: 6 5; }
-      .rule { stroke: #cbd5e1; stroke-width: 1; }
-    </style>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L10,3 L0,6 Z" fill="#334155"/>
-    </marker>
-  </defs>
-
-  <rect x="0" y="0" width="1280" height="1000" fill="#f8fafc"/>
-  <text x="40" y="45" class="title">ESC观测链路：事件、控制、上行分层</text>
-  <text x="40" y="72" class="small">FE32动作不提供方向；方向来自RC/AUTO各自状态。Dashboard当前按有效位显示，安全逻辑不消费显示结果。</text>
-
-  <text x="40" y="118" class="section">事件链路</text>
-  <rect x="40" y="140" width="170" height="92" class="box event"/>
-  <text x="58" y="170" class="label">PD15软件UART</text>
-  <text x="58" y="194" class="small">字节时间戳</text>
-  <text x="58" y="214" class="small">首字节32bit PWM上下文</text>
-
-  <rect x="250" y="140" width="175" height="92" class="box event"/>
-  <text x="268" y="170" class="label">FE32解析</text>
-  <text x="268" y="194" class="small">CRC正确才产样本</text>
-  <text x="268" y="214" class="small">末字节时间戳/epoch边界</text>
-
-  <rect x="465" y="118" width="205" height="68" class="box event"/>
-  <text x="483" y="148" class="label">最新FE32快照</text>
-  <text x="483" y="170" class="small">AUTO 20ms读取</text>
-
-  <rect x="465" y="204" width="205" height="72" class="box event"/>
-  <text x="483" y="233" class="label">RC样本FIFO x8</text>
-  <text x="483" y="255" class="small">完整样本按接收顺序</text>
-
-  <rect x="720" y="160" width="230" height="96" class="box control"/>
-  <text x="738" y="190" class="label">Servo任务拥有观测状态</text>
-  <text x="738" y="214" class="small">通知：ProcessEscObservation</text>
-  <text x="738" y="234" class="small">20ms：控制、输出、快照</text>
-
-  <rect x="1010" y="160" width="180" height="96" class="box uplink"/>
-  <text x="1028" y="190" class="label">50ms状态上行</text>
-  <text x="1028" y="214" class="small">24B当前快照</text>
-  <text x="1028" y="234" class="small">不是事件日志</text>
-
-  <path d="M210 186 L250 186" class="arrow"/>
-  <path d="M425 166 L465 154" class="arrow"/>
-  <path d="M425 204 L465 238" class="arrow"/>
-  <path d="M670 238 L720 214" class="arrow"/>
-  <path d="M670 154 L720 188" class="arrow dashed"/>
-  <path d="M950 208 L1010 208" class="arrow"/>
-
-  <rect x="720" y="286" width="230" height="76" class="box control"/>
-  <text x="738" y="316" class="label">20ms绝对控制deadline</text>
-  <text x="738" y="340" class="small">FE32通知不改变控制周期</text>
-  <path d="M835 286 L835 256" class="arrow"/>
-
-  <text x="40" y="330" class="section">RC方向状态</text>
-  <rect x="40" y="372" width="220" height="92" class="box state"/>
-  <text x="64" y="406" class="label">方向未知 D=0</text>
-  <text x="64" y="432" class="small">等待中位N、DRIVE、M=1</text>
-
-  <rect x="340" y="340" width="230" height="92" class="box state"/>
-  <text x="364" y="374" class="label">前进 D=+1</text>
-  <text x="364" y="400" class="small">BRAKE/NEUTRAL保持方向</text>
-
-  <rect x="340" y="500" width="230" height="92" class="box state"/>
-  <text x="364" y="534" class="label">倒车 D=-1</text>
-  <text x="364" y="560" class="small">中位PWM不清方向</text>
-
-  <path d="M260 404 L340 382" class="arrow"/>
-  <path d="M260 438 L340 542" class="arrow"/>
-  <path d="M570 386 C630 420 630 515 570 546" class="arrow"/>
-  <path d="M340 548 C292 520 292 415 340 386" class="arrow"/>
-
-  <g transform="translate(0 45)">
-  <rect x="640" y="330" width="600" height="270" class="box guard"/>
-  <text x="662" y="360" class="section">方向判定条件</text>
-  <text x="662" y="390" class="label">N：两份不同NEUTRAL样本，rpm_valid=1、rpm_raw=0、PWM相同</text>
-  <text x="690" y="416" class="small">最近5个候选取中位；q为首字节PWM相对N的方向侧</text>
-  <text x="662" y="444" class="label">M=1：同一FE32样本幅值有效，且速度超过停稳阈值</text>
-  <text x="662" y="472" class="label">H：已见非DRIVE，或相反侧DRIVE但没有可用运动证据</text>
-  <line x1="662" y1="490" x2="1218" y2="490" class="rule"/>
-  <text x="662" y="518" class="small">启动：D未知时，连续两个不同DRIVE样本满足同一q且M=1，确认D=q。</text>
-  <text x="662" y="546" class="small">保持：q=0、BRAKE、NEUTRAL或同向DRIVE都保持已确认方向。</text>
-  <text x="662" y="574" class="small">换向：D已知，q相反、H=1且M=1，推定D=q；H=0时保持旧D。</text>
-  </g>
-
-  <g transform="translate(0 55)">
-  <rect x="40" y="625" width="590" height="106" class="box"/>
-  <text x="62" y="656" class="section">速度有效性</text>
-  <text x="62" y="686" class="label">新鲜RPM有效且换算可用：发布幅值；方向已知才发布有符号速度。</text>
-  <text x="62" y="714" class="label">新样本RPM无效或换算不可用：立即清幅值有效性，不沿用旧有效幅值。</text>
-
-  <rect x="680" y="625" width="560" height="106" class="box invalid"/>
-  <text x="704" y="656" class="section">边界不会被隐藏</text>
-  <text x="704" y="686" class="label">方向未知：bit23=0；停稳：bit12=1且速度=0。</text>
-  <text x="704" y="714" class="label">RX错误、epoch/source变化、队列溢出：旧换向证据失效。</text>
-
-  <text x="40" y="775" class="section">职责分离</text>
-  <rect x="40" y="800" width="270" height="82" class="box"/>
-  <text x="62" y="830" class="label">固件观测</text>
-  <text x="62" y="854" class="small">发布数值与validity，不伪造方向</text>
-
-  <rect x="340" y="800" width="270" height="82" class="box"/>
-  <text x="362" y="830" class="label">Dashboard当前行为</text>
-  <text x="362" y="854" class="small">按有效位显示；无效为空白，不插值</text>
-
-  <rect x="640" y="800" width="270" height="82" class="box"/>
-  <text x="662" y="830" class="label">控制与安全</text>
-  <text x="662" y="854" class="small">只看固件有效位、停稳和门控</text>
-
-  <rect x="940" y="800" width="300" height="82" class="box"/>
-  <text x="962" y="830" class="label">里程计/融合</text>
-  <text x="962" y="854" class="small">方向未知保持不确定，不构造符号位移</text>
-  </g>
-</svg>
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1820" height="1440" viewBox="0 0 1820 1440" role="img" aria-labelledby="title desc">
+<title id="title">ESC观测与RC方向推断</title><desc id="desc">从PD15字节接收、完整样本队列、Servo观测，到24字节速度上报；下部为RC方向转移及证据失效路径。</desc>
+<rect width="100%" height="100%" fill="white"/>
+<defs>
+<marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#2563eb"/></marker>
+<marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#0f766e"/></marker>
+<marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#b45309"/></marker>
+<marker id="arrow-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#64748b"/></marker>
+<marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#b91c1c"/></marker>
+</defs><g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" fill="#0f172a">
+<text x="910" y="60" text-anchor="middle" font-size="31" font-weight="700" fill="#2563eb">ESC观测 · 完整样本、方向推断与速度发布</text>
+<text x="910" y="101" text-anchor="middle" font-size="19" font-weight="400" fill="#64748b">收到新帧即更新RC观测；PWM命令每20ms更新，上行每50ms发送</text>
+<text x="910" y="151" text-anchor="middle" font-size="23" font-weight="700" fill="#2563eb">接收与发布路径</text>
+<polyline points="295,250 365,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
+<polyline points="635,250 725,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
+<polyline points="1015,250 1095,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
+<polyline points="1395,250 1495,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
+<polyline points="500,320 500,435" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)"/>
+<polyline points="635,505 725,505" stroke="#64748b" stroke-width="2.2" fill="none" marker-end="url(#arrow-gray)"/>
+<polyline points="1245,435 1245,320" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)"/>
+<polyline points="1245,575 1245,625 170,625 170,320" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)" stroke-dasharray="7 6"/>
+<rect x="45" y="180" width="250" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" stroke-width="1.6"/>
+<text x="170" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">PD15字节接收</text>
+<text x="170" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">115200 / 8N1</text>
+<text x="170" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">逐字节保存接收时刻</text>
+<text x="170" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">同时保存软件PWM上下文</text>
+<rect x="365" y="180" width="270" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" stroke-width="1.6"/>
+<text x="500" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">FE32解码</text>
+<text x="500" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">32字节 + 前缀 + CRC</text>
+<text x="500" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">首字节上下文、末字节时间</text>
+<text x="500" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">校验控制源一致性</text>
+<rect x="725" y="180" width="290" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" stroke-width="1.6"/>
+<text x="870" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">RC完整样本FIFO</text>
+<text x="870" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">固定8项，按接收顺序</text>
+<text x="870" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">动作与RPM作为一份证据</text>
+<text x="870" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">队满建立缺口并保留新帧</text>
+<rect x="1095" y="180" width="300" height="140" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="1245" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">Servo任务 · RC观测</text>
+<text x="1245" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">按顺序更新幅值、停稳、方向</text>
+<text x="1245" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">本批处理完才发布一致结果</text>
+<text x="1245" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">新帧唤醒不额外写PWM</text>
+<rect x="1495" y="180" width="280" height="140" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="1.6"/>
+<text x="1635" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">速度上报</text>
+<text x="1635" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">有效方向 × 最新有效幅值</text>
+<text x="1635" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">停稳优先；未知方向带有效位</text>
+<text x="1635" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">24字节，50ms取最新结果</text>
+<rect x="365" y="435" width="270" height="140" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
+<text x="500" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">最新原始快照</text>
+<text x="500" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">每份合法FE32均更新</text>
+<text x="500" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">即使RC上下文不成立</text>
+<text x="500" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">仍保留原始RPM及有效性</text>
+<rect x="725" y="435" width="290" height="140" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
+<text x="870" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">AUTO现有入口</text>
+<text x="870" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">每20ms读取最新样本</text>
+<text x="870" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">方向及动作门控独立维护</text>
+<text x="870" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">不消费RC逐帧判向结果</text>
+<rect x="1095" y="435" width="300" height="140" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="1245" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">20ms控制截止点</text>
+<text x="1245" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC输入、控制权和PWM更新</text>
+<text x="1245" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">通知不移动原定截止点</text>
+<text x="1245" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">先处理反馈，再提交新命令</text>
+<text x="550" y="382" text-anchor="middle" font-size="17" font-weight="700" fill="#64748b">保留最新帧</text>
+<text x="1055" y="236" text-anchor="middle" font-size="16" font-weight="700" fill="#0f766e">通知</text>
+<text x="1323" y="386" text-anchor="middle" font-size="17" font-weight="700" fill="#2563eb">固定周期</text>
+<text x="690" y="613" text-anchor="middle" font-size="18" font-weight="700" fill="#2563eb">PWM提交后更新上下文；后续接收字节保存该命令标记</text>
+<text x="910" y="679" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">上下文是软件命令，不是ESC内部采样时刻；实线为数据处理，虚线为命令上下文。</text>
+<text x="910" y="744" text-anchor="middle" font-size="26" font-weight="700" fill="#2563eb">RC方向状态转移</text>
+<text x="910" y="782" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">q = sign(P − N)；N为学习中位，M为同帧运动证据，H为已保存的换向过渡证据</text>
+<polyline points="370,976 460,976 460,821 845,821 845,850" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)"/>
+<polyline points="370,1030 450,1030 450,1120 1555,1120 1555,980" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)"/>
+<polyline points="1010,886 1390,886" stroke="#b45309" stroke-width="2.2" fill="none" marker-end="url(#arrow-orange)"/>
+<polyline points="1390,954 1010,954" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)"/>
+<polyline points="70,1285 40,1285 40,992 70,992" stroke="#b91c1c" stroke-width="2.2" fill="none" marker-end="url(#arrow-red)"/>
+<rect x="70" y="930" width="300" height="135" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
+<text x="220" y="965" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">方向未知 D=0</text>
+<text x="220" y="996" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">先学习中位，再确认方向</text>
+<text x="220" y="1023" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">初次确认需同侧DRIVE两帧</text>
+<text x="220" y="1050" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">有幅值仍可上报；bit23=0</text>
+<rect x="680" y="850" width="330" height="130" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="845" y="885" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">前进 D=+1</text>
+<text x="845" y="916" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">有效非零速度为正</text>
+<text x="845" y="943" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">刹车或滑行继续保持正向</text>
+<rect x="1390" y="850" width="330" height="130" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="1.6"/>
+<text x="1555" y="885" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">倒车 D=−1</text>
+<text x="1555" y="916" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">有效非零速度为负</text>
+<text x="1555" y="943" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">刹车或滑行继续保持反向</text>
+<text x="656" y="808" text-anchor="middle" font-size="17" font-weight="700" fill="#2563eb">前进侧DRIVE × 2，M=1</text>
+<text x="1180" y="1106" text-anchor="middle" font-size="17" font-weight="700" fill="#b45309">倒车侧DRIVE × 2，M=1</text>
+<text x="1200" y="872" text-anchor="middle" font-size="17" font-weight="700" fill="#b45309">H=1 · 倒车侧DRIVE · M=1</text>
+<text x="1200" y="1009" text-anchor="middle" font-size="17" font-weight="700" fill="#2563eb">H=1 · 前进侧DRIVE · M=1</text>
+<text x="1020" y="1054" text-anchor="middle" font-size="17" font-weight="400" fill="#64748b">保持原方向：中位PWM、BRAKE、NEUTRAL；H=0时相反侧DRIVE也保持</text>
+<text x="910" y="1171" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">H由BRAKE / NEUTRAL，或相反侧DRIVE且M=0设置；H不等于机械停稳或电调倒车许可。</text>
+<rect x="70" y="1220" width="1650" height="135" rx="8" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.6"/>
+<text x="895" y="1255" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">证据失效 → 回到方向未知</text>
+<text x="895" y="1286" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC切换、遥测超时、RX失效、上下文拒绝或交付缺口：清方向、换向证据和停稳累计，保留已学中位。</text>
+<text x="895" y="1313" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">未知动作也清方向；RPM无效清幅值有效性。新鲜RPM仍可用但方向未知时，只发布幅值。</text>
+<text x="895" y="1340" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">正常中位PWM不制造缺口；已经确认的方向保持，幅值继续跟随最新样本。</text>
+<text x="910" y="1398" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">精确执行优先级、初始化、队列清理及逐帧复现序列见 ESC_OBSERVATION.md。</text>
+</g></svg>
