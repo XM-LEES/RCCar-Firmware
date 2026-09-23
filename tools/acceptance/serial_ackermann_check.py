@@ -8,6 +8,7 @@ the car require --arm-motion when speed or steering are non-zero.
 from __future__ import annotations
 
 import argparse
+import csv
 import math
 import os
 import select
@@ -50,7 +51,7 @@ class Telemetry:
     speed_mps: float
     steering_angle_rad: float
     yaw_rate_radps: float
-    battery_v: float
+    esc_pwm_us: int
     dt_ms: int
     status_bits: int
     protocol_id: int
@@ -174,7 +175,7 @@ def parse_telemetry(frame: bytes) -> Telemetry:
         speed_mps=speed_mps,
         steering_angle_rad=struct.unpack(">h", frame[9:11])[0] / 1000.0,
         yaw_rate_radps=yaw_rate_radps,
-        battery_v=struct.unpack(">H", frame[13:15])[0] / 1000.0,
+        esc_pwm_us=struct.unpack(">H", frame[13:15])[0],
         dt_ms=struct.unpack(">H", frame[15:17])[0],
         status_bits=status_bits,
         protocol_id=frame[21],
@@ -262,8 +263,9 @@ def print_frames(frames: list[Telemetry], contract_errors: int) -> None:
             "TELEMETRY "
             f"seq={frame.seq} speed_mps={frame.speed_mps:.3f} "
             f"steering_rad={frame.steering_angle_rad:.3f} "
+            f"esc_pwm_us={frame.esc_pwm_us} "
             f"yaw_rate_radps={frame.yaw_rate_radps:.3f} "
-            f"battery_v={frame.battery_v:.2f} dt_ms={frame.dt_ms} "
+            f"dt_ms={frame.dt_ms} "
             f"esc_mag_valid={bool(frame.status_bits & STATUS_ESC_SPEED_MAGNITUDE_VALID)} "
             f"esc_standstill={bool(frame.status_bits & STATUS_ESC_STANDSTILL_CONFIRMED)} "
             f"fe32_fresh={bool(frame.status_bits & STATUS_ESC_FE32_FRESH)} "
@@ -302,6 +304,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed-mps", type=float, default=0.0, help="command mode speed")
     parser.add_argument("--steering-angle-rad", type=float, default=0.0, help="command mode steering")
     parser.add_argument("--arm-motion", action="store_true", help="required for non-zero command mode")
+    parser.add_argument("--csv", help="write every received telemetry frame to this CSV path")
     return parser.parse_args()
 
 
@@ -333,6 +336,23 @@ def main() -> int:
             print(f"SENT {args.mode}: {frame.hex(' ')}")
 
         frames, contract_errors = read_frames(fd, args.duration)
+        if args.csv:
+            with open(args.csv, "w", newline="", encoding="utf-8") as stream:
+                writer = csv.writer(stream)
+                writer.writerow([
+                    "sample_index", "sequence", "esc_pwm_us", "esc_speed_mps",
+                    "hall_speed_mps", "esc_action", "status_flags", "status_bits",
+                    "direction_known", "dt_ms",
+                ])
+                for index, frame in enumerate(frames):
+                    writer.writerow([
+                        index, frame.seq, frame.esc_pwm_us, f"{frame.speed_mps:.6f}",
+                        f"{frame.hall_speed_mps:.6f}", frame.esc_action,
+                        f"0x{frame.status_flags:02X}", f"0x{frame.status_bits:08X}",
+                        int(bool(frame.status_bits & STATUS_VEHICLE_DIRECTION_KNOWN)),
+                        frame.dt_ms,
+                    ])
+            print(f"CSV {args.csv}: {len(frames)} frames")
         print_frames(frames, contract_errors)
         return 0 if frames and contract_errors == 0 else 1
     finally:
