@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "esc_telemetry.h"
 #include "esc_soft_uart_rx.h"
 
 #ifdef __cplusplus
@@ -17,9 +18,11 @@ typedef struct
     uint8_t byte;
     uint32_t received_tick_ms;
     uint32_t output_context;
+    uint32_t output_metadata;
 } EscSoftUartStm32Byte_t;
 
-typedef uint32_t (*EscSoftUartStm32OutputContextProvider_t)(void);
+typedef void (*EscSoftUartStm32OutputContextProvider_t)(
+    EscTelemetryOutputContext_t *output_context);
 
 typedef struct
 {

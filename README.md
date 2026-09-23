@@ -4,9 +4,9 @@
 
 电调适配 MAX5 HV G2 模式二。主车速幅值由实测低档传动系数先把`rpm_raw`换算到轮轴RPM，再结合独立轮胎半径计算；Hall速度按脉冲周期独立计算。RC遥控器控制下，两路速度共用FE32动作反馈确认的物理方向。串口自动闭环继续使用独立的自动控制状态机。
 
-FE32帧已通过电脑采集与原始数据回放；RPM只提供幅值，byte 11表示`NEUTRAL / DRIVE / BRAKE`动作而不表示方向。实车确认模式二换向非对称：F→R需要刹车、回中和再次负向输入，R→F可在持续正向输入下由刹车直接进入前进。RC方向观测和AUTO换向门控都消费该动作反馈，不再用对称命令历史猜测电调状态。
+FE32帧已通过电脑采集与原始数据回放；RPM只提供幅值，byte 11表示`NEUTRAL / DRIVE / BRAKE`动作而不表示方向。实车确认模式二换向非对称：F→R需要刹车、回中和再次负向输入，R→F可在持续正向输入下由刹车直接进入前进。RC方向观测和AUTO换向门控都以FE32动作和本源输出上下文建立许可。
 
-低档上行速度采用实测`0.14115轮轴RPM/rpm_raw`和现有115 mm轮胎半径。停稳、跟踪刹车和模式二双向参数均从实际数值推导有效性，不再依赖人工valid开关。非零速度目标不经过软件死区或速度上限，最终输出只受前馈表端点、PI修正范围和PWM硬边界约束。换向或受控停车需要建立明确模式二状态时，刹车使用1000/2000 µs完整行程；命令变号会立即清除旧方向的速度斜坡。
+低档上行速度采用实测`0.14115轮轴RPM/rpm_raw`和现有115 mm轮胎半径。停稳、跟踪刹车和模式二参数均从实际数值关系推导有效性。AUTO纵向控制使用完整PID输出，初始`I/D=0`；最终输出受1000/1500/2000 µs物理端点和当前模式二动作许可约束。
 
 RC方向观测器在首次运动时用连续`DRIVE`样本确认方向；制动开始时即使PWM已经换边而FE32仍短暂保留旧`DRIVE`，也保持原物理运动方向和连续ESC速度。看到`BRAKE/NEUTRAL`后的新`DRIVE`直接确认新方向。Hall与ESC共用这一结果，RC油门输出保持直通。
 
@@ -16,13 +16,14 @@ RC方向观测器在首次运动时用连续`DRIVE`样本确认方向；制动�
 
 ## 架构
 
-[![系统架构](docs/diagrams/system.svg)](docs/ARCHITECTURE.md)
-
 - [架构与速度闭环](docs/ARCHITECTURE.md)：模块、数据流与控制规则。
+- [AUTO纵向控制实现说明](docs/AUTO_CONTROL.md)：完整PID、前进制动介入与释放、倒车滑停及换向许可的软件契约。
 - [ESC观测与速度发布](docs/ESC_OBSERVATION.md)：PD15反馈、RC方向状态机、有效位和RC/AUTO边界。
 - [接口约束](docs/INTERFACES.md)：串口、控制源与状态语义。
 - [车辆数据](docs/VEHICLE.md)：源码参数、硬件数据与标定来源。
-- [draw.io 图源](docs/diagrams/chassis.drawio)：系统架构、速度环两页。
+- [系统架构图](docs/diagrams/system.svg)：控制源、ESC观测、速度估计和上行状态的关系。
+- [AUTO控制图](docs/diagrams/auto-control.svg)、[前进刹车调度图](docs/diagrams/auto-braking.svg)：当前AUTO实现结构。
+- [draw.io 图源](docs/diagrams/chassis.drawio)：系统架构图源。
 
 ## 工程入口
 

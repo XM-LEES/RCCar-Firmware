@@ -161,12 +161,50 @@ static int test_soft_uart_frame_reaches_parser(void)
     EXPECT_TRUE(observed.sample.sample_id == snapshot.sample.sample_id);
     EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1600U);
     EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) != 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(observed.output_metadata) == 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT);
 
     EscTelemetry_GetDiagnostics(&diagnostics);
     EXPECT_TRUE(diagnostics.bytes_copied_from_receiver == 0U);
     EXPECT_TRUE(diagnostics.parser_decoded_frames == 1U);
     EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
     EXPECT_TRUE(diagnostics.rx_error_count == 0U);
+    return 0;
+}
+
+static int test_soft_uart_auto_context_reaches_observed_queue(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+
+    reset_host_hal();
+    EscTelemetryStm32_Init();
+    set_tick(200U);
+    EXPECT_TRUE(EscTelemetryStm32_Start() == 1U);
+    (void)EscTelemetry_PublishAutoOutputContext(
+        1420U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_REVERSE_REQUEST,
+        77U);
+
+    set_tick(215U);
+    feed_uart_bytes(ESC_FE32_FIXTURE_PEAK_DYN02, ESC_FE32_FRAME_LEN);
+    EscTelemetryStm32_Service();
+    EscTelemetry_ProcessPending();
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1420U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) == 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(observed.output_metadata) != 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_REVERSE_REQUEST);
+    EXPECT_TRUE(EscTelemetry_MetadataSession(observed.output_metadata) == 77U);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.parser_decoded_frames == 1U);
+    EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
+    EXPECT_TRUE(diagnostics.observed_context_rejected == 0U);
     return 0;
 }
 
@@ -230,6 +268,8 @@ int main(void)
 
     failures += run_test("test_soft_uart_frame_reaches_parser",
                          test_soft_uart_frame_reaches_parser);
+    failures += run_test("test_soft_uart_auto_context_reaches_observed_queue",
+                         test_soft_uart_auto_context_reaches_observed_queue);
     failures += run_test("test_fault_invalidates_epoch_and_recovers_with_new_frame",
                          test_fault_invalidates_epoch_and_recovers_with_new_frame);
 
@@ -238,6 +278,6 @@ int main(void)
         return 1;
     }
 
-    printf("test_esc_telemetry_stm32: 2 tests passed\n");
+    printf("test_esc_telemetry_stm32: 3 tests passed\n");
     return 0;
 }

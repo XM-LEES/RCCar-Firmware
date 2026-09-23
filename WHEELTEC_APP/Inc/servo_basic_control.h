@@ -70,9 +70,18 @@ typedef struct
 	uint8_t mode2_control_inhibited;
 	uint8_t mode2_state;
 	uint8_t mode2_reason;
-	uint8_t longitudinal_intent;
+	uint8_t auto_brake_purpose;
 	uint8_t longitudinal_reason;
-	float longitudinal_slewed_target_mps;
+	float longitudinal_target_mps;
+	float pid_raw_output_us;
+	float pid_integral_us;
+	float acceleration_mps2;
+	float predicted_release_speed_mps;
+	uint32_t auto_session_id;
+	uint32_t auto_coast_elapsed_ms;
+	uint8_t auto_permission;
+	uint8_t auto_brake_confirmed;
+	uint8_t auto_neutral_confirmed;
 	uint8_t esc_sample_stale;
 	uint8_t esc_rx_invalidated;
 	int8_t esc_feedback_direction;
@@ -148,11 +157,11 @@ void ServoBasic_UpdateAckermannFromOrin(float speed_mps,
                                         uint8_t enable,
                                         uint8_t brake,
                                         uint8_t emergency_stop);
-void ServoBasic_SetSpeedPiEnable(uint8_t enable);
-void ServoBasic_SetSpeedPiKp(float kp_us_per_mps);
-void ServoBasic_SetSpeedPiKi(float ki_us_per_mps_s);
-void ServoBasic_SetSpeedPiTrimLimitUs(uint32_t limit_us);
-void ServoBasic_ResetSpeedPi(void);
+/* Requests are consumed by the Servo owner at the next control deadline. */
+void ServoBasic_SetSpeedPidGains(float kp_us_per_mps,
+                                float ki_us_per_mps_s,
+                                float kd_us_per_mps2);
+void ServoBasic_ResetSpeedPid(void);
 
 #ifdef __cplusplus
 }

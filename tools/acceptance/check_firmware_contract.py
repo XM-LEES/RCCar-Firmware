@@ -228,17 +228,20 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
     rc_direction_text = read_text(root, "WHEELTEC_APP/rc_direction_observer.c")
     results: list[Check] = []
     add(results, "auto_uses_esc_motion_not_hall_speed", all(needle in text for needle in [
-        "EscTelemetry_GetSnapshot(&snapshot)",
+        "servo_basic_update_esc_feedback",
+        "EscTelemetry_PendingSamples()",
+        "EscTelemetry_PopSample(&item)",
         "EscMotionEstimator_ObserveSample(&s_esc_motion_estimator",
-        "Mode2DriveGate_EvaluateWithObservation(&s_mode2_drive_gate",
-        "servo_basic_build_mode2_observation(now_ms)",
-        "observation.esc_action = servo_basic_mode2_esc_action(now_ms)",
+        "servo_basic_observe_auto_sample(&item, now_ms)",
+        "servo_basic_feed_auto_pid()",
+        "LongitudinalController_ObserveFeedback(&s_longitudinal_controller",
+        "Mode2DriveGate_Observe(&s_mode2_drive_gate",
+        "Mode2DriveGate_EvaluateControl(&s_mode2_drive_gate",
         "s_esc_motion_estimate.speed_magnitude_mps",
-        "longitudinal_direction_from_gate",
     ]) and all(needle not in text for needle in [
         "HallSpeed_GetSignedSpeedMps",
         "HallSpeed_SetCommandDirection(command_direction)",
-    ]), "automatic Ackermann speed, PI, and gate consume ESC samples rather than Hall speed")
+    ]), "automatic Ackermann speed, PID, and gate consume ESC samples rather than Hall speed")
     add(results, "rc_direction_observer_unifies_hall_and_esc", all(needle in text for needle in [
         '#include "rc_direction_observer.h"',
         "servo_basic_update_rc_direction_observer(now_ms,",
@@ -264,12 +267,12 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         "rc_hall_mode2_update()",
         "s_vehicle_direction = (int8_t)s_rc_direction_result.direction",
     ]), "RC Hall and ESC signs share the FE32 action/PWM-side observer without the old symmetric command-history state machine")
-    add(results, "auto_hall_direction_uses_confirmed_mode2_direction", all(needle in text for needle in [
-        "g_orin_state.software_stop == 0U &&",
-        "s_vehicle_direction_known != 0U)",
+    add(results, "auto_hall_direction_uses_confirmed_observer_direction", all(needle in text for needle in [
+        "RcDirectionObserver_Update(&s_auto_direction_observer",
+        "s_vehicle_direction_known = s_auto_direction_result.direction_known",
         "HallSpeed_SetCommandDirection(s_vehicle_direction)",
-        "HallSpeed_SetCommandDirection(0)",
-    ]), "automatic Hall sign follows only the direction confirmed by the Mode2 action state")
+        "servo_basic_estimated_vehicle_direction() : 0",
+    ]), "automatic Hall sign follows the separate AUTO feedback observer, not the requested target or gate phase")
     add(results, "hall_speed_telemetry_uses_coherent_snapshot", all(needle in hall_header_text for needle in [
         "HallSpeed_GetSnapshotSpeedMps(const hall_speed_state_t *snapshot",
     ]) and all(needle in data_text for needle in [
@@ -413,56 +416,112 @@ def check_speed_feedback_sources(root: Path) -> list[Check]:
         r".*?\}\s*else\s+if\s*\(esc_speed_magnitude_valid\s*!=\s*0U\)\s*\{"
         r".*?STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID;",
     ), "telemetry cannot mark ESC magnitude-valid motion and ESC-confirmed standstill together")
-    add(results, "auto_history_invalidation_has_timed_epoch", all(needle in text for needle in [
-        "EscMotionEstimator_CommitAppliedActionAt(&s_esc_motion_estimator",
-        "ESC_MOTION_APPLIED_ACTION_EXTERNAL_OVERRIDE",
-        "s_auto_history_boundary_valid = 1U;",
-        "servo_basic_tick_is_after(s_esc_motion_estimate.last_sample_tick_ms",
-    ]), "auto history invalidation records a timed boundary so older ESC samples cannot reestablish stop evidence")
-    add(results, "brake_pwm_mapping_change_invalidates_history", all(needle in text for needle in [
-        "config.fwd_to_rev_brake_full_pwm_us",
-        "config.rev_to_fwd_brake_full_pwm_us",
-        "left->fwd_to_rev_brake_full_pwm_us == right->fwd_to_rev_brake_full_pwm_us",
-        "Mode2DriveGate_SetConfig(&s_mode2_drive_gate, &mode2_config)",
+    add(results, "auto_per_frame_context_filters_source_purpose_session", all(needle in text for needle in [
+        "EscTelemetry_ContextSource(item.output_context)",
+        "EscTelemetry_ContextRcActive(item.output_context) != 0U",
+        "EscTelemetry_MetadataAutoContext(item.output_metadata) == 0U",
+        "EscTelemetry_MetadataPurpose(item->output_metadata)",
+        "EscTelemetry_MetadataSession(item->output_metadata)",
+        "matching_output = (session == s_mode2_drive_gate.current_session_id",
+        "observation.context_purpose = purpose",
+        "observation.context_session_id = session",
+    ]) and all(needle in mode2_text for needle in [
+        "context_session_id == gate->current_session_id",
+        "context_purpose ==",
+        "context_is_brake_session",
+        "ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE",
+    ]), "AUTO evidence is filtered per frame by source, purpose, and session")
+    add(results, "auto_rejects_stale_or_old_feedback", all(needle in text for needle in [
+        "s_auto_delivery_epoch != item.delivery_epoch",
+        "servo_basic_tick_delta_ms(now_ms, item.sample.received_tick_ms, &age_ms)",
+        "age_ms > s_esc_motion_config.telemetry_timeout_ms",
+        "item.sample.sample_id == s_esc_last_observed_sample_id",
+        "s_observation_diagnostics.samples_wrong_source++",
+        "s_observation_diagnostics.samples_expired++",
         "servo_basic_invalidate_auto_history(now_ms)",
-    ]), "brake PWM mapping is part of the runtime config snapshot that invalidates old gate/stop evidence")
-    add(results, "speed_pi_uses_sample_existence_not_tick_nonzero", all(needle in longitudinal_text for needle in [
-        "controller->have_feedback_sample == 0U ||",
-        "controller->have_feedback_sample != 0U &&",
-        "controller->last_feedback_sample_tick_ms",
-        "float local_dt_s = (float)dt_ms / 1000.0f",
+        "s_auto_fault_pending = 1U",
+    ]) and all(needle in mode2_text for needle in [
+        "observation_is_usable_for_evidence",
+        "tick_at_or_after(observation->sample_tick_ms",
+        "is_new_sample(gate, observation) == 0U",
+    ]), "AUTO rejects old-session, wrong-source, duplicate, stale, or time-regressing feedback before it can prove state")
+    add(results, "brake_pwm_mapping_change_invalidates_history", all(needle in text for needle in [
+        "config.center_pwm_us = (g_orin_esc_center_us <= UINT16_MAX)",
+        "config.brake_min_us = (g_auto_brake_min_us <= UINT16_MAX)",
+        "Electrical calibration cannot change an active continuous session.",
+        "s_auto_authorized_previous != 0U || s_esc_stop_confirmed == 0U",
+        "s_mode2_drive_config.center_pwm_us != gate.center_pwm_us",
+        "servo_basic_invalidate_auto_history(now_ms)",
+    ]), "center/brake calibration changes invalidate history and cannot mutate an active continuous session")
+    add(results, "speed_pid_uses_committed_sample_span_not_frame_delta", all(needle in longitudinal_text for needle in [
+        "pid_sample_committed",
+        "pid_committed_sample_tick_ms",
+        "latest_sample_is_committed(controller)",
+        "controller->pending_dt_s = dt_s",
+        "controller->pending_new_sample",
+        "LongitudinalController_CommitApplied",
+        "controller->pid_committed_sample_id = controller->feedback_sample_id",
     ]),
-        "PI sample timing handles HAL tick zero and same-tick distinct samples without fabricating integration time")
-    add(results, "command_sign_change_clears_old_signed_ramp", all(needle in longitudinal_text for needle in [
-        "last_command_direction",
-        "requested_direction != controller->last_command_direction",
-        "controller->slewed_target_mps = 0.0f",
-        "controller->has_update_tick = 0U",
-    ]), "a new command direction starts from zero instead of retaining the old signed speed ramp")
-    add(results, "mode2_qualification_uses_final_pwm", all(needle in text for needle in [
-        "Mode2DriveGate_CommitAppliedActionWithPwmEvidence(&s_mode2_drive_gate",
-        "final_esc_pulse",
+        "PID integration spans the last committed feedback sample to the latest evaluated sample")
+    add(results, "speed_pid_clears_integral_on_target_sign_change_without_ramp", all(needle in longitudinal_text for needle in [
+        "target_sign_changed",
+        "controller->skip_error_integral_once = 1U",
+        "target_direction != controller->last_target_direction",
+        "controller->integral_us = 0.0f",
+    ]) and all(needle not in longitudinal_text for needle in [
+        "slewed_target_mps",
+        "target_slew",
+    ]), "PID has no signed speed ramp; target changes skip one I update and sign changes clear integral")
+    add(results, "actual_output_antiwindup", all(needle in text for needle in [
+        "applied.applied_output_us = (float)g_state.esc_pulse_us - (float)get_orin_esc_center_pulse()",
+        "applied.min_output_us = s_mode2_drive_output.pid_min_us",
+        "applied.max_output_us = s_mode2_drive_output.pid_max_us",
+        "applied.pid_active = s_mode2_drive_output.pid_active",
+        "applied.reset_integral = s_mode2_drive_output.integral_reset",
+        "LongitudinalController_CommitApplied(&s_longitudinal_controller, &applied)",
+    ]) and all(needle in longitudinal_text for needle in [
+        "applied_output_us - controller->pending_raw_output_us",
+        "beta *",
+        "controller->config.antiwindup_tau_s",
+        "controller->config.ki_us_per_mps_s == 0.0f",
+    ]), "PID anti-windup uses the actual quantized output and gate-provided bounds")
+    add(results, "mode2_qualification_uses_physical_output_only_fwd_to_rev", all(needle in text for needle in [
+        "Mode2DriveGate_CommitApplied(&s_mode2_drive_gate, &s_mode2_drive_output",
+        "EscTelemetry_PrepareOutputContext(pulse_us",
+        "EscTelemetry_CommitOutputContext(&prepared)",
     ]) and all(needle in mode2_text for needle in [
-        "mode2_applied_pwm_delta_us",
-        "fwd_to_rev_qualify_delta_us",
-        "rev_to_fwd_qualify_delta_us",
-        "applied_delta_us < required_delta_us",
-    ]), "both reversal directions qualify continuous braking from final applied PWM")
-    add(results, "unknown_forward_recovery_requires_fresh_motion", all(needle in text for needle in [
-        "MODE2_DRIVE_STATE_FORWARD_RECOVERY_PENDING",
-        "s_esc_motion_estimate.moving_observed",
-        "forward_recovery_start_ms",
-        "s_mode2_drive_gate.state == MODE2_DRIVE_STATE_FORWARD_TRACKING",
-    ]) and all(needle in mode2_text for needle in [
-        "observation.moving_observed = motion->moving_observed;",
-        "observation->moving_observed",
-        "observation->sample_tick_ms",
-        "MODE2_DRIVE_REASON_FORWARD_RECOVERY",
+        "MODE2_DRIVE_ACTION_FWD_TO_REV_BRAKE",
+        "MODE2_DRIVE_BRAKE_PURPOSE_REVERSE",
+        "pwm_us <= gate->config.reverse_pwm_us",
+        "gate->full_pwm_active = 1U",
+        "observation->context_pwm_us <= gate->config.reverse_pwm_us",
+        "gate->brake_full_confirmed = 1U",
+        "stopped_after(gate, gate->brake_full_start_ms)",
+    ]) and all(needle not in mode2_text for needle in [
+        "REV_TO_FWD_BRAKE",
+    ]), "only forward-to-reverse uses full physical brake qualification from applied PWM evidence")
+    add(results, "reverse_deceleration_coasts_without_positive_brake", all(needle in mode2_text for needle in [
+        "static Mode2DriveGateOutput_t evaluate_reverse_ready",
+        "MODE2_DRIVE_PHASE_R_COAST",
+        "MODE2_DRIVE_REASON_REVERSE_COAST",
+        "return neutral_output(gate,",
+    ]) and "ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE" not in mode2_text.split(
+        "static Mode2DriveGateOutput_t evaluate_reverse_ready", 1
+    )[1].split("static uint8_t neutral_dwell_ready", 1)[0],
+        "reverse deceleration and reverse-to-forward use neutral coast, never positive braking")
+    add(results, "no_motor_startup_timeout_or_fake_direction", all(needle in mode2_text for needle in [
+        "MODE2_DRIVE_REASON_STARTUP_HOLD",
+        "startup_hold_output",
+        "gate->latest_observation.context_session_id ==",
+        "gate->current_session_id",
+        "elapsed_ms(now_ms, gate->last_commit_ms) <=",
+        "MODE2_DRIVE_REASON_DIRECTION_UNKNOWN",
     ]) and all(needle not in mode2_text for needle in [
         "FORWARD_RECOVERY_TIMEOUT",
-        "motion->speed_magnitude_mps > 0.0f",
+        "MOTOR_STARTUP_TIMEOUT",
+        "mechanical_response",
     ]),
-        "UNKNOWN_SAFE forward recovery stays direction-unknown until fresh post-probe motion evidence without a mechanical-response timeout")
+        "startup holds only an existing same-session request; there is no motor-response timeout or fabricated direction")
     return results
 
 
@@ -482,43 +541,73 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "#define APP_ORIN_ACKERMANN_MAX_STEERING_MRAD      349U",
         "#define APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT 0.14115f",
         "#define APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT      250U",
-        "#define APP_ESC_TRACKING_BRAKE_KP_DEFAULT        0.50f",
-        "#define APP_ESC_TRACKING_BRAKE_MAX_DEFAULT       0.70f",
-        "#define APP_ESC_TRACKING_BRAKE_ENTER_ERROR_MPS_DEFAULT 0.20f",
-        "#define APP_ESC_TRACKING_BRAKE_RELEASE_ERROR_MPS_DEFAULT 0.10f",
         "#define APP_HALL_GLITCH_FAULT_CONFIRM_EVENTS         3U",
         "#define APP_ESC_STOPPED_THRESHOLD_MPS_DEFAULT      0.05f",
         "#define APP_ESC_STOPPED_MIN_SAMPLES_DEFAULT           3U",
         "#define APP_ESC_STOPPED_MIN_COVERAGE_MS_DEFAULT     150U",
-        "#define APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT       1.00f",
-        "#define APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT       1.00f",
-        "#define APP_MODE2_FWD_TO_REV_BRAKE_HOLD_MS_DEFAULT        100U",
-        "#define APP_MODE2_REV_TO_FWD_BRAKE_HOLD_MS_DEFAULT        100U",
-        "#define APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT   500U",
-        "#define APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT   500U",
-        "#define APP_MODE2_FWD_TO_REV_BRAKE_FULL_PWM_US_DEFAULT 1000U",
-        "#define APP_MODE2_REV_TO_FWD_BRAKE_FULL_PWM_US_DEFAULT 2000U",
-        "#define APP_ORIN_ACCEL_LIMIT_MMPS2               4000U",
+        "#define APP_ORIN_STEERING_RATE_LIMIT_MRADPS       900U",
+        "#define APP_SPEED_PID_KP_DEFAULT_US_PER_MPS       100.0f",
+        "#define APP_SPEED_PID_KI_DEFAULT_US_PER_MPS_S       0.0f",
+        "#define APP_SPEED_PID_KD_DEFAULT_US_PER_MPS2        0.0f",
+        "#define APP_SPEED_PID_DERIVATIVE_TAU_MS              80U",
+        "#define APP_SPEED_PID_TRACKING_TAU_MS               100U",
+        "#define APP_AUTO_BRAKE_MIN_US                        50U",
+        "#define APP_AUTO_BRAKE_ENTER_ERROR_MPS              0.20f",
+        "#define APP_AUTO_BRAKE_ENTER_RATIO                  0.10f",
+        "#define APP_AUTO_BRAKE_RELEASE_ERROR_MPS            0.05f",
+        "#define APP_AUTO_BRAKE_RELEASE_RATIO                0.02f",
+        "#define APP_AUTO_COAST_EVAL_MS                       200U",
+        "#define APP_AUTO_COAST_BUDGET_MS                     600U",
+        "#define APP_AUTO_A_PROGRESS_MPS2                   0.05f",
+        "#define APP_AUTO_BRAKE_RELEASE_DELAY_MS               80U",
+        "#define APP_AUTO_ACTION_ACK_MS                      300U",
+        "#define APP_AUTO_QUALIFY_MS                         100U",
+        "#define APP_AUTO_NEUTRAL_DWELL_MS                   100U",
+        "#define APP_ORIN_ESC_CENTER_US                   1500U",
         "#define APP_ORIN_SERVO_CENTER_US                 1500U",
         "#define APP_ORIN_SERVO_RANGE_US                   395U",
         "#define APP_ORIN_STEERING_PWM_DIRECTION_SIGN        (+1)",
     ]
-    add(results, "vehicle_defaults", all(needle in text for needle in expected), "confirmed geometry, servo calibration, timeouts, and operational value-derived ESC/mode2 defaults")
+    obsolete_defaults = [
+        "APP_ESC_TRACKING_BRAKE_KP_DEFAULT",
+        "APP_ESC_TRACKING_BRAKE_MAX_DEFAULT",
+        "APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT",
+        "APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT",
+        "APP_ORIN_ACCEL_LIMIT_MMPS2",
+    ]
+    add(results, "vehicle_defaults", all(needle in text for needle in expected) and all(needle not in text for needle in obsolete_defaults), "confirmed geometry, servo calibration, PID gains, AUTO brake timing, and ESC/mode2 defaults")
     add(
         results,
-        "single_feedforward_owner",
+        "longitudinal_full_pid_without_feedforward_or_ramp",
         all(needle in longitudinal_text for needle in [
-            "s_forward_ff_table",
-            "{10000U, 1650U}",
-            "s_reverse_ff_table",
-            "{4500U, 1391U}",
-            "feedforward_pwm_us",
+            "kp_us_per_mps",
+            "ki_us_per_mps_s",
+            "kd_us_per_mps2",
+            "LongitudinalController_ObserveFeedback",
+            "LongitudinalController_Evaluate",
+            "LongitudinalController_CommitApplied",
+            "finite_positive(config->kp_us_per_mps)",
+            "finite_positive(config->derivative_tau_s)",
+            "finite_nonnegative(config->ki_us_per_mps_s)",
+            "finite_nonnegative(config->kd_us_per_mps2)",
+            "pending_raw_output_us",
+            "pending_dt_s",
+            "applied_output_bounds_are_valid",
         ]) and all(needle not in control_text for needle in [
             "s_orin_forward_ff_table",
             "s_orin_reverse_ff_table",
             "interpolate_speed_ff_table",
+        ]) and all(needle not in longitudinal_text for needle in [
+            "s_forward_ff_table",
+            "s_reverse_ff_table",
+            "feedforward_pwm_us",
+            "slewed_target_mps",
+            "target_slew",
+            "LONGITUDINAL_INTENT_",
+            "drive_pwm_us",
+            "tracking_brake",
         ]),
-        "longitudinal controller exclusively owns the complete forward/reverse feedforward tables",
+        "longitudinal controller is full PID and contains no feedforward table, target ramp, or legacy drive intent",
     )
     add(
         results,
@@ -538,43 +627,70 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
     )
     add(
         results,
-        "esc_tracking_brake_is_the_single_speed_error_brake",
-        all(needle in longitudinal_text for needle in [
-            "tracking_brake_enter_error_mps",
-            "tracking_brake_release_error_mps",
-            "LONGITUDINAL_INTENT_TRACKING_BRAKE",
-            "controller->config.tracking_brake_kp * tracking_error_mps",
+        "auto_brake_scheduled_by_gate_not_pid_core",
+        all(needle in mode2_text for needle in [
+            "forward_needs_brake",
+            "e_on_abs_mps",
+            "e_on_ratio",
+            "e_off_abs_mps",
+            "e_off_ratio",
+            "coast_eval_ms",
+            "coast_budget_ms",
+            "forward_brake_output",
+            "MODE2_DRIVE_BRAKE_PURPOSE_TRACK",
+            "track_brake_release_ready",
         ]) and all(needle in control_text for needle in [
-            "phase == MODE2_DRIVE_PHASE_IDLE",
-            "get_orin_esc_forward_limit_pulse()",
-            "get_orin_esc_reverse_limit_pulse()",
-        ]) and "speed_limit" not in control_text,
-        "tracking brake is the only speed-error brake, retains hysteresis, and stays on calibrated tracking endpoints",
+            "g_auto_brake_enter_error_mps",
+            "g_auto_brake_enter_ratio",
+            "g_auto_brake_release_error_mps",
+            "g_auto_brake_release_ratio",
+            "g_auto_coast_eval_ms",
+            "g_auto_coast_budget_ms",
+            "g_auto_a_progress_mps2",
+        ]) and all(needle not in longitudinal_text for needle in [
+            "tracking_brake",
+            "LONGITUDINAL_INTENT_TRACKING_BRAKE",
+        ]),
+        "Mode2 gate schedules AUTO braking from PID error/progress; PID core remains continuous full PID",
     )
     add(
         results,
-        "propulsion_keeps_calibrated_pwm_endpoints",
-        all(needle in control_text for needle in [
-            "final_pulse = limit_auto_propulsion_pulse(output->drive_pwm_us);",
-            "g_speed_pi_final_us = final_pulse;",
-        ]) and all(needle in longitudinal_text for needle in [
-            "config->forward_limit_pwm_us",
-            "config->reverse_limit_pwm_us",
-            "output->drive_pwm_us = limit_drive_pwm",
+        "pid_offsets_are_mapped_to_physical_pwm_by_gate",
+        all(needle in mode2_text for needle in [
+            "static int32_t forward_span",
+            "static int32_t reverse_span",
+            "static uint16_t pwm_from_offset",
+            "static Mode2DriveGateOutput_t forward_output",
+            "static Mode2DriveGateOutput_t reverse_output",
+            "clip_f32(raw_pid_us, 0.0f, high)",
+            "clip_f32(raw_pid_us, low, 0.0f)",
+            "output.pid_min_us = 0.0f",
+            "output.pid_max_us = high",
+            "output.pid_min_us = low",
+            "output.pid_max_us = 0.0f",
+        ]) and all(needle in control_text for needle in [
+            "config.min_output_us = (float)ESC_PWM_MIN_PULSE_US - (float)s_active_esc_center",
+            "config.max_output_us = (float)ESC_PWM_MAX_PULSE_US - (float)s_active_esc_center",
+            "applied.applied_output_us = (float)g_state.esc_pulse_us - (float)get_orin_esc_center_pulse()",
+            "applied.min_output_us = s_mode2_drive_output.pid_min_us",
+            "applied.max_output_us = s_mode2_drive_output.pid_max_us",
         ]),
-        "automatic propulsion remains within the calibrated feedforward endpoints after PI",
+        "PID returns signed offset; Mode2 gate maps offsets to physical PWM and returns current phase bounds for anti-windup",
     )
     add(
         results,
         "brake_pwm_endpoint_direction_guard",
         all(needle in mode2_text for needle in [
-            "fwd_to_rev_brake_full_pwm_us",
-            "rev_to_fwd_brake_full_pwm_us",
-            "fwd_to_rev_qualify_delta_us",
-            "rev_to_fwd_qualify_delta_us",
-            "mode2_pwm_config_is_valid",
+            "config->reverse_pwm_us >= config->center_pwm_us",
+            "config->forward_pwm_us <= config->center_pwm_us",
+            "config->brake_min_us > config->center_pwm_us - config->reverse_pwm_us",
+            "valid_duration(config->qualify_ms)",
+            "valid_duration(config->neutral_dwell_ms)",
+            "config->coast_eval_ms >= config->coast_budget_ms",
+            "finite_positive(config->e_on_abs_mps)",
+            "config->e_off_abs_mps >= config->e_on_abs_mps",
         ]),
-        "mode2 derives validity from direction-correct endpoints and qualification deltas",
+        "Mode2 validates asymmetric endpoint ordering, brake strength, timing, and hysteresis parameters",
     )
     add(
         results,
@@ -607,10 +723,13 @@ def check_vehicle_defaults(root: Path) -> list[Check]:
         "missing_esc_config_disables_auto_propulsion",
         all(needle in control_text for needle in [
             "servo_basic_auto_propulsion_authorized",
-            "s_esc_motion_estimator.config_valid",
-            "s_esc_motion_estimator.stop_config_valid",
+            "s_esc_motion_estimate.config_valid",
+            "s_esc_motion_estimate.stop_valid",
+            "s_esc_feedback_available",
             "servo_basic_mode2_application_config_valid()",
-            "input.propulsion_authorized = servo_basic_auto_propulsion_authorized()",
+            "s_longitudinal_controller.config_valid",
+            "pid_input.enabled = servo_basic_auto_propulsion_authorized()",
+            "gate_input.propulsion_authorized = servo_basic_auto_propulsion_authorized()",
         ]),
         "invalid drivetrain or mode2 config keeps automatic propulsion unauthorized",
     )
@@ -635,7 +754,16 @@ def check_control_output_fallbacks(root: Path) -> list[Check]:
         "apply_servo_pulse(0U)",
         "apply_esc_pulse(ESC_PWM_MIN_PULSE_US)",
     ]), "stop and timeout paths do not emit PWM 0 or ESC minimum")
-    add(results, "neutral_stop_and_timeout", text.count("apply_esc_pulse(get_orin_esc_center_pulse())") >= 3 and text.count("apply_servo_pulse(get_orin_servo_center_pulse())") >= 3, "software stop and timeout paths use configured centers")
+    add(results, "neutral_stop_and_timeout", all(needle in text for needle in [
+        "apply_esc_pulse(get_orin_esc_center_pulse())",
+        "apply_servo_pulse(get_orin_servo_center_pulse())",
+        "pulse_us = get_orin_esc_center_pulse();",
+        "limit_servo_safe_pulse(clamp_servo_pulse(g_orin_state.servo_pulse_us)) :",
+        "get_orin_servo_center_pulse());",
+        "g_orin_state.software_stop == 0U",
+        "s_mode2_drive_output.purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL",
+        "s_mode2_drive_gate.config_valid == 0U",
+    ]), "software stop, timeout, neutral, and invalid-config paths use configured centers")
     add(results, "candidate_rc_arbitration_preserved", all(needle in text for needle in [
         "const uint8_t manual_override = rc_manual_override_requested()",
         "const uint8_t serial_active = orin_pwm_is_active()",

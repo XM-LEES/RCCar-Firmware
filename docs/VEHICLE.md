@@ -1,8 +1,8 @@
 # 车辆数据
 
-数值以 `feature/ackermann-chassis@b4ee219` 的实际源码为基线。下表记录代码配置值及其单位，不将配套说明中的不同数值覆盖源码；空白项不表示零值。
+数值以当前工作树源码为准。下表记录代码配置值及其单位，不将配套说明中的不同数值覆盖源码；空白项不表示零值。
 
-主要来源：[车辆配置](https://github.com/XM-LEES/RCCar-Firmware/blob/b4ee2191b6722500a94b4a65ce5e85bbfc94b607/WHEELTEC_APP/Inc/app_vehicle_config.h)、[Hall 参数](https://github.com/XM-LEES/RCCar-Firmware/blob/b4ee2191b6722500a94b4a65ce5e85bbfc94b607/WHEELTEC_APP/hall_speed.c)、[控制与前馈标定](https://github.com/XM-LEES/RCCar-Firmware/blob/b4ee2191b6722500a94b4a65ce5e85bbfc94b607/WHEELTEC_APP/servo_basic_control.c)。源码中的其余有效配置同样沿用，不因未列入本表而取消。
+主要来源：[车辆配置](../WHEELTEC_APP/Inc/app_vehicle_config.h)、[Hall 参数](../WHEELTEC_APP/hall_speed.c)、[控制实现](../WHEELTEC_APP/servo_basic_control.c)、[AUTO门控](../WHEELTEC_APP/mode2_drive_gate.c)、[纵向PID](../WHEELTEC_APP/longitudinal_controller.c)。源码中的其余有效配置同样沿用，不因未列入本表而取消。
 
 ## 几何
 
@@ -20,24 +20,27 @@
 | 车体包络长／宽／高（m） | | |
 | 实测滚动周长（m） | | |
 
-## 输出与推进标定
+## 输出与控制参数
 
 | 参数 | 代码配置值 | 含义 |
 | --- | --- | --- |
 | PWM 周期 / tick | 2631 / 1 µs | TIM8：PSC=167、ARR=2630 |
-| ESC 脉宽输入范围 / 中点 | 1000–2000 / 1500 µs | 全输入范围与中点 |
-| ESC 前进 / 倒车起点参数 | 1560 / 1440 µs | 原参数，不代替前馈表中的低速节点 |
-| ESC 前进上限 / 倒车下限 | 1650 / 1350 µs | 基线最终输出软限幅，区别于全输入端点 |
+| ESC 脉宽输入范围 / 中点 | 1000–2000 / 1500 µs | AUTO物理端点与中点 |
 | 转向中点 / 幅度 | 1500 / ±395 µs | 有效范围 1105–1895 µs |
 | 转向角—脉宽 | −0.349 / 0 / +0.349 rad ↔ 1105 / 1500 / 1895 µs | 正左转对应 PWM 增大 |
-| 速度目标处理 | 无缩放、无软件死区、无速度上限 | 精确零表示停车；非零目标由前馈表端点与最终PWM边界自然饱和 |
-| 参考速度变化率 | 4.000 m/s² | `APP_ORIN_ACCEL_LIMIT_MMPS2=4000` |
+| 速度目标处理 | 无缩放、无软件死区、无速度上限 | 精确零表示停车；非零目标直接进入PID与模式二门控 |
 | 转角变化率 | 0.900 rad/s | `APP_ORIN_STEERING_RATE_LIMIT_MRADPS=900` |
-| PI 开关 / Kp / Ki | 1 / 20.0 / 0.0 | Kp：µs/(m/s)；Ki：µs/[(m/s)·s] |
-| PI 微调幅度 | ±12 µs | 在前馈脉宽上叠加，不是全量 PWM |
-| 前馈标定表 | `s_orin_forward_ff_table` / `s_orin_reverse_ff_table` | 沿用原速度—脉宽节点，分段线性插值 |
+| PID Kp / Ki / Kd | 100.0 / 0.0 / 0.0 | Kp：µs/(m/s)；Ki：µs/[(m/s)·s]；Kd：µs/(m/s²) |
+| PID微分滤波 / 积分跟踪时间 | 80 / 100 ms | `APP_SPEED_PID_DERIVATIVE_TAU_MS` / `APP_SPEED_PID_TRACKING_TAU_MS` |
+| AUTO最小刹车偏移 | 50 µs | `APP_AUTO_BRAKE_MIN_US`；需实车标定，不代表已测制动力 |
+| 前进刹车进入误差 | max(0.20 m/s, 0.10×目标) | `APP_AUTO_BRAKE_ENTER_ERROR_MPS` / `APP_AUTO_BRAKE_ENTER_RATIO` |
+| 前进刹车释放误差 | max(0.05 m/s, 0.02×目标) | `APP_AUTO_BRAKE_RELEASE_ERROR_MPS` / `APP_AUTO_BRAKE_RELEASE_RATIO` |
+| 滑行评估 / 预算 | 200 / 600 ms | 小超速先观察滑行；预算到期只申请刹车，不代表故障 |
+| 可用滑行减速趋势 | 0.05 m/s² | `APP_AUTO_A_PROGRESS_MPS2` |
+| 刹车释放预测延迟 | 80 ms | `APP_AUTO_BRAKE_RELEASE_DELAY_MS` |
+| 动作确认 / 完整负向资格 / 中位驻留 | 300 / 100 / 100 ms | `APP_AUTO_ACTION_ACK_MS` / `APP_AUTO_QUALIFY_MS` / `APP_AUTO_NEUTRAL_DWELL_MS` |
 
-以上为当前代码配置。推进曲线、PI增益和刹车边界分别配置，制动映射不使用旧倒车推进限幅代替。
+以上为当前代码配置。PID输出由模式二门控投影到当前动作允许的物理区间；普通AUTO推进和F→R资格制动均使用1000/1500/2000 µs定义的物理输入范围。
 
 ## 电气与采集
 
@@ -90,16 +93,12 @@
 | FE32 byte11动作状态 | | 0中位 / 1驱动 / 2刹车 | 前后驱动均为1；状态只区分动作，不直接给方向 |
 | RC方向确认样本 | 个不同FE32样本 | 启动2 / 换向1 | 启动需连续DRIVE；已见BRAKE/NEUTRAL或相反侧低速证据后的新DRIVE直接确认新方向；RC按FE32事件顺序消费 |
 | RC中位学习窗口 | 个合格样本 | 5 | 仅NEUTRAL、RPM=0且PWM稳定样本，取滚动中位数，不写Flash |
-| 制动映射中点 / F→R满请求端点 | µs | 1500 / 1000 | 换向第一次刹车使用完整负向行程 |
-| R→F满请求端点 | µs | 2000 | 换向第一次刹车使用完整正向行程 |
-| 刹车增益 Kb / 力度上限 | 1/(m/s) / 0…1 | 0.50 / 0.70 | 归一化制动请求，不表示测得的制动力 |
-| 刹车进入 / 释放误差 | m/s | 0.20 / 0.10 | 相对参考速度的误差滞回；这是唯一速度误差刹车逻辑 |
+| AUTO输出中点 / 前进端点 / 负向端点 | µs | 1500 / 2000 / 1000 | `P0 / P_F / P_R`；完整物理输入范围 |
+| F→R完整负向资格 | µs / ms | 1000 / 100 | 最终实际PWM到达`P_R`后开始计时，需新的BRAKE反馈和停稳证据 |
+| R→F策略 | | 中位滑停后正向启动 | 当前AUTO不输出正向刹车；倒车未停稳时不允许`P>P0` |
 | 停稳阈值 / 样本数 / 覆盖时长 | m/s / 次 / ms | 0.05 / 3 / 150 | 不复用旧 Hall 无脉冲超时作为新停稳条件 |
-| F→R / R→F刹车请求 | 0…1 | 1.00 / 1.00 | 两个方向都以明确完整刹车开始；R→F由FE32动作决定何时撤销 |
-| F→R / R→F最短保持配置 | ms | 100 / 100 | F→R用于许可资格；R→F主路径不等待该时间，BRAKE→DRIVE优先 |
-| F→R / R→F资格差值 | µs | 500 / 500 | F→R要求最终PWM完整达标；R→F保留最终PWM诊断证据 |
-| 回中驻留 | ms | 100 | F→R反向许可使用；R→F主路径不要求回中驻留 |
+| 回中驻留 | ms | 100 | F→R倒车许可和未知状态启动前的中位确认 |
 
-传动换算先到轮轴：当前低档`wheel_rpm = rpm_raw × 0.14115`；轮胎半径115 mm独立参与线速度计算。两组原始记录和审计见工作区`资料/实测记录/2026-09-17_Windows_ESC直读与两档比例/`。极对数和拆分齿比可用于以后复核，但不再阻止当前上行速度幅值。自动推进仍要求停稳、模式二时序、制动映射等配置有效。
+传动换算先到轮轴：当前低档`wheel_rpm = rpm_raw × 0.14115`；轮胎半径115 mm独立参与线速度计算。两组原始记录和审计见工作区`资料/实测记录/2026-09-17_Windows_ESC直读与两档比例/`。极对数和拆分齿比可用于以后复核，不作为当前速度幅值输出的前提。AUTO首次启动和换向使用各自阶段的新停稳、中位及动作证据；正常行驶中的速度调节不要求车辆保持停稳。
 
-运行参数集中在`app_vehicle_config.h`的`APP_ESC_*`和`APP_MODE2_*`数值中。配置有效性全部由数值范围和相互关系推导，不再使用人工valid开关。`APP_MODE2_FWD_TO_REV_*`与`APP_MODE2_REV_TO_FWD_*`保留两个方向的独立调节能力。
+运行参数集中在`app_vehicle_config.h`的`APP_ESC_*`、`APP_SPEED_PID_*`和`APP_AUTO_*`数值中。配置有效性全部由数值范围和相互关系推导，不再使用人工valid开关。中点和`B_min`在AUTO启用或未确认停稳时保持上一份有效配置，避免运行中改变连续制动会话的电气含义；PID增益变更会清I/D动态状态。

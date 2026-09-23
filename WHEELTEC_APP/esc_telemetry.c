@@ -23,6 +23,11 @@ static void esc_telemetry_exit_critical(EscTelemetryIrqState_t state)
     __DSB();
     __ISB();
 }
+
+static void esc_telemetry_data_memory_barrier(void)
+{
+    __DMB();
+}
 #else
 typedef uint8_t EscTelemetryIrqState_t;
 
@@ -35,6 +40,10 @@ static void esc_telemetry_exit_critical(EscTelemetryIrqState_t state)
 {
     (void)state;
 }
+
+static void esc_telemetry_data_memory_barrier(void)
+{
+}
 #endif
 
 typedef struct
@@ -43,7 +52,7 @@ typedef struct
     size_t length;
     uint32_t received_tick_ms;
     uint32_t receive_epoch;
-    uint32_t output_context;
+    EscTelemetryOutputContext_t output_context;
     uint8_t output_context_valid;
 } EscTelemetryPendingChunk_t;
 
@@ -75,10 +84,11 @@ static size_t s_observed_count;
 static uint32_t s_delivery_epoch;
 static uint8_t s_last_observed_source_valid;
 static uint32_t s_last_observed_source;
-static uint32_t s_recent_output_context[ESC_FE32_FRAME_LEN];
+static EscTelemetryOutputContext_t s_recent_output_context[ESC_FE32_FRAME_LEN];
 static size_t s_recent_byte_meta_next;
 static size_t s_recent_byte_meta_count;
-static volatile uint32_t s_current_output_context;
+static volatile uint8_t s_current_output_context_slot;
+static EscTelemetryOutputContext_t s_output_context_slots[2];
 static uint32_t s_output_context_generation;
 static uint8_t s_output_context_generation_valid;
 static uint8_t s_output_context_rc_active;
@@ -107,6 +117,31 @@ uint8_t EscTelemetry_ContextIsValid(uint32_t output_context)
     return (EscTelemetry_ContextSource(output_context) != 0UL) ? 1U : 0U;
 }
 
+EscTelemetryOutputPurpose_t EscTelemetry_MetadataPurpose(
+    uint32_t output_metadata)
+{
+    const uint32_t purpose =
+        output_metadata & ESC_TELEMETRY_METADATA_PURPOSE_MASK;
+
+    if (purpose > (uint32_t)ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE)
+    {
+        return ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL;
+    }
+    return (EscTelemetryOutputPurpose_t)purpose;
+}
+
+uint32_t EscTelemetry_MetadataSession(uint32_t output_metadata)
+{
+    return (output_metadata & ESC_TELEMETRY_METADATA_SESSION_MASK) >>
+        ESC_TELEMETRY_METADATA_SESSION_SHIFT;
+}
+
+uint8_t EscTelemetry_MetadataAutoContext(uint32_t output_metadata)
+{
+    return ((output_metadata & ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK) != 0UL) ?
+        1U : 0U;
+}
+
 static void esc_telemetry_sync_parser_diagnostics(void)
 {
     s_diagnostics.parser_decoded_frames =
@@ -124,6 +159,30 @@ static void esc_telemetry_sync_parser_diagnostics(void)
     s_diagnostics.receive_epoch = s_receive_epoch;
     s_diagnostics.delivery_epoch = s_delivery_epoch;
     s_diagnostics.output_context_generation = s_output_context_generation;
+}
+
+static uint32_t esc_telemetry_pack_output_metadata(
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    uint8_t auto_active)
+{
+    uint32_t normalized_purpose = (uint32_t)purpose;
+    const uint32_t max_session =
+        ESC_TELEMETRY_METADATA_SESSION_MASK >>
+        ESC_TELEMETRY_METADATA_SESSION_SHIFT;
+
+    if (normalized_purpose >
+        (uint32_t)ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE)
+    {
+        normalized_purpose =
+            (uint32_t)ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL;
+    }
+
+    return ((auto_active != 0U) ?
+            ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK : 0UL) |
+        (normalized_purpose & ESC_TELEMETRY_METADATA_PURPOSE_MASK) |
+        ((session_id & max_session) <<
+         ESC_TELEMETRY_METADATA_SESSION_SHIFT);
 }
 
 static void esc_telemetry_clear_recent_byte_meta(void)
@@ -272,7 +331,8 @@ void EscTelemetry_Init(void)
     s_last_observed_source_valid = 0U;
     s_last_observed_source = 0UL;
     esc_telemetry_clear_recent_byte_meta();
-    s_current_output_context = 0UL;
+    memset(s_output_context_slots, 0, sizeof(s_output_context_slots));
+    s_current_output_context_slot = 0U;
     s_output_context_generation = 0UL;
     s_output_context_generation_valid = 0U;
     s_output_context_rc_active = 0U;
@@ -315,7 +375,7 @@ void EscTelemetry_ResetReceiveBoundary(
 static uint8_t esc_telemetry_push_pending(const uint8_t *data,
                                           size_t length,
                                           uint32_t tick_ms,
-                                          uint32_t output_context,
+                                          const EscTelemetryOutputContext_t *output_context,
                                           uint8_t output_context_valid)
 {
     size_t offset = 0U;
@@ -338,10 +398,11 @@ static uint8_t esc_telemetry_push_pending(const uint8_t *data,
         s_pending_chunks[s_pending_tail].length = chunk_len;
         s_pending_chunks[s_pending_tail].received_tick_ms = tick_ms;
         s_pending_chunks[s_pending_tail].receive_epoch = s_receive_epoch;
-        s_pending_chunks[s_pending_tail].output_context = output_context;
+        s_pending_chunks[s_pending_tail].output_context = *output_context;
         s_pending_chunks[s_pending_tail].output_context_valid =
             (output_context_valid != 0U &&
-             EscTelemetry_ContextIsValid(output_context) != 0U) ? 1U : 0U;
+             EscTelemetry_ContextIsValid(
+                 output_context->output_context) != 0U) ? 1U : 0U;
         s_pending_tail = (s_pending_tail + 1U) % ESC_TELEMETRY_PENDING_CHUNKS;
         s_pending_count++;
         s_diagnostics.pending_chunks_pushed++;
@@ -356,19 +417,20 @@ static uint8_t esc_telemetry_copy_dma_range(size_t start,
                                             uint32_t tick_ms)
 {
     const size_t length = end - start;
-    const uint32_t output_context = EscTelemetry_GetOutputContext();
+    EscTelemetryOutputContext_t output_context;
 
     if (length == 0U)
     {
         return 1U;
     }
 
+    EscTelemetry_GetOutputContextSnapshot(&output_context);
     if (esc_telemetry_push_pending(&s_dma_buffer[start],
                                    length,
                                    tick_ms,
-                                   output_context,
+                                   &output_context,
                                    EscTelemetry_ContextIsValid(
-                                       output_context)) == 0U)
+                                       output_context.output_context)) == 0U)
     {
         return 0U;
     }
@@ -475,20 +537,21 @@ void EscTelemetry_RecordBytes(const uint8_t *data,
                               uint32_t received_tick_ms)
 {
     EscTelemetryIrqState_t irq_state;
-    const uint32_t output_context = EscTelemetry_GetOutputContext();
+    EscTelemetryOutputContext_t output_context;
 
     if (data == NULL || length == 0U)
     {
         return;
     }
 
+    EscTelemetry_GetOutputContextSnapshot(&output_context);
     irq_state = esc_telemetry_enter_critical();
     if (esc_telemetry_push_pending(data,
                                    length,
                                    received_tick_ms,
-                                   output_context,
+                                   &output_context,
                                    EscTelemetry_ContextIsValid(
-                                       output_context)) == 0U)
+                                       output_context.output_context)) == 0U)
     {
         esc_telemetry_invalidate_locked(
             received_tick_ms,
@@ -538,13 +601,21 @@ static uint8_t esc_telemetry_pop_pending(EscTelemetryPendingChunk_t *chunk)
 }
 
 static void esc_telemetry_record_byte_meta(uint32_t tick_ms,
-                                           uint32_t output_context,
+                                           const EscTelemetryOutputContext_t *output_context,
                                            uint8_t context_valid)
 {
     (void)tick_ms;
 
-    s_recent_output_context[s_recent_byte_meta_next] =
-        (context_valid != 0U) ? output_context : 0UL;
+    if (context_valid != 0U && output_context != NULL)
+    {
+        s_recent_output_context[s_recent_byte_meta_next] = *output_context;
+    }
+    else
+    {
+        memset(&s_recent_output_context[s_recent_byte_meta_next],
+               0,
+               sizeof(s_recent_output_context[s_recent_byte_meta_next]));
+    }
     s_recent_byte_meta_next =
         (s_recent_byte_meta_next + 1U) % ESC_FE32_FRAME_LEN;
     if (s_recent_byte_meta_count < ESC_FE32_FRAME_LEN)
@@ -553,14 +624,15 @@ static void esc_telemetry_record_byte_meta(uint32_t tick_ms,
     }
 }
 
-static uint8_t esc_telemetry_collect_frame_context(uint32_t *output_context)
+static uint8_t esc_telemetry_collect_frame_context(
+    EscTelemetryOutputContext_t *output_context)
 {
     uint32_t source = 0UL;
     size_t index;
 
     if (output_context != NULL)
     {
-        *output_context = 0UL;
+        memset(output_context, 0, sizeof(*output_context));
     }
     if (s_recent_byte_meta_count < ESC_FE32_FRAME_LEN)
     {
@@ -569,7 +641,8 @@ static uint8_t esc_telemetry_collect_frame_context(uint32_t *output_context)
 
     for (index = 0U; index < ESC_FE32_FRAME_LEN; ++index)
     {
-        const uint32_t context = s_recent_output_context[index];
+        const uint32_t context =
+            s_recent_output_context[index].output_context;
         const uint32_t context_source = EscTelemetry_ContextSource(context);
 
         if (context_source == 0UL)
@@ -596,7 +669,7 @@ static uint8_t esc_telemetry_collect_frame_context(uint32_t *output_context)
 static void esc_telemetry_enqueue_observed_locked(
     const EscFe32Sample_t *sample,
     uint32_t receive_epoch,
-    uint32_t output_context)
+    const EscTelemetryOutputContext_t *output_context)
 {
     EscTelemetryObservedSample_t *observed;
     size_t next_depth;
@@ -620,7 +693,8 @@ static void esc_telemetry_enqueue_observed_locked(
     observed->sample = *sample;
     observed->receive_epoch = receive_epoch;
     observed->delivery_epoch = s_delivery_epoch;
-    observed->output_context = output_context;
+    observed->output_context = output_context->output_context;
+    observed->output_metadata = output_context->output_metadata;
     s_observed_tail =
         (s_observed_tail + 1U) % ESC_TELEMETRY_OBSERVED_SAMPLE_QUEUE_LEN;
     s_observed_count++;
@@ -634,10 +708,15 @@ static void esc_telemetry_enqueue_observed_locked(
 static void esc_telemetry_account_observed_context_locked(
     const EscFe32Sample_t *sample,
     uint32_t receive_epoch,
-    uint32_t output_context,
+    const EscTelemetryOutputContext_t *output_context,
     uint8_t context_valid)
 {
-    const uint32_t source = EscTelemetry_ContextSource(output_context);
+    const uint32_t source =
+        EscTelemetry_ContextSource(output_context->output_context);
+    const uint8_t observable =
+        (EscTelemetry_ContextRcActive(output_context->output_context) != 0U ||
+         EscTelemetry_MetadataAutoContext(output_context->output_metadata) != 0U) ?
+        1U : 0U;
 
     if (context_valid == 0U || source == 0UL)
     {
@@ -661,7 +740,7 @@ static void esc_telemetry_account_observed_context_locked(
         s_last_observed_source_valid = 1U;
     }
 
-    if (EscTelemetry_ContextRcActive(output_context) == 0U)
+    if (observable == 0U)
     {
         s_diagnostics.observed_samples_discarded++;
         return;
@@ -674,7 +753,7 @@ static void esc_telemetry_account_observed_context_locked(
 
 static void esc_telemetry_publish_sample(const EscFe32Sample_t *sample,
                                          uint32_t receive_epoch,
-                                         uint32_t output_context,
+                                         const EscTelemetryOutputContext_t *output_context,
                                          uint8_t context_valid)
 {
     if (sample == NULL)
@@ -705,14 +784,14 @@ static void esc_telemetry_publish_sample(const EscFe32Sample_t *sample,
 
 static uint8_t esc_telemetry_process_received_byte(uint8_t byte,
                                                    uint32_t received_tick_ms,
-                                                   uint32_t output_context,
+                                                   const EscTelemetryOutputContext_t *output_context,
                                                    uint8_t context_valid)
 {
     EscFe32Sample_t sample;
     size_t emitted;
     uint32_t epoch_before;
     uint32_t epoch_after;
-    uint32_t frame_context = 0UL;
+    EscTelemetryOutputContext_t frame_context;
     uint8_t frame_context_valid;
 
     esc_telemetry_reset_parser_if_requested();
@@ -746,22 +825,40 @@ static uint8_t esc_telemetry_process_received_byte(uint8_t byte,
         esc_telemetry_collect_frame_context(&frame_context);
     esc_telemetry_publish_sample(&sample,
                                  epoch_after,
-                                 frame_context,
+                                 &frame_context,
                                  frame_context_valid);
     return 1U;
+}
+
+uint8_t EscTelemetry_ProcessReceivedByteWithContext(
+    uint8_t byte,
+    uint32_t received_tick_ms,
+    const EscTelemetryOutputContext_t *output_context)
+{
+    const uint8_t context_valid =
+        (output_context != NULL &&
+         EscTelemetry_ContextIsValid(output_context->output_context) != 0U) ?
+        1U : 0U;
+
+    return esc_telemetry_process_received_byte(byte,
+                                               received_tick_ms,
+                                               output_context,
+                                               context_valid);
 }
 
 uint8_t EscTelemetry_ProcessReceivedByte(uint8_t byte,
                                          uint32_t received_tick_ms,
                                          uint32_t output_context)
 {
-    const uint8_t context_valid =
-        EscTelemetry_ContextIsValid(output_context);
+    EscTelemetryOutputContext_t tagged_context;
 
-    return esc_telemetry_process_received_byte(byte,
-                                               received_tick_ms,
-                                               output_context,
-                                               context_valid);
+    tagged_context.output_context = output_context;
+    tagged_context.output_metadata =
+        (EscTelemetry_ContextRcActive(output_context) != 0U) ?
+        (uint32_t)ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT : 0UL;
+    return EscTelemetry_ProcessReceivedByteWithContext(byte,
+                                                       received_tick_ms,
+                                                       &tagged_context);
 }
 
 void EscTelemetry_ProcessPending(void)
@@ -793,7 +890,7 @@ void EscTelemetry_ProcessPending(void)
             (void)esc_telemetry_process_received_byte(
                 chunk.data[index],
                 chunk.received_tick_ms,
-                chunk.output_context,
+                &chunk.output_context,
                 chunk.output_context_valid);
             epoch_after = esc_telemetry_get_epoch();
             if (epoch_after != epoch_before ||
@@ -818,12 +915,25 @@ void EscTelemetry_ProcessPending(void)
     esc_telemetry_exit_critical(irq_state);
 }
 
-uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us,
-                                           uint8_t rc_active)
+static uint8_t esc_telemetry_prepare_output_context(
+    uint16_t pwm_us,
+    uint8_t rc_active,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    uint8_t auto_context,
+    EscTelemetryPreparedOutputContext_t *prepared)
 {
     uint32_t generation;
     uint32_t context;
+    uint32_t metadata;
+    uint8_t next_slot;
     const uint8_t rc_flag = (rc_active != 0U) ? 1U : 0U;
+
+    if (prepared == NULL)
+    {
+        return 0U;
+    }
+
     EscTelemetryIrqState_t irq_state = esc_telemetry_enter_critical();
 
     if (s_output_context_generation_valid == 0U)
@@ -846,16 +956,113 @@ uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us,
     context = ((uint32_t)pwm_us & ESC_TELEMETRY_CONTEXT_PWM_MASK) |
         (rc_flag != 0U ? ESC_TELEMETRY_CONTEXT_RC_ACTIVE_MASK : 0UL) |
         (generation << ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT);
-    s_current_output_context = context;
+    metadata = esc_telemetry_pack_output_metadata(purpose,
+                                                  session_id,
+                                                  auto_context);
+    next_slot = (uint8_t)(s_current_output_context_slot ^ 1U);
+    s_output_context_slots[next_slot].output_context = context;
+    s_output_context_slots[next_slot].output_metadata = metadata;
+    prepared->output_context = context;
+    prepared->output_metadata = metadata;
+    prepared->slot = (uint32_t)next_slot;
     s_diagnostics.output_context_updates++;
     s_diagnostics.output_context_generation = generation;
     esc_telemetry_exit_critical(irq_state);
-    return context;
+    return 1U;
+}
+
+uint8_t EscTelemetry_PrepareOutputContext(
+    uint16_t pwm_us,
+    uint8_t rc_active,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    EscTelemetryPreparedOutputContext_t *prepared)
+{
+    const uint8_t auto_context =
+        (purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT) ? 0U : 1U;
+
+    return esc_telemetry_prepare_output_context(pwm_us,
+                                                rc_active,
+                                                purpose,
+                                                session_id,
+                                                auto_context,
+                                                prepared);
+}
+
+void EscTelemetry_CommitOutputContext(
+    const EscTelemetryPreparedOutputContext_t *prepared)
+{
+    if (prepared == NULL || prepared->slot >= 2UL)
+    {
+        return;
+    }
+
+    esc_telemetry_data_memory_barrier();
+    s_current_output_context_slot = (uint8_t)prepared->slot;
+}
+
+uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us,
+                                           uint8_t rc_active)
+{
+    const EscTelemetryOutputPurpose_t purpose =
+        (rc_active != 0U) ? ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT :
+        ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL;
+    EscTelemetryPreparedOutputContext_t prepared;
+
+    if (esc_telemetry_prepare_output_context(pwm_us,
+                                             rc_active,
+                                             purpose,
+                                             0UL,
+                                             0U,
+                                             &prepared) == 0U)
+    {
+        return 0UL;
+    }
+    EscTelemetry_CommitOutputContext(&prepared);
+    return prepared.output_context;
+}
+
+uint32_t EscTelemetry_PublishAutoOutputContext(
+    uint16_t pwm_us,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id)
+{
+    EscTelemetryPreparedOutputContext_t prepared;
+
+    if (esc_telemetry_prepare_output_context(pwm_us,
+                                             0U,
+                                             purpose,
+                                             session_id,
+                                             1U,
+                                             &prepared) == 0U)
+    {
+        return 0UL;
+    }
+    EscTelemetry_CommitOutputContext(&prepared);
+    return prepared.output_context;
 }
 
 uint32_t EscTelemetry_GetOutputContext(void)
 {
-    return s_current_output_context;
+    EscTelemetryOutputContext_t output_context;
+
+    EscTelemetry_GetOutputContextSnapshot(&output_context);
+    return output_context.output_context;
+}
+
+void EscTelemetry_GetOutputContextSnapshot(
+    EscTelemetryOutputContext_t *output_context)
+{
+    uint8_t slot;
+
+    if (output_context == NULL)
+    {
+        return;
+    }
+
+    slot = s_current_output_context_slot;
+    esc_telemetry_data_memory_barrier();
+    *output_context = s_output_context_slots[slot];
 }
 
 size_t EscTelemetry_PendingSamples(void)

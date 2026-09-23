@@ -19,6 +19,19 @@ extern "C" {
 #define ESC_TELEMETRY_CONTEXT_RC_ACTIVE_MASK 0x00001000UL
 #define ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT 13U
 #define ESC_TELEMETRY_CONTEXT_SOURCE_MASK 0xFFFFE000UL
+#define ESC_TELEMETRY_METADATA_PURPOSE_MASK 0x00000007UL
+#define ESC_TELEMETRY_METADATA_SESSION_SHIFT 3U
+#define ESC_TELEMETRY_METADATA_SESSION_MASK 0x7FFFFFF8UL
+#define ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK 0x80000000UL
+
+typedef enum
+{
+    ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL = 0,
+    ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT = 1,
+    ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST = 2,
+    ESC_TELEMETRY_OUTPUT_PURPOSE_REVERSE_REQUEST = 3,
+    ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE = 4
+} EscTelemetryOutputPurpose_t;
 
 typedef enum
 {
@@ -52,7 +65,21 @@ typedef struct
     uint32_t receive_epoch;
     uint32_t delivery_epoch;
     uint32_t output_context;
+    uint32_t output_metadata;
 } EscTelemetryObservedSample_t;
+
+typedef struct
+{
+    uint32_t output_context;
+    uint32_t output_metadata;
+} EscTelemetryOutputContext_t;
+
+typedef struct
+{
+    uint32_t output_context;
+    uint32_t output_metadata;
+    uint32_t slot;
+} EscTelemetryPreparedOutputContext_t;
 
 typedef struct
 {
@@ -117,6 +144,10 @@ void EscTelemetry_RecordRxError(uint32_t tick_ms, uint32_t error_flags);
 uint8_t EscTelemetry_ProcessReceivedByte(uint8_t byte,
                                          uint32_t received_tick_ms,
                                          uint32_t output_context);
+uint8_t EscTelemetry_ProcessReceivedByteWithContext(
+    uint8_t byte,
+    uint32_t received_tick_ms,
+    const EscTelemetryOutputContext_t *output_context);
 void EscTelemetry_ProcessPending(void);
 uint8_t EscTelemetry_GetSnapshot(EscTelemetrySnapshot_t *snapshot);
 uint8_t EscTelemetry_GetFreshSample(uint32_t now_tick_ms,
@@ -124,13 +155,31 @@ uint8_t EscTelemetry_GetFreshSample(uint32_t now_tick_ms,
                                     EscFe32Sample_t *sample);
 void EscTelemetry_GetDiagnostics(EscTelemetryDiagnostics_t *diagnostics);
 void EscTelemetry_GetReceiverHealth(EscTelemetryReceiverHealth_t *health);
+uint8_t EscTelemetry_PrepareOutputContext(
+    uint16_t pwm_us,
+    uint8_t rc_active,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    EscTelemetryPreparedOutputContext_t *prepared);
+void EscTelemetry_CommitOutputContext(
+    const EscTelemetryPreparedOutputContext_t *prepared);
 uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us,
                                            uint8_t rc_active);
+uint32_t EscTelemetry_PublishAutoOutputContext(
+    uint16_t pwm_us,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id);
 uint32_t EscTelemetry_GetOutputContext(void);
+void EscTelemetry_GetOutputContextSnapshot(
+    EscTelemetryOutputContext_t *output_context);
 uint16_t EscTelemetry_ContextPwm(uint32_t output_context);
 uint8_t EscTelemetry_ContextRcActive(uint32_t output_context);
 uint32_t EscTelemetry_ContextSource(uint32_t output_context);
 uint8_t EscTelemetry_ContextIsValid(uint32_t output_context);
+EscTelemetryOutputPurpose_t EscTelemetry_MetadataPurpose(
+    uint32_t output_metadata);
+uint32_t EscTelemetry_MetadataSession(uint32_t output_metadata);
+uint8_t EscTelemetry_MetadataAutoContext(uint32_t output_metadata);
 size_t EscTelemetry_PendingSamples(void);
 uint8_t EscTelemetry_PopSample(EscTelemetryObservedSample_t *sample);
 void EscTelemetry_DiscardSamples(void);

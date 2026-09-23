@@ -119,38 +119,39 @@ extern volatile uint32_t g_orin_ackermann_track_width_mm;
 extern volatile uint32_t g_orin_ackermann_wheel_radius_mm;
 extern volatile uint32_t g_orin_ackermann_max_steering_millirad;
 extern volatile uint32_t g_orin_esc_center_us;
-extern volatile uint32_t g_orin_esc_forward_max_us;
-extern volatile uint32_t g_orin_esc_reverse_max_us;
 extern volatile uint32_t g_orin_servo_center_us;
 extern volatile uint32_t g_orin_servo_range_us;
-extern volatile float g_esc_tracking_brake_kp;
-extern volatile float g_esc_tracking_brake_max;
-extern volatile float g_esc_tracking_brake_enter_error_mps;
-extern volatile float g_esc_tracking_brake_release_error_mps;
 extern volatile float g_esc_motion_stopped_speed_threshold_mps;
 extern volatile uint32_t g_esc_motion_stopped_min_samples;
 extern volatile uint32_t g_esc_motion_stopped_min_coverage_ms;
 extern volatile float g_esc_low_gear_wheel_rpm_per_raw;
 extern volatile uint32_t g_esc_speed_fresh_timeout_ms;
-extern volatile float g_mode2_fwd_to_rev_brake_request;
-extern volatile float g_mode2_rev_to_fwd_brake_request;
-extern volatile uint32_t g_mode2_fwd_to_rev_brake_hold_ms;
-extern volatile uint32_t g_mode2_rev_to_fwd_brake_hold_ms;
-extern volatile uint32_t g_mode2_drive_neutral_dwell_ms;
-extern volatile uint32_t g_mode2_fwd_to_rev_qualify_delta_us;
-extern volatile uint32_t g_mode2_rev_to_fwd_qualify_delta_us;
-extern volatile uint32_t g_mode2_fwd_to_rev_brake_full_pwm_us;
-extern volatile uint32_t g_mode2_rev_to_fwd_brake_full_pwm_us;
-extern volatile uint32_t g_orin_accel_limit_mmps2;
 extern volatile uint32_t g_orin_steering_rate_limit_mradps;
-extern volatile uint32_t g_speed_pi_enable;
-extern volatile float g_speed_pi_kp;
-extern volatile float g_speed_pi_ki;
-extern volatile uint32_t g_speed_pi_trim_limit_us;
-extern volatile int32_t g_speed_pi_trim_us;
-extern volatile int32_t g_speed_pi_final_us;
-extern volatile float g_speed_pi_integral;
-extern volatile uint32_t g_speed_pi_saturated;
+extern volatile float g_speed_pid_kp;
+extern volatile float g_speed_pid_ki;
+extern volatile float g_speed_pid_kd;
+extern volatile uint32_t g_speed_pid_derivative_tau_ms;
+extern volatile uint32_t g_speed_pid_tracking_tau_ms;
+extern volatile float g_speed_pid_target_mps;
+extern volatile float g_speed_pid_feedback_mps;
+extern volatile float g_speed_pid_error_mps;
+extern volatile float g_speed_pid_integral_us;
+extern volatile float g_speed_pid_raw_output_us;
+extern volatile uint32_t g_speed_pid_final_us;
+extern volatile uint32_t g_speed_pid_feedback_valid;
+extern volatile uint32_t g_speed_pid_saturated;
+extern volatile uint32_t g_auto_brake_min_us;
+extern volatile float g_auto_brake_enter_error_mps;
+extern volatile float g_auto_brake_enter_ratio;
+extern volatile float g_auto_brake_release_error_mps;
+extern volatile float g_auto_brake_release_ratio;
+extern volatile uint32_t g_auto_coast_eval_ms;
+extern volatile uint32_t g_auto_coast_budget_ms;
+extern volatile uint32_t g_auto_brake_release_delay_ms;
+extern volatile uint32_t g_auto_action_ack_ms;
+extern volatile uint32_t g_auto_qualify_ms;
+extern volatile uint32_t g_auto_neutral_dwell_ms;
+extern volatile float g_auto_a_progress_mps2;
 
 QueueHandle_t g_xQueueROSserial = (QueueHandle_t)1;
 volatile hall_speed_state_t g_hall_speed_state;
@@ -178,6 +179,10 @@ static size_t s_observed_head;
 static size_t s_observed_count;
 static uint32_t s_delivery_epoch;
 static uint32_t s_output_context;
+static uint32_t s_output_metadata;
+static EscTelemetryOutputContext_t s_output_context_slots[2];
+static uint32_t s_prepared_output_context_sources[2];
+static uint8_t s_output_context_active_slot;
 static uint32_t s_output_context_source;
 static uint8_t s_output_context_rc_active;
 static uint8_t s_output_context_initialized;
@@ -279,39 +284,164 @@ static void clear_observed_sample_queue(void)
     s_observed_count = 0U;
 }
 
-static uint32_t pack_output_context(uint16_t pwm_us, uint8_t rc_active)
+static uint32_t pack_output_metadata(EscTelemetryOutputPurpose_t purpose,
+                                     uint32_t session_id,
+                                     uint8_t auto_context)
 {
-    return ((s_output_context_source << ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT) &
+    return ((uint32_t)purpose & ESC_TELEMETRY_METADATA_PURPOSE_MASK) |
+        ((session_id << ESC_TELEMETRY_METADATA_SESSION_SHIFT) &
+            ESC_TELEMETRY_METADATA_SESSION_MASK) |
+        ((auto_context != 0U) ? ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK : 0U);
+}
+
+static uint32_t next_output_context_source(uint8_t normalized_rc_active)
+{
+    uint32_t source = s_output_context_source;
+
+    if (s_output_context_initialized == 0U ||
+        normalized_rc_active != s_output_context_rc_active)
+    {
+        source++;
+        if (source == 0U)
+        {
+            source = 1U;
+        }
+    }
+
+    return source;
+}
+
+static uint32_t pack_output_context_for_source(uint16_t pwm_us,
+                                               uint8_t rc_active,
+                                               uint32_t source)
+{
+    return ((source << ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT) &
             ESC_TELEMETRY_CONTEXT_SOURCE_MASK) |
         ((rc_active != 0U) ? ESC_TELEMETRY_CONTEXT_RC_ACTIVE_MASK : 0U) |
         ((uint32_t)pwm_us & ESC_TELEMETRY_CONTEXT_PWM_MASK);
 }
 
-uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us, uint8_t rc_active)
+static uint8_t prepare_output_context_with_auto_context(
+    uint16_t pwm_us,
+    uint8_t rc_active,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    uint8_t auto_context,
+    EscTelemetryPreparedOutputContext_t *prepared)
 {
     const uint8_t normalized_rc_active = (rc_active != 0U) ? 1U : 0U;
+    const uint8_t next_slot = s_output_context_active_slot ^ 1U;
+    const uint32_t source = next_output_context_source(normalized_rc_active);
 
-    if (s_output_context_initialized == 0U ||
-        normalized_rc_active != s_output_context_rc_active)
+    if (prepared == NULL)
     {
-        s_output_context_source++;
-        if (s_output_context_source == 0U)
-        {
-            s_output_context_source = 1U;
-        }
-        s_output_context_rc_active = normalized_rc_active;
-        s_output_context_initialized = 1U;
+        return 0U;
     }
 
-    s_output_context = pack_output_context(pwm_us, normalized_rc_active);
+    prepared->output_context =
+        pack_output_context_for_source(pwm_us, normalized_rc_active, source);
+    prepared->output_metadata =
+        pack_output_metadata(purpose, session_id, auto_context);
+    prepared->slot = (uint32_t)next_slot;
+    s_output_context_slots[next_slot].output_context =
+        prepared->output_context;
+    s_output_context_slots[next_slot].output_metadata =
+        prepared->output_metadata;
+    s_prepared_output_context_sources[next_slot] = source;
+    s_output_context_source = source;
+    s_output_context_rc_active = normalized_rc_active;
+    s_output_context_initialized = 1U;
     s_esc_diagnostics.output_context_updates++;
-    s_esc_diagnostics.output_context_generation = s_output_context_source;
-    return s_output_context;
+    s_esc_diagnostics.output_context_generation = source;
+    return 1U;
+}
+
+uint8_t EscTelemetry_PrepareOutputContext(
+    uint16_t pwm_us,
+    uint8_t rc_active,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id,
+    EscTelemetryPreparedOutputContext_t *prepared)
+{
+    const uint8_t auto_context =
+        (purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT) ? 0U : 1U;
+
+    return prepare_output_context_with_auto_context(pwm_us,
+                                                   rc_active,
+                                                   purpose,
+                                                   session_id,
+                                                   auto_context,
+                                                   prepared);
+}
+
+void EscTelemetry_CommitOutputContext(
+    const EscTelemetryPreparedOutputContext_t *prepared)
+{
+    if (prepared == NULL || prepared->slot >= 2U)
+    {
+        return;
+    }
+
+    s_output_context_active_slot = (uint8_t)prepared->slot;
+    s_output_context = s_output_context_slots[s_output_context_active_slot].
+        output_context;
+    s_output_metadata = s_output_context_slots[s_output_context_active_slot].
+        output_metadata;
+}
+
+uint32_t EscTelemetry_PublishOutputContext(uint16_t pwm_us, uint8_t rc_active)
+{
+    const EscTelemetryOutputPurpose_t purpose =
+        (rc_active != 0U) ? ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT :
+        ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL;
+    EscTelemetryPreparedOutputContext_t prepared;
+
+    if (prepare_output_context_with_auto_context(pwm_us,
+                                                 rc_active,
+                                                 purpose,
+                                                 0U,
+                                                 0U,
+                                                 &prepared) == 0U)
+    {
+        return 0U;
+    }
+    EscTelemetry_CommitOutputContext(&prepared);
+    return prepared.output_context;
+}
+
+uint32_t EscTelemetry_PublishAutoOutputContext(
+    uint16_t pwm_us,
+    EscTelemetryOutputPurpose_t purpose,
+    uint32_t session_id)
+{
+    EscTelemetryPreparedOutputContext_t prepared;
+
+    if (prepare_output_context_with_auto_context(pwm_us,
+                                                 0U,
+                                                 purpose,
+                                                 session_id,
+                                                 1U,
+                                                 &prepared) == 0U)
+    {
+        return 0U;
+    }
+    EscTelemetry_CommitOutputContext(&prepared);
+    return prepared.output_context;
 }
 
 uint32_t EscTelemetry_GetOutputContext(void)
 {
     return s_output_context;
+}
+
+void EscTelemetry_GetOutputContextSnapshot(
+    EscTelemetryOutputContext_t *output_context)
+{
+    if (output_context != NULL)
+    {
+        output_context->output_context = s_output_context;
+        output_context->output_metadata = s_output_metadata;
+    }
 }
 
 uint16_t EscTelemetry_ContextPwm(uint32_t output_context)
@@ -334,6 +464,25 @@ uint32_t EscTelemetry_ContextSource(uint32_t output_context)
 uint8_t EscTelemetry_ContextIsValid(uint32_t output_context)
 {
     return (EscTelemetry_ContextSource(output_context) != 0U) ? 1U : 0U;
+}
+
+EscTelemetryOutputPurpose_t EscTelemetry_MetadataPurpose(
+    uint32_t output_metadata)
+{
+    return (EscTelemetryOutputPurpose_t)
+        (output_metadata & ESC_TELEMETRY_METADATA_PURPOSE_MASK);
+}
+
+uint32_t EscTelemetry_MetadataSession(uint32_t output_metadata)
+{
+    return (output_metadata & ESC_TELEMETRY_METADATA_SESSION_MASK) >>
+        ESC_TELEMETRY_METADATA_SESSION_SHIFT;
+}
+
+uint8_t EscTelemetry_MetadataAutoContext(uint32_t output_metadata)
+{
+    return ((output_metadata & ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK) != 0U) ?
+        1U : 0U;
 }
 
 size_t EscTelemetry_PendingSamples(void)
@@ -383,7 +532,8 @@ static void mock_esc_delivery_boundary(void)
     s_esc_diagnostics.observed_generation_boundaries++;
 }
 
-static void push_observed_current_snapshot(uint32_t output_context)
+static void push_observed_current_snapshot(uint32_t output_context,
+                                           uint32_t output_metadata)
 {
     size_t tail;
 
@@ -407,6 +557,7 @@ static void push_observed_current_snapshot(uint32_t output_context)
     s_observed_samples[tail].receive_epoch = s_esc_snapshot.receive_epoch;
     s_observed_samples[tail].delivery_epoch = s_delivery_epoch;
     s_observed_samples[tail].output_context = output_context;
+    s_observed_samples[tail].output_metadata = output_metadata;
     s_observed_count++;
     s_esc_diagnostics.observed_samples_queued++;
     if (s_observed_count > s_esc_diagnostics.observed_queue_depth_peak)
@@ -572,6 +723,12 @@ static void reset_esc_telemetry_mock(void)
     clear_observed_sample_queue();
     s_delivery_epoch = 1U;
     s_output_context = 0U;
+    s_output_metadata = 0U;
+    memset(s_output_context_slots, 0, sizeof(s_output_context_slots));
+    memset(s_prepared_output_context_sources,
+           0,
+           sizeof(s_prepared_output_context_sources));
+    s_output_context_active_slot = 0U;
     s_output_context_source = 0U;
     s_output_context_rc_active = 0U;
     s_output_context_initialized = 0U;
@@ -603,37 +760,33 @@ static void reset_tunables_to_defaults(void)
     g_orin_ackermann_wheel_radius_mm = APP_ORIN_ACKERMANN_WHEEL_RADIUS_MM;
     g_orin_ackermann_max_steering_millirad = APP_ORIN_ACKERMANN_MAX_STEERING_MRAD;
     g_orin_esc_center_us = APP_ORIN_ESC_CENTER_US;
-    g_orin_esc_forward_max_us = APP_ORIN_ESC_FORWARD_MAX_US;
-    g_orin_esc_reverse_max_us = APP_ORIN_ESC_REVERSE_MAX_US;
     g_orin_servo_center_us = APP_ORIN_SERVO_CENTER_US;
     g_orin_servo_range_us = APP_ORIN_SERVO_RANGE_US;
 
-    g_esc_tracking_brake_kp = APP_ESC_TRACKING_BRAKE_KP_DEFAULT;
-    g_esc_tracking_brake_max = APP_ESC_TRACKING_BRAKE_MAX_DEFAULT;
-    g_esc_tracking_brake_enter_error_mps = APP_ESC_TRACKING_BRAKE_ENTER_ERROR_MPS_DEFAULT;
-    g_esc_tracking_brake_release_error_mps = APP_ESC_TRACKING_BRAKE_RELEASE_ERROR_MPS_DEFAULT;
     g_esc_motion_stopped_speed_threshold_mps = APP_ESC_STOPPED_THRESHOLD_MPS_DEFAULT;
     g_esc_motion_stopped_min_samples = APP_ESC_STOPPED_MIN_SAMPLES_DEFAULT;
     g_esc_motion_stopped_min_coverage_ms = APP_ESC_STOPPED_MIN_COVERAGE_MS_DEFAULT;
     g_esc_low_gear_wheel_rpm_per_raw = APP_ESC_LOW_GEAR_WHEEL_RPM_PER_RAW_DEFAULT;
     g_esc_speed_fresh_timeout_ms = APP_ESC_SPEED_FRESH_TIMEOUT_MS_DEFAULT;
 
-    g_mode2_fwd_to_rev_brake_request = APP_MODE2_FWD_TO_REV_BRAKE_REQUEST_DEFAULT;
-    g_mode2_rev_to_fwd_brake_request = APP_MODE2_REV_TO_FWD_BRAKE_REQUEST_DEFAULT;
-    g_mode2_fwd_to_rev_brake_hold_ms = APP_MODE2_FWD_TO_REV_BRAKE_HOLD_MS_DEFAULT;
-    g_mode2_rev_to_fwd_brake_hold_ms = APP_MODE2_REV_TO_FWD_BRAKE_HOLD_MS_DEFAULT;
-    g_mode2_drive_neutral_dwell_ms = APP_MODE2_DRIVE_NEUTRAL_DWELL_MS_DEFAULT;
-    g_mode2_fwd_to_rev_qualify_delta_us = APP_MODE2_FWD_TO_REV_QUALIFY_DELTA_US_DEFAULT;
-    g_mode2_rev_to_fwd_qualify_delta_us = APP_MODE2_REV_TO_FWD_QUALIFY_DELTA_US_DEFAULT;
-    g_mode2_fwd_to_rev_brake_full_pwm_us = APP_MODE2_FWD_TO_REV_BRAKE_FULL_PWM_US_DEFAULT;
-    g_mode2_rev_to_fwd_brake_full_pwm_us = APP_MODE2_REV_TO_FWD_BRAKE_FULL_PWM_US_DEFAULT;
-
-    g_orin_accel_limit_mmps2 = APP_ORIN_ACCEL_LIMIT_MMPS2;
     g_orin_steering_rate_limit_mradps = APP_ORIN_STEERING_RATE_LIMIT_MRADPS;
-    g_speed_pi_enable = APP_SPEED_PI_ENABLE_DEFAULT;
-    g_speed_pi_kp = APP_SPEED_PI_KP_DEFAULT_US_PER_MPS;
-    g_speed_pi_ki = APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S;
-    g_speed_pi_trim_limit_us = APP_SPEED_PI_TRIM_LIMIT_US;
+    g_speed_pid_kp = APP_SPEED_PID_KP_DEFAULT_US_PER_MPS;
+    g_speed_pid_ki = APP_SPEED_PID_KI_DEFAULT_US_PER_MPS_S;
+    g_speed_pid_kd = APP_SPEED_PID_KD_DEFAULT_US_PER_MPS2;
+    g_speed_pid_derivative_tau_ms = APP_SPEED_PID_DERIVATIVE_TAU_MS;
+    g_speed_pid_tracking_tau_ms = APP_SPEED_PID_TRACKING_TAU_MS;
+    g_auto_brake_min_us = APP_AUTO_BRAKE_MIN_US;
+    g_auto_brake_enter_error_mps = APP_AUTO_BRAKE_ENTER_ERROR_MPS;
+    g_auto_brake_enter_ratio = APP_AUTO_BRAKE_ENTER_RATIO;
+    g_auto_brake_release_error_mps = APP_AUTO_BRAKE_RELEASE_ERROR_MPS;
+    g_auto_brake_release_ratio = APP_AUTO_BRAKE_RELEASE_RATIO;
+    g_auto_coast_eval_ms = APP_AUTO_COAST_EVAL_MS;
+    g_auto_coast_budget_ms = APP_AUTO_COAST_BUDGET_MS;
+    g_auto_brake_release_delay_ms = APP_AUTO_BRAKE_RELEASE_DELAY_MS;
+    g_auto_action_ack_ms = APP_AUTO_ACTION_ACK_MS;
+    g_auto_qualify_ms = APP_AUTO_QUALIFY_MS;
+    g_auto_neutral_dwell_ms = APP_AUTO_NEUTRAL_DWELL_MS;
+    g_auto_a_progress_mps2 = APP_AUTO_A_PROGRESS_MPS2;
 }
 
 static void reset_fixture(void)
@@ -681,20 +834,23 @@ static void enable_valid_esc_configs(void)
     g_esc_motion_stopped_speed_threshold_mps = 0.05f;
     g_esc_motion_stopped_min_samples = 2U;
     g_esc_motion_stopped_min_coverage_ms = 20U;
-    g_esc_tracking_brake_kp = 0.50f;
-    g_esc_tracking_brake_max = 0.70f;
-    g_esc_tracking_brake_enter_error_mps = 0.20f;
-    g_esc_tracking_brake_release_error_mps = 0.10f;
-
-    g_mode2_fwd_to_rev_brake_request = 1.00f;
-    g_mode2_rev_to_fwd_brake_request = 1.00f;
-    g_mode2_fwd_to_rev_brake_hold_ms = 40U;
-    g_mode2_rev_to_fwd_brake_hold_ms = 40U;
-    g_mode2_drive_neutral_dwell_ms = 40U;
-    g_mode2_fwd_to_rev_qualify_delta_us = 500U;
-    g_mode2_rev_to_fwd_qualify_delta_us = 500U;
-    g_mode2_fwd_to_rev_brake_full_pwm_us = ESC_PWM_MIN_PULSE_US;
-    g_mode2_rev_to_fwd_brake_full_pwm_us = ESC_PWM_MAX_PULSE_US;
+    g_speed_pid_kp = 100.0f;
+    g_speed_pid_ki = 0.0f;
+    g_speed_pid_kd = 0.0f;
+    g_speed_pid_derivative_tau_ms = 80U;
+    g_speed_pid_tracking_tau_ms = 100U;
+    g_auto_brake_min_us = 50U;
+    g_auto_brake_enter_error_mps = 0.20f;
+    g_auto_brake_enter_ratio = 0.10f;
+    g_auto_brake_release_error_mps = 0.05f;
+    g_auto_brake_release_ratio = 0.02f;
+    g_auto_coast_eval_ms = 40U;
+    g_auto_coast_budget_ms = 120U;
+    g_auto_brake_release_delay_ms = 40U;
+    g_auto_action_ack_ms = 120U;
+    g_auto_qualify_ms = 40U;
+    g_auto_neutral_dwell_ms = 40U;
+    g_auto_a_progress_mps2 = 0.05f;
 }
 
 static void load_esc_sample(uint32_t epoch,
@@ -735,7 +891,7 @@ static void set_esc_sample(uint32_t epoch,
                            uint8_t rpm_valid)
 {
     load_esc_sample(epoch, sample_id, received_tick_ms, erpm_candidate, rpm_valid);
-    push_observed_current_snapshot(s_output_context);
+    push_observed_current_snapshot(s_output_context, s_output_metadata);
 }
 
 static void set_esc_sample_with_state(uint32_t epoch,
@@ -764,7 +920,7 @@ static void set_esc_sample_with_state(uint32_t epoch,
         s_esc_snapshot.sample.state_raw = 255U;
         break;
     }
-    push_observed_current_snapshot(s_output_context);
+    push_observed_current_snapshot(s_output_context, s_output_metadata);
 }
 
 static void set_esc_sample_with_state_and_context(uint32_t epoch,
@@ -773,7 +929,8 @@ static void set_esc_sample_with_state_and_context(uint32_t epoch,
                                                   uint32_t erpm_candidate,
                                                   uint8_t rpm_valid,
                                                   EscFe32StateCandidate_t state,
-                                                  uint32_t output_context)
+                                                  uint32_t output_context,
+                                                  uint32_t output_metadata)
 {
     load_esc_sample(epoch, sample_id, received_tick_ms, erpm_candidate, rpm_valid);
     s_esc_snapshot.sample.state_candidate_valid = 1U;
@@ -794,7 +951,7 @@ static void set_esc_sample_with_state_and_context(uint32_t epoch,
         s_esc_snapshot.sample.state_raw = 255U;
         break;
     }
-    push_observed_current_snapshot(output_context);
+    push_observed_current_snapshot(output_context, output_metadata);
 }
 
 static void set_esc_neutral_sample(uint32_t sample_id, uint32_t tick_ms)
@@ -941,6 +1098,8 @@ static void send_serial_command(int16_t speed_mmps,
     s_queue_done_armed = 0U;
 }
 
+static void establish_auto_forward_tracking(void);
+
 static int test_idle_and_software_stop_use_center_not_zero(void)
 {
     reset_fixture();
@@ -959,6 +1118,57 @@ static int test_idle_and_software_stop_use_center_not_zero(void)
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
     EXPECT_EQ_U16(s_last_servo_pulse, APP_ORIN_SERVO_CENTER_US);
     EXPECT_TRUE(ServoBasic_IsOrinEmergencyActive() == 1U);
+
+    return 0;
+}
+
+static int test_invalid_esc_center_config_keeps_last_valid_neutral_output(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+
+    g_orin_esc_center_us = 1520U;
+    run_control_at(940U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1520U);
+
+    g_orin_esc_center_us = 0U;
+    run_control_at(960U);
+    EXPECT_EQ_U16(s_last_esc_pulse, 1520U);
+    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MIN_PULSE_US);
+
+    return 0;
+}
+
+static int test_disable_command_latches_one_neutral_cycle_even_if_enable_follows(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+
+    s_fake_tick_ms = 1000U;
+    ServoBasic_UpdateAckermannFromOrin(0.0f, 0.0f, 0U, 0U, 0U);
+    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_IsOrinAutoEnabled() == 1U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+
+    return 0;
+}
+
+static int test_software_stop_latches_one_neutral_cycle_even_if_enable_follows(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+
+    s_fake_tick_ms = 1000U;
+    ServoBasic_UpdateAckermannFromOrin(0.0f, 0.0f, 1U, 0U, 1U);
+    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    run_control_at(1000U);
+    EXPECT_TRUE(ServoBasic_IsOrinAutoEnabled() == 1U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
 
     return 0;
 }
@@ -1288,7 +1498,6 @@ static int test_steering_direction_limit_and_rate_limit(void)
     servo_basic_diagnostics_t diagnostics;
 
     reset_fixture();
-    ServoBasic_SetSpeedPiEnable(0U);
 
     s_fake_tick_ms = 1000U;
     ServoBasic_UpdateAckermannFromOrin(0.0f, 0.0f, 1U, 0U, 0U);
@@ -1339,12 +1548,12 @@ static int test_steering_direction_limit_and_rate_limit(void)
     return 0;
 }
 
-static int test_missing_esc_or_mode2_parameters_keep_propulsion_off(void)
+static int test_missing_esc_or_auto_parameters_keep_propulsion_off(void)
 {
     servo_basic_diagnostics_t diagnostics;
 
     reset_fixture();
-    g_mode2_fwd_to_rev_brake_request = 0.0f;
+    g_esc_low_gear_wheel_rpm_per_raw = 0.0f;
     set_esc_sample(1U, 1U, 1000U, 0U, 1U);
     s_fake_tick_ms = 1000U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
@@ -1353,12 +1562,13 @@ static int test_missing_esc_or_mode2_parameters_keep_propulsion_off(void)
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
     EXPECT_TRUE(ServoBasic_IsOrinAutoEnabled() == 1U);
     diagnostics = ServoBasic_GetDiagnostics();
-    EXPECT_TRUE(diagnostics.esc_motion_config_valid == 1U);
-    EXPECT_TRUE(diagnostics.mode2_config_valid == 0U);
+    EXPECT_TRUE(diagnostics.esc_motion_config_valid == 0U);
+    EXPECT_TRUE(diagnostics.mode2_config_valid != 0U);
+    EXPECT_TRUE(diagnostics.auto_propulsion_authorized == 0U);
 
     reset_fixture();
     enable_valid_esc_configs();
-    g_esc_tracking_brake_kp = 0.0f;
+    g_speed_pid_kp = 0.0f;
     establish_fresh_stop(1U, 1U, 960U);
     s_fake_tick_ms = 1000U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
@@ -1371,7 +1581,7 @@ static int test_missing_esc_or_mode2_parameters_keep_propulsion_off(void)
     return 0;
 }
 
-static int test_auto_requires_known_esc_action(void)
+static int test_auto_unknown_esc_action_keeps_output_neutral(void)
 {
     servo_basic_diagnostics_t diagnostics;
 
@@ -1391,7 +1601,6 @@ static int test_auto_requires_known_esc_action(void)
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
     diagnostics = ServoBasic_GetDiagnostics();
     EXPECT_TRUE(diagnostics.esc_action == SERVO_ESC_ACTION_UNKNOWN);
-    EXPECT_TRUE(diagnostics.auto_propulsion_authorized == 0U);
 
     return 0;
 }
@@ -1441,192 +1650,381 @@ static int test_data_task_exports_esc_action_in_status_flags(void)
     return 0;
 }
 
-static int test_feedforward_table_and_pi_microsecond_parameters(void)
+static void send_auto_command_at(float speed_mps, uint32_t tick_ms)
 {
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 960U);
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1562U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 960U);
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    g_orin_accel_limit_mmps2 = 100000U;
-    EXPECT_TRUE(g_speed_pi_enable == APP_SPEED_PI_ENABLE_DEFAULT);
-    EXPECT_TRUE(g_speed_pi_kp == APP_SPEED_PI_KP_DEFAULT_US_PER_MPS);
-    EXPECT_TRUE(g_speed_pi_ki == APP_SPEED_PI_KI_DEFAULT_US_PER_MPS_S);
-    EXPECT_TRUE(g_speed_pi_trim_limit_us == APP_SPEED_PI_TRIM_LIMIT_US);
-
-    establish_fresh_stop(1U, 1U, 960U);
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1574U);
-    EXPECT_EQ_I32(g_speed_pi_trim_us, 12);
-    EXPECT_TRUE(g_speed_pi_saturated == 1U);
-
-    ServoBasic_SetSpeedPiKp(1000.0f);
-    ServoBasic_SetSpeedPiKi(1000.0f);
-    ServoBasic_SetSpeedPiTrimLimitUs(1000U);
-    EXPECT_TRUE(g_speed_pi_kp == 120.0f);
-    EXPECT_TRUE(g_speed_pi_ki == 40.0f);
-    EXPECT_TRUE(g_speed_pi_trim_limit_us == 60U);
-
-    return 0;
+    s_fake_tick_ms = tick_ms;
+    ServoBasic_UpdateAckermannFromOrin(speed_mps, 0.0f, 1U, 0U, 0U);
 }
 
-static int test_operational_defaults_authorize_speed_control(void)
+static void establish_auto_forward_tracking(void)
+{
+    run_control_at(880U);
+    send_auto_command_at(1.0f, 900U);
+    run_control_at(900U);
+    set_esc_neutral_sample(1U, 920U);
+    run_control_at(920U);
+    set_esc_neutral_sample(2U, 940U);
+    run_control_at(940U);
+    set_esc_drive_sample(3U, 1020U, 3000U);
+    run_control_at(1020U);
+    set_esc_drive_sample(4U, 1040U, 3000U);
+    run_control_at(1040U);
+}
+
+static void establish_auto_reverse_tracking(void)
+{
+    establish_auto_forward_tracking();
+    send_auto_command_at(-1.0f, 1060U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
+    run_control_at(1060U);
+    set_esc_brake_sample(6U, 1080U, 3000U);
+    run_control_at(1080U);
+    set_esc_brake_sample(7U, 1100U, 0U);
+    run_control_at(1100U);
+    set_esc_brake_sample(8U, 1120U, 0U);
+    run_control_at(1120U);
+    set_esc_neutral_sample(9U, 1140U);
+    run_control_at(1140U);
+    set_esc_neutral_sample(10U, 1160U);
+    run_control_at(1160U);
+    set_esc_drive_sample(11U, 1180U, 3000U);
+    run_control_at(1180U);
+    set_esc_drive_sample(12U, 1200U, 3000U);
+    run_control_at(1200U);
+}
+
+static int test_startup_zero_feedback_uses_pid_physical_output(void)
 {
     servo_basic_control_snapshot_t snapshot;
 
     reset_fixture();
-    EXPECT_TRUE(g_orin_esc_forward_max_us == APP_ORIN_ESC_FORWARD_MAX_US);
-    EXPECT_TRUE(g_orin_esc_reverse_max_us == APP_ORIN_ESC_REVERSE_MAX_US);
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
 
-    set_esc_sample(1U, 1U, 1020U, 0U, 1U);
+    send_auto_command_at(1.0f, 1000U);
+    run_control_at(1000U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(3U, 1020U);
     run_control_at(1020U);
-    set_esc_sample(1U, 2U, 1120U, 0U, 1U);
-    run_control_at(1120U);
-    set_esc_sample(1U, 3U, 1220U, 0U, 1U);
-    run_control_at(1220U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
+
+    EXPECT_EQ_U16(s_last_esc_pulse, 1600U);
+    EXPECT_TRUE(g_speed_pid_feedback_valid != 0U);
+    EXPECT_TRUE(g_speed_pid_target_mps == 1.0f);
+    EXPECT_TRUE(g_speed_pid_feedback_mps == 0.0f);
+    EXPECT_TRUE(g_speed_pid_error_mps == 1.0f);
+    EXPECT_TRUE(g_speed_pid_raw_output_us == 100.0f);
+    EXPECT_EQ_U32(g_speed_pid_final_us, 1600U);
+    EXPECT_TRUE(g_speed_pid_saturated == 0U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
     EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid != 0U);
-
-    s_fake_tick_ms = 1240U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1240U);
-    run_control_at(1260U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.auto_propulsion_authorized != 0U);
-
-    set_esc_sample(1U, 4U, 1280U, 1000U, 1U);
-    run_control_at(1280U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.diagnostics.closed_loop_active != 0U);
-    EXPECT_TRUE(snapshot.esc_direction_known != 0U);
 
     return 0;
 }
 
-static int test_operational_defaults_apply_full_direction_change_brake(void)
+static int test_auto_event_observation_updates_feedback_without_writing_pwm(void)
 {
+    uint32_t esc_outputs_before;
+    uint32_t servo_outputs_before;
+    uint16_t esc_pulse_before;
+    servo_basic_observation_diagnostics_t before;
+    servo_basic_observation_diagnostics_t after;
+
     reset_fixture();
-    ServoBasic_SetSpeedPiEnable(0U);
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+    send_auto_command_at(1.0f, 1000U);
+    run_control_at(1000U);
 
-    run_control_at(680U);
-    set_esc_sample(1U, 1U, 700U, 0U, 1U);
-    run_control_at(700U);
-    set_esc_sample(1U, 2U, 800U, 0U, 1U);
-    run_control_at(800U);
-    set_esc_sample(1U, 3U, 900U, 0U, 1U);
+    before = ServoBasic_GetObservationDiagnostics();
+    esc_outputs_before = s_esc_output_count;
+    servo_outputs_before = s_servo_output_count;
+    esc_pulse_before = s_last_esc_pulse;
+
+    set_esc_drive_sample(3U, 1010U, 3000U);
+    run_esc_observation_at(1010U);
+    after = ServoBasic_GetObservationDiagnostics();
+
+    EXPECT_EQ_U32(s_esc_output_count, esc_outputs_before);
+    EXPECT_EQ_U32(s_servo_output_count, servo_outputs_before);
+    EXPECT_EQ_U16(s_last_esc_pulse, esc_pulse_before);
+    EXPECT_TRUE(after.samples_processed == before.samples_processed + 1U);
+    EXPECT_TRUE(g_speed_pid_feedback_valid != 0U);
+
+    return 0;
+}
+
+static int test_auto_requires_two_fresh_drive_samples_after_neutral_before_signing_speed(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+
+    reset_fixture();
+    enable_valid_esc_configs();
+    run_control_at(880U);
+    send_auto_command_at(1.0f, 900U);
     run_control_at(900U);
-
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    set_esc_neutral_sample(1U, 920U);
     run_control_at(920U);
+    set_esc_neutral_sample(2U, 940U);
     run_control_at(940U);
-    set_esc_sample(1U, 4U, 960U, 1000U, 1U);
-    run_control_at(960U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+
+    set_esc_drive_sample(3U, 1020U, 3000U);
+    run_control_at(1020U);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_valid != 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known == 0U);
+    EXPECT_TRUE(snapshot.signed_speed_valid == 0U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
+    set_esc_drive_sample(4U, 1040U, 3000U);
+    run_control_at(1040U);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known != 0U);
+    EXPECT_TRUE(snapshot.signed_speed_valid != 0U);
+    EXPECT_TRUE(snapshot.speed_mps > 0.0f);
     EXPECT_EQ_I32(s_last_hall_command_direction, 1);
 
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 5U, 980U, 1000U, 1U);
-    run_control_at(980U);
+    return 0;
+}
+
+static int test_high_target_saturates_at_physical_endpoint_without_feedforward_cap(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 900U);
+
+    send_auto_command_at(15.0f, 1000U);
+    run_control_at(1000U);
+    set_esc_neutral_sample(3U, 1020U);
+    run_control_at(1020U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
+
+    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
+    EXPECT_EQ_U32(g_speed_pid_final_us, ESC_PWM_MAX_PULSE_US);
+    EXPECT_TRUE(g_speed_pid_raw_output_us == 1500.0f);
+    EXPECT_TRUE(g_speed_pid_saturated != 0U);
+
+    return 0;
+}
+
+static int test_tracking_brake_releases_without_second_negative_before_drive_rearm(void)
+{
+    uint32_t status_bits;
+
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_auto_forward_tracking();
+
+    send_auto_command_at(1.0f, 1060U);
+    set_esc_drive_sample(5U, 1060U, 12000U);
+    run_control_at(1060U);
+    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
+    run_data_task_once(1060U);
+    status_bits = read_u32_be_from_frame(17U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_TRACKING_BRAKE_ACTIVE) != 0U);
+
+    set_esc_brake_sample(6U, 1080U, 6000U);
+    run_control_at(1080U);
+    EXPECT_TRUE(s_last_esc_pulse >= APP_ORIN_ESC_CENTER_US);
+
+    set_esc_neutral_sample(7U, 1100U);
+    run_control_at(1100U);
+    set_esc_neutral_sample(8U, 1120U);
+    run_control_at(1120U);
+    set_esc_neutral_sample(9U, 1140U);
+    run_control_at(1140U);
+    EXPECT_TRUE(s_last_esc_pulse >= APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MIN_PULSE_US);
+
+    return 0;
+}
+
+static int test_forward_to_reverse_requires_brake_stop_and_neutral_dwell_before_reverse(void)
+{
+    servo_basic_control_snapshot_t snapshot;
+
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_auto_forward_tracking();
+
+    send_auto_command_at(-1.0f, 1060U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
+    run_control_at(1060U);
     EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
     EXPECT_EQ_I32(s_last_hall_command_direction, 1);
 
+    set_esc_brake_sample(6U, 1080U, 3000U);
+    run_control_at(1080U);
+    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
+    set_esc_brake_sample(7U, 1100U, 0U);
+    run_control_at(1100U);
+    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
+    set_esc_brake_sample(8U, 1120U, 0U);
+    run_control_at(1120U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+
+    set_esc_neutral_sample(9U, 1140U);
+    run_control_at(1140U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(10U, 1160U);
+    run_control_at(1160U);
+    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse > ESC_PWM_MIN_PULSE_US);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known == 0U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
+
     return 0;
 }
 
-static int test_epoch_invalidation_immediately_blocks_and_recovers_on_fresh_stop(void)
+static int test_forward_to_reverse_ignores_old_context_brake_stop_samples(void)
 {
-    servo_basic_diagnostics_t diagnostics;
+    EscTelemetryOutputContext_t old_forward_context;
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 960U);
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    establish_auto_forward_tracking();
+    EscTelemetry_GetOutputContextSnapshot(&old_forward_context);
+
+    send_auto_command_at(-1.0f, 1060U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
+    run_control_at(1060U);
+    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
+
+    set_esc_sample_with_state_and_context(1U,
+                                          6U,
+                                          1080U,
+                                          0U,
+                                          1U,
+                                          ESC_FE32_STATE_CANDIDATE_BRAKE,
+                                          old_forward_context.output_context,
+                                          old_forward_context.output_metadata);
+    run_control_at(1080U);
+    set_esc_sample_with_state_and_context(1U,
+                                          7U,
+                                          1100U,
+                                          0U,
+                                          1U,
+                                          ESC_FE32_STATE_CANDIDATE_BRAKE,
+                                          old_forward_context.output_context,
+                                          old_forward_context.output_metadata);
+    run_control_at(1100U);
+    run_control_at(1160U);
+    EXPECT_TRUE(s_last_esc_pulse >= APP_ORIN_ESC_CENTER_US ||
+                s_last_esc_pulse == ESC_PWM_MIN_PULSE_US);
+    EXPECT_TRUE(s_last_esc_pulse != 1400U);
+
+    return 0;
+}
+
+static int test_reverse_to_forward_coasts_until_stopped_before_positive_output(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_auto_reverse_tracking();
+    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
+    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
+
+    send_auto_command_at(1.0f, 1220U);
+    set_esc_drive_sample(13U, 1220U, 3000U);
+    run_control_at(1220U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+
+    set_esc_neutral_sample(14U, 1240U);
+    run_control_at(1240U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(15U, 1260U);
+    run_control_at(1260U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(16U, 1280U);
+    run_control_at(1280U);
+    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse < ESC_PWM_MAX_PULSE_US);
+
+    return 0;
+}
+
+static int test_zero_target_cancels_pending_reverse_without_reverse_output(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_auto_forward_tracking();
+
+    send_auto_command_at(-1.0f, 1060U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
+    run_control_at(1060U);
+    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
+
+    send_auto_command_at(0.0f, 1080U);
+    set_esc_brake_sample(6U, 1080U, 2000U);
+    run_control_at(1080U);
+    set_esc_brake_sample(7U, 1100U, 0U);
+    run_control_at(1100U);
+    set_esc_brake_sample(8U, 1120U, 0U);
+    run_control_at(1120U);
+    run_control_at(1160U);
+
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse != 1400U);
+
+    return 0;
+}
+
+static int test_zero_ki_does_not_create_hidden_integral_or_output(void)
+{
+    reset_fixture();
+    enable_valid_esc_configs();
+    ServoBasic_SetSpeedPidGains(100.0f, 0.0f, 0.0f);
+    establish_fresh_stop(1U, 1U, 900U);
+
+    send_auto_command_at(1.0f, 1000U);
     run_control_at(1000U);
+    set_esc_neutral_sample(3U, 1020U);
     run_control_at(1020U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
+
+    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(g_speed_pid_raw_output_us > 0.0f);
+    EXPECT_TRUE(g_speed_pid_integral_us == 0.0f);
+    EXPECT_TRUE(g_speed_pid_saturated == 0U);
+
+    return 0;
+}
+
+static int test_delivery_gap_blocks_and_recovers_on_fresh_stop(void)
+{
+    servo_basic_observation_diagnostics_t before;
+    servo_basic_observation_diagnostics_t after;
+
+    reset_fixture();
+    enable_valid_esc_configs();
+    establish_fresh_stop(1U, 1U, 960U);
+    send_auto_command_at(1.0f, 1000U);
+    run_control_at(1000U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(3U, 1020U);
+    run_control_at(1020U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
 
-    set_esc_sample(2U, 3U, 1040U, 0U, 1U);
-    run_control_at(1040U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    diagnostics = ServoBasic_GetDiagnostics();
-    EXPECT_TRUE(diagnostics.esc_rx_invalidated == 1U);
-
-    set_esc_sample(2U, 4U, 1060U, 0U, 1U);
+    before = ServoBasic_GetObservationDiagnostics();
+    mock_esc_delivery_boundary();
     run_control_at(1060U);
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    after = ServoBasic_GetObservationDiagnostics();
+    EXPECT_EQ_U32(after.delivery_gaps, before.delivery_gaps + 1U);
 
     set_esc_sample(2U, 5U, 1080U, 0U, 1U);
     run_control_at(1080U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_sample(2U, 6U, 1100U, 0U, 1U);
     run_control_at(1100U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    return 0;
-}
-
-static int test_duplicate_sample_recomputes_p_without_advancing_i(void)
-{
-    int32_t trim_after_new_sample;
-    float integral_after_new_sample;
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiKp(0.0f);
-    ServoBasic_SetSpeedPiKi(40.0f);
-    establish_fresh_stop(1U, 1U, 900U);
-
-    set_esc_sample(1U, 3U, 1000U, 0U, 1U);
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    EXPECT_EQ_I32(g_speed_pi_trim_us, 0);
-
-    set_esc_sample(1U, 4U, 1100U, 0U, 1U);
-    run_control_at(1100U);
-    EXPECT_EQ_I32(g_speed_pi_trim_us, 0);
-
-    set_esc_sample(1U, 5U, 1200U, 0U, 1U);
-    run_control_at(1200U);
-    trim_after_new_sample = g_speed_pi_trim_us;
-    integral_after_new_sample = g_speed_pi_integral;
-    EXPECT_TRUE(trim_after_new_sample > 0);
-
-    run_control_at(1240U);
-    EXPECT_EQ_I32(g_speed_pi_trim_us, trim_after_new_sample);
-    EXPECT_TRUE(g_speed_pi_integral == integral_after_new_sample);
 
     return 0;
 }
@@ -1637,392 +2035,17 @@ static int test_tick_wrap_keeps_fresh_esc_sample_valid(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
     run_control_at(0xFFFFFFB0UL);
-    set_esc_sample(1U, 1U, 0xFFFFFFD0UL, 0U, 1U);
+    send_auto_command_at(1.0f, 0xFFFFFFD0UL);
     run_control_at(0xFFFFFFD0UL);
-    set_esc_sample(1U, 2U, 0xFFFFFFF0UL, 0U, 1U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_sample(1U, 1U, 0xFFFFFFF0UL, 0U, 1U);
     run_control_at(0xFFFFFFF0UL);
-
-    s_fake_tick_ms = 0x00000010UL;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    set_esc_sample(1U, 2U, 0x00000010UL, 0U, 1U);
     run_control_at(0x00000010UL);
-    run_control_at(0x00000030UL);
     diagnostics = ServoBasic_GetDiagnostics();
     EXPECT_TRUE(diagnostics.esc_sample_stale == 0U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    return 0;
-}
-
-static int test_high_target_uses_full_pwm_without_absolute_speed_guard(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(15.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    run_control_at(1150U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_FORWARD_MAX_US);
-
-    return 0;
-}
-
-static int test_tracking_brake_releases_to_drive_and_can_reenter(void)
-{
-    uint32_t status_bits;
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    set_esc_sample(1U, 3U, 1040U, 12000U, 1U);
-    run_control_at(1040U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_REVERSE_MAX_US);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-    run_data_task_once(1040U);
-    status_bits = read_u32_be_from_frame(17U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_CLOSED_LOOP_ACTIVE) != 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_TRACKING_BRAKE_ACTIVE) != 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_VEHICLE_DIRECTION_KNOWN) != 0U);
-
-    set_esc_sample(1U, 4U, 1060U, 6000U, 1U);
-    run_control_at(1060U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    run_data_task_once(1060U);
-    EXPECT_TRUE((read_u32_be_from_frame(17U) & STATUS_BIT_TRACKING_BRAKE_ACTIVE) == 0U);
-
-    set_esc_sample(1U, 5U, 1080U, 12000U, 1U);
-    run_control_at(1080U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_REVERSE_MAX_US);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-
-    return 0;
-}
-
-static int test_propulsion_outputs_keep_calibrated_endpoints_after_pi(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiKp(120.0f);
-    ServoBasic_SetSpeedPiTrimLimitUs(100U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(10.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    run_control_at(1060U);
-    run_control_at(1080U);
-    run_control_at(1100U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_FORWARD_MAX_US);
-    EXPECT_EQ_I32(g_speed_pi_final_us, APP_ORIN_ESC_FORWARD_MAX_US);
-    EXPECT_TRUE(g_speed_pi_saturated == 1U);
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(1U);
-    ServoBasic_SetSpeedPiKp(120.0f);
-    ServoBasic_SetSpeedPiTrimLimitUs(100U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    g_esc_tracking_brake_kp = 1.0f;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-
-    s_fake_tick_ms = 1060U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1060U);
-    set_esc_sample(1U, 4U, 1080U, 1000U, 1U);
-    run_control_at(1080U);
-    set_esc_sample(1U, 5U, 1100U, 1000U, 1U);
-    run_control_at(1100U);
-    set_esc_sample(1U, 6U, 1120U, 1000U, 1U);
-    run_control_at(1120U);
-    set_esc_sample(1U, 7U, 1140U, 0U, 1U);
-    run_control_at(1140U);
-    set_esc_sample(1U, 8U, 1160U, 0U, 1U);
-    run_control_at(1160U);
-    run_control_at(1200U);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-
-    ServoBasic_UpdateAckermannFromOrin(-4.5f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1220U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_REVERSE_MAX_US);
-    EXPECT_EQ_I32(g_speed_pi_final_us, APP_ORIN_ESC_REVERSE_MAX_US);
-    EXPECT_TRUE(g_speed_pi_saturated == 1U);
-
-    return 0;
-}
-
-static int test_invalid_brake_pwm_configs_disable_auto_propulsion(void)
-{
-    servo_basic_diagnostics_t diagnostics;
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    g_mode2_fwd_to_rev_brake_full_pwm_us = 1800U;
-    establish_fresh_stop(1U, 1U, 900U);
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    diagnostics = ServoBasic_GetDiagnostics();
-    EXPECT_TRUE(diagnostics.mode2_config_valid == 0U);
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    g_mode2_rev_to_fwd_brake_full_pwm_us = APP_ORIN_ESC_CENTER_US - 10U;
-    establish_fresh_stop(1U, 1U, 900U);
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    diagnostics = ServoBasic_GetDiagnostics();
-    EXPECT_TRUE(diagnostics.mode2_config_valid == 0U);
-
-    return 0;
-}
-
-static int test_brake_endpoint_below_qualification_delta_disables_auto(void)
-{
-    servo_basic_diagnostics_t diagnostics;
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    g_mode2_fwd_to_rev_brake_full_pwm_us = APP_ORIN_ESC_CENTER_US - 1U;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    diagnostics = ServoBasic_GetDiagnostics();
-    EXPECT_TRUE(diagnostics.mode2_config_valid == 0U);
-    EXPECT_TRUE(diagnostics.auto_propulsion_authorized == 0U);
-
-    return 0;
-}
-
-static int test_application_mode2_uses_asymmetric_esc_action_reversal(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    g_esc_tracking_brake_kp = 1.0f;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
-    run_control_at(1020U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    s_fake_tick_ms = 1040U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 5U, 1060U, 1000U, 1U);
-    run_control_at(1060U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 6U, 1080U, 1000U, 1U);
-    run_control_at(1080U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 7U, 1100U, 0U, 1U);
-    run_control_at(1100U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 8U, 1120U, 0U, 1U);
-    run_control_at(1120U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-
-    run_control_at(1160U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1430U);
-    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
-
-    s_fake_tick_ms = 1200U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 9U, 1200U, 1000U, 1U);
-    run_control_at(1200U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, -1);
-
-    set_esc_brake_sample(10U, 1220U, 500U);
-    run_control_at(1220U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MAX_PULSE_US);
-
-    set_esc_drive_sample(11U, 1240U, 1000U);
-    run_control_at(1240U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MAX_PULSE_US);
-
-    run_control_at(1260U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(s_last_esc_pulse <= APP_ORIN_ESC_FORWARD_MAX_US);
-    EXPECT_TRUE(s_last_esc_pulse != ESC_PWM_MAX_PULSE_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
-
-    return 0;
-}
-
-static int test_forward_command_clears_pending_reverse_ramp_before_arm_release(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
-
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    set_esc_sample(1U, 3U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
-
-    ServoBasic_UpdateAckermannFromOrin(-4.5f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1060U, 1000U, 1U);
-    run_control_at(1060U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
-
-    set_esc_sample(1U, 5U, 1080U, 0U, 1U);
-    run_control_at(1080U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
-    set_esc_sample(1U, 6U, 1100U, 0U, 1U);
-    run_control_at(1100U);
-    EXPECT_EQ_U16(s_last_esc_pulse, ESC_PWM_MIN_PULSE_US);
-    run_control_at(1120U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
-
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1140U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(s_last_esc_pulse >= APP_ORIN_ESC_CENTER_US);
-    run_control_at(1160U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_EQ_I32(s_last_hall_command_direction, 1);
-
-    return 0;
-}
-
-static int test_reversal_slew_never_reapplies_source_direction_after_stop(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
-
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1020U);
-    s_fake_tick_ms = 1240U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 3U, 1250U, 1000U, 1U);
-    run_control_at(1250U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1270U, 1000U, 1U);
-    run_control_at(1270U);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-
-    set_esc_sample(1U, 5U, 1290U, 0U, 1U);
-    run_control_at(1290U);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-    set_esc_sample(1U, 6U, 1310U, 0U, 1U);
-    run_control_at(1310U);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-
-    run_control_at(1330U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    run_control_at(1350U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-    run_control_at(1370U);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
-
-    return 0;
-}
-
-static int test_reverse_tracking_decel_brakes_actively(void)
-{
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    g_esc_tracking_brake_kp = 1.0f;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
-    run_control_at(1020U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    s_fake_tick_ms = 1040U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 5U, 1060U, 1000U, 1U);
-    run_control_at(1060U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 6U, 1080U, 1000U, 1U);
-    run_control_at(1080U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 7U, 1100U, 0U, 1U);
-    run_control_at(1100U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1000U);
-
-    set_esc_sample(1U, 8U, 1120U, 0U, 1U);
-    run_control_at(1120U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
-
-    run_control_at(1160U);
-    EXPECT_EQ_U16(s_last_esc_pulse, 1430U);
-
-    set_esc_sample(1U, 9U, 1180U, 12000U, 1U);
-    run_control_at(1180U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-    EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_FORWARD_MAX_US);
 
     return 0;
 }
@@ -2034,7 +2057,6 @@ static int test_data_task_reports_independent_hall_speed(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
     establish_fresh_stop(1U, 1U, 900U);
     run_data_task_once(950U);
     EXPECT_TRUE(s_base_telemetry_len == BASE_TELEMETRY_FRAME_LEN);
@@ -2046,16 +2068,20 @@ static int test_data_task_reports_independent_hall_speed(void)
     EXPECT_EQ_I32(read_i16_be_from_frame(7U), 0);
     EXPECT_EQ_I32(read_i16_be_from_frame(11U), 0);
 
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    send_auto_command_at(1.0f, 1000U);
     run_control_at(1000U);
-    run_control_at(1010U);
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
+    set_esc_neutral_sample(3U, 1020U);
     run_control_at(1020U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
+    run_control_at(1060U);
+    set_esc_drive_sample(6U, 1080U, 3000U);
+    run_control_at(1080U);
     g_hall_speed_state.event_count_total += 5;
     s_hall_speed_valid = 1U;
     s_hall_speed_mps = 0.75f;
-    run_data_task_once(1030U);
+    run_data_task_once(1090U);
     status_bits = read_u32_be_from_frame(17U);
     hall_speed_mmps = read_i32_be_from_frame(3U);
     EXPECT_TRUE((s_base_telemetry_frame[1] & TELEMETRY_FLAG_AUTO_ENABLED) != 0U);
@@ -2134,36 +2160,12 @@ static int test_data_task_reports_known_reverse_as_negative_esc_speed(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    g_esc_tracking_brake_kp = 1.0f;
-    establish_fresh_stop(1U, 1U, 900U);
-
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
-    run_control_at(1020U);
-
-    s_fake_tick_ms = 1040U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.0f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    set_esc_sample(1U, 5U, 1060U, 1000U, 1U);
-    run_control_at(1060U);
-    set_esc_sample(1U, 6U, 1080U, 1000U, 1U);
-    run_control_at(1080U);
-    set_esc_sample(1U, 7U, 1100U, 0U, 1U);
-    run_control_at(1100U);
-    set_esc_sample(1U, 8U, 1120U, 0U, 1U);
-    run_control_at(1120U);
-    run_control_at(1160U);
+    establish_auto_reverse_tracking();
     EXPECT_TRUE(s_last_esc_pulse < APP_ORIN_ESC_CENTER_US);
 
-    set_esc_sample(1U, 9U, 1180U, 3000U, 1U);
-    run_control_at(1180U);
-    run_data_task_once(1180U);
+    set_esc_drive_sample(13U, 1220U, 3000U);
+    run_control_at(1220U);
+    run_data_task_once(1220U);
     status_bits = read_u32_be_from_frame(17U);
     EXPECT_EQ_I32(read_i16_be_from_frame(7U), -509);
     EXPECT_TRUE((status_bits & STATUS_BIT_ESC_SPEED_MAGNITUDE_VALID) != 0U);
@@ -2178,7 +2180,7 @@ static int test_uplink_speed_uses_low_gear_raw_calibration_without_control_confi
     uint32_t status_bits;
 
     reset_fixture();
-    g_mode2_fwd_to_rev_brake_request = 0.0f;
+    g_speed_pid_kp = 0.0f;
     set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
     run_control_at(1000U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
@@ -2237,7 +2239,7 @@ static int test_uplink_speed_does_not_authorize_auto_propulsion(void)
     uint32_t status_bits;
 
     reset_fixture();
-    g_mode2_fwd_to_rev_brake_request = 0.0f;
+    g_speed_pid_kp = 0.0f;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
     set_esc_sample(1U, 1U, 1000U, 3000U, 1U);
     run_control_at(1000U);
@@ -2253,7 +2255,7 @@ static int test_uplink_speed_does_not_authorize_auto_propulsion(void)
     status_bits = read_u32_be_from_frame(17U);
     EXPECT_TRUE((status_bits & STATUS_BIT_AUTO_PROPULSION_AUTHORIZED) == 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_CLOSED_LOOP_ACTIVE) == 0U);
-    EXPECT_TRUE((status_bits & STATUS_BIT_MODE2_STATE_AMBIGUOUS) != 0U);
+    EXPECT_TRUE((status_bits & STATUS_BIT_MODE2_STATE_AMBIGUOUS) == 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_MODE2_CONTROL_INHIBITED) != 0U);
     EXPECT_TRUE((status_bits & STATUS_BIT_MODE2_CONFIG_VALID) == 0U);
 
@@ -2267,35 +2269,25 @@ static int test_data_task_stop_priority_clears_wire_speed_and_yaw(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    g_orin_accel_limit_mmps2 = 100000U;
-    g_esc_tracking_brake_kp = 1.0f;
-    establish_fresh_stop(1U, 1U, 900U);
+    establish_auto_forward_tracking();
 
-    s_fake_tick_ms = 1000U;
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.3f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
-    run_control_at(1020U);
-
-    s_fake_tick_ms = 1040U;
-    ServoBasic_UpdateAckermannFromOrin(-1.0f, 0.3f, 1U, 0U, 0U);
-    set_esc_sample(1U, 4U, 1040U, 1000U, 1U);
-    run_control_at(1040U);
-    set_esc_sample(1U, 5U, 1060U, 1000U, 1U);
+    s_fake_tick_ms = 1060U;
+    ServoBasic_UpdateAckermannFromOrin(0.0f, 0.3f, 1U, 1U, 0U);
+    set_esc_drive_sample(5U, 1060U, 3000U);
     run_control_at(1060U);
-    set_esc_sample(1U, 6U, 1080U, 1000U, 1U);
+    set_esc_brake_sample(6U, 1080U, 1000U);
     run_control_at(1080U);
-    set_esc_sample(1U, 7U, 1100U, 40U, 1U);
+    set_esc_brake_sample(7U, 1100U, 0U);
     run_control_at(1100U);
-    set_esc_sample(1U, 8U, 1120U, 40U, 1U);
+    set_esc_brake_sample(8U, 1120U, 0U);
     run_control_at(1120U);
 
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
     EXPECT_TRUE(snapshot.signed_speed_valid != 0U);
     EXPECT_TRUE(snapshot.speed_mps == 0.0f);
-    EXPECT_TRUE(snapshot.esc_direction_known == 0U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_valid == 0U);
+    EXPECT_EQ_I32(s_last_hall_command_direction, 0);
 
     run_data_task_once(1130U);
     status_bits = read_u32_be_from_frame(17U);
@@ -2314,23 +2306,22 @@ static int test_control_snapshot_copy_is_stable_across_later_control_tick(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
+    establish_auto_forward_tracking();
+    s_fake_tick_ms = 1060U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.2f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
+    run_control_at(1060U);
 
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&before) != 0U);
     EXPECT_TRUE(before.publish_sequence != 0U);
-    EXPECT_TRUE(before.control_tick_ms == 1010U);
+    EXPECT_TRUE(before.control_tick_ms == 1060U);
     EXPECT_TRUE(before.state.esc_pulse_us > APP_ORIN_ESC_CENTER_US);
 
     ServoBasic_UpdateAckermannFromOrin(0.0f, -0.2f, 1U, 1U, 0U);
-    run_control_at(1020U);
+    run_control_at(1080U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&after) != 0U);
     EXPECT_TRUE(after.publish_sequence > before.publish_sequence);
-    EXPECT_TRUE(after.control_tick_ms == 1020U);
-    EXPECT_TRUE(before.control_tick_ms == 1010U);
+    EXPECT_TRUE(after.control_tick_ms == 1080U);
+    EXPECT_TRUE(before.control_tick_ms == 1060U);
     EXPECT_TRUE(before.state.esc_pulse_us > APP_ORIN_ESC_CENTER_US);
     EXPECT_TRUE(before.steering_angle_rad > 0.0f);
 
@@ -2343,7 +2334,6 @@ static int test_control_snapshot_rx_invalidation_clears_valid_and_stop(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
     establish_fresh_stop(1U, 1U, 900U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
@@ -2371,23 +2361,31 @@ static int test_forward_recovery_requires_fresh_motion_before_signed_speed(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
     establish_fresh_stop(1U, 1U, 900U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
 
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
+    send_auto_command_at(1.0f, 1000U);
     run_control_at(1000U);
-    run_control_at(1010U);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    set_esc_neutral_sample(3U, 1020U);
+    run_control_at(1020U);
+    set_esc_neutral_sample(4U, 1040U);
+    run_control_at(1040U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.control_tick_ms == 1010U);
-    EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed == 0U);
+    EXPECT_TRUE(snapshot.control_tick_ms == 1040U);
+    EXPECT_TRUE(snapshot.esc_uplink_speed_valid == 0U);
+    EXPECT_TRUE(snapshot.esc_direction_known == 0U);
+
+    set_esc_drive_sample(5U, 1060U, 1000U);
+    run_control_at(1060U);
+    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.signed_speed_valid == 0U);
     EXPECT_TRUE(snapshot.esc_direction_known == 0U);
 
-    set_esc_sample(1U, 3U, 1020U, 1000U, 1U);
-    run_control_at(1020U);
+    set_esc_drive_sample(6U, 1080U, 1000U);
+    run_control_at(1080U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.signed_speed_valid != 0U);
     EXPECT_TRUE(snapshot.esc_direction_known != 0U);
@@ -2399,29 +2397,20 @@ static int test_forward_recovery_stops_on_command_or_feedback_timeout(void)
 {
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
+    establish_auto_forward_tracking();
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
 
-    set_esc_sample(1U, 3U, 1260U, 0U, 1U);
-    run_control_at(1260U);
+    run_control_at(1200U);
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-    run_control_at(1010U);
+    establish_auto_forward_tracking();
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
 
-    s_fake_tick_ms = 1260U;
+    s_fake_tick_ms = 1291U;
     ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1260U);
+    run_control_at(1291U);
     EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
 
     return 0;
@@ -2433,7 +2422,6 @@ static int test_invalidated_feedback_requires_post_boundary_stop_samples(void)
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
     establish_fresh_stop(1U, 1U, 900U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
     EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
@@ -2464,45 +2452,26 @@ static int test_invalidated_feedback_requires_post_boundary_stop_samples(void)
     return 0;
 }
 
-static int test_brake_pwm_mapping_change_requires_fresh_post_change_samples(void)
+static int test_pid_gain_change_clears_integrator_without_requiring_new_stop(void)
 {
     servo_basic_control_snapshot_t snapshot;
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiEnable(0U);
-    establish_fresh_stop(1U, 1U, 900U);
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(940U);
-    run_control_at(960U);
+    ServoBasic_SetSpeedPidGains(100.0f, 40.0f, 0.0f);
+    establish_auto_forward_tracking();
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
-
-    ServoBasic_UpdateAckermannFromOrin(0.0f, 0.0f, 0U, 0U, 0U);
-    g_mode2_fwd_to_rev_brake_full_pwm_us = APP_ORIN_ESC_CENTER_US - 1U;
-    run_control_at(1000U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid == 0U);
+    EXPECT_TRUE(snapshot.diagnostics.auto_propulsion_authorized != 0U);
 
-    g_mode2_fwd_to_rev_brake_full_pwm_us = APP_MODE2_FWD_TO_REV_BRAKE_FULL_PWM_US_DEFAULT;
-    set_esc_sample(1U, 3U, 1000U, 0U, 1U);
-    run_control_at(1020U);
-    EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.esc_feedback_valid == 0U);
-    EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed == 0U);
-
-    set_esc_sample(1U, 4U, 1040U, 0U, 1U);
-    run_control_at(1040U);
-    set_esc_sample(1U, 5U, 1060U, 0U, 1U);
+    ServoBasic_SetSpeedPidGains(50.0f, 0.0f, 0.0f);
     run_control_at(1060U);
     EXPECT_TRUE(ServoBasic_GetControlSnapshot(&snapshot) != 0U);
-    EXPECT_TRUE(snapshot.diagnostics.esc_stop_confirmed != 0U);
-
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1080U);
-    run_control_at(1100U);
+    EXPECT_TRUE(snapshot.diagnostics.mode2_config_valid != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.auto_propulsion_authorized != 0U);
+    EXPECT_TRUE(snapshot.diagnostics.closed_loop_active != 0U);
     EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(g_speed_pid_integral_us == 0.0f);
 
     return 0;
 }
@@ -2593,35 +2562,6 @@ static int test_rc_observation_does_not_write_outputs_in_rc_event_path(void)
     return 0;
 }
 
-static int test_rc_observation_is_noop_outside_rc_override(void)
-{
-    servo_basic_observation_diagnostics_t before;
-    servo_basic_observation_diagnostics_t after;
-    uint32_t esc_outputs_before;
-    uint32_t servo_outputs_before;
-    float integral_before;
-
-    reset_fixture();
-    enable_valid_esc_configs();
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(1000U);
-
-    before = ServoBasic_GetObservationDiagnostics();
-    esc_outputs_before = s_esc_output_count;
-    servo_outputs_before = s_servo_output_count;
-    integral_before = g_speed_pi_integral;
-    set_esc_drive_sample(1U, 1005U, 1000U);
-    run_esc_observation_at(1005U);
-    after = ServoBasic_GetObservationDiagnostics();
-
-    EXPECT_EQ_U32(after.samples_processed, before.samples_processed);
-    EXPECT_EQ_U32(s_esc_output_count, esc_outputs_before);
-    EXPECT_EQ_U32(s_servo_output_count, servo_outputs_before);
-    EXPECT_TRUE(g_speed_pi_integral == integral_before);
-
-    return 0;
-}
-
 static int test_rc_observation_keeps_forward_sign_through_neutral_action(void)
 {
     servo_basic_control_snapshot_t snapshot;
@@ -2680,7 +2620,7 @@ static int test_rc_observation_rejects_sample_from_prior_output_source(void)
 {
     servo_basic_observation_diagnostics_t before;
     servo_basic_observation_diagnostics_t after;
-    uint32_t old_context;
+    EscTelemetryOutputContext_t old_context;
 
     reset_fixture();
     enable_valid_esc_configs();
@@ -2688,7 +2628,7 @@ static int test_rc_observation_rejects_sample_from_prior_output_source(void)
     g_rc_debounce_smooth_div = 1U;
 
     establish_rc_forward_direction();
-    old_context = EscTelemetry_GetOutputContext();
+    EscTelemetry_GetOutputContextSnapshot(&old_context);
     (void)EscTelemetry_PublishOutputContext(APP_ORIN_ESC_CENTER_US, 0U);
     rc_apply_output_at(1600U, 1040U);
     before = ServoBasic_GetObservationDiagnostics();
@@ -2699,7 +2639,8 @@ static int test_rc_observation_rejects_sample_from_prior_output_source(void)
                                           3000U,
                                           1U,
                                           ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS,
-                                          old_context);
+                                          old_context.output_context,
+                                          old_context.output_metadata);
     run_esc_observation_at(1041U);
     after = ServoBasic_GetObservationDiagnostics();
 
@@ -2886,28 +2827,54 @@ static int test_servo_task_notification_keeps_absolute_20ms_deadline_across_wrap
     return 0;
 }
 
-static int test_speed_pi_uses_zero_dt_for_same_tick_and_wrap_delta(void)
+static int test_speed_pid_uses_wrap_delta_and_ignores_duplicate_feedback_for_i(void)
 {
     float integral_after_wrapped_sample;
 
     reset_fixture();
     enable_valid_esc_configs();
-    ServoBasic_SetSpeedPiKp(0.0f);
-    ServoBasic_SetSpeedPiKi(40.0f);
-    establish_fresh_stop(2U, 1U, 0xFFFFFFB0UL);
+    ServoBasic_SetSpeedPidGains(1.0f, 40.0f, 0.0f);
 
-    ServoBasic_UpdateAckermannFromOrin(1.0f, 0.0f, 1U, 0U, 0U);
-    run_control_at(0xFFFFFFF0UL);
-    run_control_at(0x00000010UL);
+    run_control_at(0xFFFFFF20UL);
+    send_auto_command_at(1.0f, 0xFFFFFF40UL);
+    run_control_at(0xFFFFFF40UL);
+    set_esc_sample(2U, 1U, 0xFFFFFF60UL, 0U, 1U);
+    run_control_at(0xFFFFFF60UL);
+    set_esc_sample(2U, 2U, 0xFFFFFF80UL, 0U, 1U);
+    run_control_at(0xFFFFFF80UL);
+    set_esc_sample_with_state(2U,
+                              3U,
+                              0xFFFFFFA0UL,
+                              3000U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS);
+    run_control_at(0xFFFFFFA0UL);
+    set_esc_sample_with_state(2U,
+                              4U,
+                              0xFFFFFFC0UL,
+                              3000U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS);
+    run_control_at(0xFFFFFFC0UL);
 
-    set_esc_sample(2U, 3U, 0x00000020UL, 0U, 1U);
+    set_esc_sample_with_state(2U,
+                              5U,
+                              0x00000020UL,
+                              3000U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS);
     run_control_at(0x00000020UL);
-    integral_after_wrapped_sample = g_speed_pi_integral;
+    integral_after_wrapped_sample = g_speed_pid_integral_us;
     EXPECT_TRUE(integral_after_wrapped_sample > 0.0f);
 
-    set_esc_sample(2U, 4U, 0x00000020UL, 0U, 1U);
+    set_esc_sample_with_state(2U,
+                              6U,
+                              0x00000020UL,
+                              3000U,
+                              1U,
+                              ESC_FE32_STATE_CANDIDATE_DRIVE_AMBIGUOUS);
     run_control_at(0x00000030UL);
-    EXPECT_TRUE(g_speed_pi_integral == integral_after_wrapped_sample);
+    EXPECT_TRUE(g_speed_pid_integral_us == integral_after_wrapped_sample);
 
     return 0;
 }
@@ -2916,6 +2883,18 @@ static int test_speed_pi_uses_zero_dt_for_same_tick_and_wrap_delta(void)
 int main(void)
 {
     if (test_idle_and_software_stop_use_center_not_zero() != 0)
+    {
+        return 1;
+    }
+    if (test_invalid_esc_center_config_keeps_last_valid_neutral_output() != 0)
+    {
+        return 1;
+    }
+    if (test_disable_command_latches_one_neutral_cycle_even_if_enable_follows() != 0)
+    {
+        return 1;
+    }
+    if (test_software_stop_latches_one_neutral_cycle_even_if_enable_follows() != 0)
     {
         return 1;
     }
@@ -2967,11 +2946,11 @@ int main(void)
     {
         return 1;
     }
-    if (test_missing_esc_or_mode2_parameters_keep_propulsion_off() != 0)
+    if (test_missing_esc_or_auto_parameters_keep_propulsion_off() != 0)
     {
         return 1;
     }
-    if (test_auto_requires_known_esc_action() != 0)
+    if (test_auto_unknown_esc_action_keeps_output_neutral() != 0)
     {
         return 1;
     }
@@ -2979,63 +2958,51 @@ int main(void)
     {
         return 1;
     }
-    if (test_feedforward_table_and_pi_microsecond_parameters() != 0)
+    if (test_startup_zero_feedback_uses_pid_physical_output() != 0)
     {
         return 1;
     }
-    if (test_operational_defaults_authorize_speed_control() != 0)
+    if (test_auto_event_observation_updates_feedback_without_writing_pwm() != 0)
     {
         return 1;
     }
-    if (test_operational_defaults_apply_full_direction_change_brake() != 0)
+    if (test_auto_requires_two_fresh_drive_samples_after_neutral_before_signing_speed() != 0)
     {
         return 1;
     }
-    if (test_epoch_invalidation_immediately_blocks_and_recovers_on_fresh_stop() != 0)
+    if (test_high_target_saturates_at_physical_endpoint_without_feedforward_cap() != 0)
     {
         return 1;
     }
-    if (test_duplicate_sample_recomputes_p_without_advancing_i() != 0)
+    if (test_tracking_brake_releases_without_second_negative_before_drive_rearm() != 0)
+    {
+        return 1;
+    }
+    if (test_forward_to_reverse_requires_brake_stop_and_neutral_dwell_before_reverse() != 0)
+    {
+        return 1;
+    }
+    if (test_forward_to_reverse_ignores_old_context_brake_stop_samples() != 0)
+    {
+        return 1;
+    }
+    if (test_reverse_to_forward_coasts_until_stopped_before_positive_output() != 0)
+    {
+        return 1;
+    }
+    if (test_zero_target_cancels_pending_reverse_without_reverse_output() != 0)
+    {
+        return 1;
+    }
+    if (test_zero_ki_does_not_create_hidden_integral_or_output() != 0)
+    {
+        return 1;
+    }
+    if (test_delivery_gap_blocks_and_recovers_on_fresh_stop() != 0)
     {
         return 1;
     }
     if (test_tick_wrap_keeps_fresh_esc_sample_valid() != 0)
-    {
-        return 1;
-    }
-    if (test_high_target_uses_full_pwm_without_absolute_speed_guard() != 0)
-    {
-        return 1;
-    }
-    if (test_tracking_brake_releases_to_drive_and_can_reenter() != 0)
-    {
-        return 1;
-    }
-    if (test_propulsion_outputs_keep_calibrated_endpoints_after_pi() != 0)
-    {
-        return 1;
-    }
-    if (test_invalid_brake_pwm_configs_disable_auto_propulsion() != 0)
-    {
-        return 1;
-    }
-    if (test_brake_endpoint_below_qualification_delta_disables_auto() != 0)
-    {
-        return 1;
-    }
-    if (test_application_mode2_uses_asymmetric_esc_action_reversal() != 0)
-    {
-        return 1;
-    }
-    if (test_forward_command_clears_pending_reverse_ramp_before_arm_release() != 0)
-    {
-        return 1;
-    }
-    if (test_reversal_slew_never_reapplies_source_direction_after_stop() != 0)
-    {
-        return 1;
-    }
-    if (test_reverse_tracking_decel_brakes_actively() != 0)
     {
         return 1;
     }
@@ -3087,7 +3054,7 @@ int main(void)
     {
         return 1;
     }
-    if (test_brake_pwm_mapping_change_requires_fresh_post_change_samples() != 0)
+    if (test_pid_gain_change_clears_integrator_without_requiring_new_stop() != 0)
     {
         return 1;
     }
@@ -3096,10 +3063,6 @@ int main(void)
         return 1;
     }
     if (test_rc_observation_does_not_write_outputs_in_rc_event_path() != 0)
-    {
-        return 1;
-    }
-    if (test_rc_observation_is_noop_outside_rc_override() != 0)
     {
         return 1;
     }
@@ -3139,7 +3102,7 @@ int main(void)
     {
         return 1;
     }
-    if (test_speed_pi_uses_zero_dt_for_same_tick_and_wrap_delta() != 0)
+    if (test_speed_pid_uses_wrap_delta_and_ignores_duplicate_feedback_for_i() != 0)
     {
         return 1;
     }

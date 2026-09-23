@@ -1,6 +1,6 @@
 # ESC观测与速度发布设计说明
 
-本文规定从PD15接收字节到RC有符号ESC速度、Hall方向提示及24字节上行相关字段的处理算法。给定相同的字节、接收时刻、PWM命令、控制源切换和配置，应得到相同的方向、停稳与有效性结果。
+本文规定从PD15接收字节到RC/AUTO观测、有符号ESC速度、Hall方向提示及24字节上行相关字段的处理算法。给定相同的字节、接收时刻、PWM命令、控制源切换和配置，应得到相同的方向、停稳与有效性结果。
 
 RC输入过滤及控制权仲裁负责提供“最终PWM”和“RC是否生效”两个输入；AUTO闭环属于独立模块，本文定义其共享接收接口和切换边界，不重定义其控制算法。系统结构见[ARCHITECTURE.md](ARCHITECTURE.md)，完整上下行布局见[INTERFACES.md](INTERFACES.md)。
 
@@ -15,7 +15,7 @@ RC输入过滤及控制权仲裁负责提供“最终PWM”和“RC是否生效�
 | RPM原始幅值 R | FE32字节13–14 | 无符号16位，小端；`FFFF`无效 |
 | ESC动作 S | FE32字节11 | 0=NEUTRAL，1=DRIVE，2=BRAKE，其他值无效 |
 | 速度幅值 v_abs | R及车辆配置 | 轮轴系数与轮胎半径换算后的非负速度 |
-| 方向 D | RC方向观测器 | 0=未知，+1=前进，−1=倒车；是推断量 |
+| 方向 D | 方向观测器；RC和AUTO各自独立实例 | 0=未知，+1=前进，−1=倒车；是推断量 |
 | 停稳 Z | 多份低速样本 | 低速样本数量及其接收时间跨度同时达标 |
 | 最终PWM P | C63A输出命令 | 软件提交的ESC脉宽，单位µs；不是PWM引脚回读 |
 
@@ -28,7 +28,7 @@ DRIVE不能单独区分前进/倒车；BRAKE不能单独确定车辆运动方向
 | 串口电平接口 | PD15，115200 / 8N1 | FE32输入 |
 | 合法帧长度 | 32字节 | FE32校验和解码 |
 | 字节环 | 256槽，实际最多255项 | ISR与接收任务交接，保留一个空槽判满 |
-| 完整样本FIFO | 8项 | RC按顺序消费；8项全部可用 |
+| 观测样本FIFO | 8项 | RC上下文或显式AUTO上下文按顺序消费；8项全部可用 |
 | 接收任务 | 每轮处理后延时2ms | 排空字节环、解析、通知 |
 | 控制计算周期 | 20ms | RC仲裁和PWM命令更新、AUTO计算 |
 | 上行周期 | 50ms | 发送最新控制快照 |
@@ -51,7 +51,8 @@ DRIVE不能单独区分前进/倒车；BRAKE不能单独确定车辆运动方向
 ByteItem:
     byte: u8
     received_ms: u32            // 本字节接收完成时刻
-    output_context: u32        // 同时读取的已提交软件命令
+    output_context: u32        // 同时读取的PWM/source上下文
+    output_metadata: u32       // 同时读取的purpose/session上下文
 
 Sample:
     sample_id: u32
@@ -67,10 +68,11 @@ ObservedSample:
     sample: Sample
     receive_epoch: u32
     delivery_epoch: u32
-    output_context: u32        // 合法帧首字节保存的上下文
+    output_context: u32        // 合法帧首字节保存的PWM/source上下文
+    output_metadata: u32       // 合法帧首字节保存的purpose/session上下文
 ```
 
-上下文打包公式：
+上下文由两个32位字组成。第一个字打包PWM、RC标志和source：
 
 ```text
 context = (source_generation << 13) | (rc_active << 12) | (P & 0xFFF)
@@ -79,7 +81,16 @@ rc_active = (context >> 12) & 1
 source_generation = context >> 13
 ```
 
-`source_generation`首次发布取1，只在RC标志改变时增加；超过19位范围后回到1。普通PWM变化不增加代号。代号0表示上下文尚未初始化。
+第二个字打包AUTO元数据：
+
+```text
+metadata = (auto_context << 31) | ((session_id & 0x0FFFFFFF) << 3) | purpose
+purpose = metadata & 0x7
+session_id = (metadata >> 3) & 0x0FFFFFFF
+auto_context = (metadata >> 31) & 1
+```
+
+`purpose`取`NEUTRAL / RC_DIRECT / FORWARD_REQUEST / REVERSE_REQUEST / FORWARD_BRAKE`。`source_generation`首次发布取1，只在RC标志改变时增加；超过19位范围后回到1。普通PWM、purpose或session变化不增加source。代号0表示上下文尚未初始化。
 
 ## 2. 接收、解码和样本交付
 
@@ -93,7 +104,7 @@ source_generation = context >> 13
 
 起始位半位处已回高视为伪起始位：计数后重新监听，不建立接收失效边界。停止位错误、采样迟到超过250个TIM5 tick、字节环溢出进入接收错误路径，由服务任务处理故障并建立接收边界。
 
-每个成功字节同时保存本地毫秒时刻和32位上下文。上下文读取必须是完整的单字读取。ISR不解析FE32、不调用RTOS、不更新方向状态。
+每个成功字节同时保存本地毫秒时刻和两个32位上下文字。输出侧先准备非活动槽里的PWM/source字和purpose/session字，再在同一个短PRIMASK临界区完成实际CCR写入与上下文槽索引提交；PD15 ISR固定读取已发布槽并复制两个字。该临界区只覆盖这段写CCR与提交索引的小序列，不改变RC输入捕获和TIM5位采样的设计。ISR不解析FE32、不调用RTOS、不更新方向状态。
 
 接收任务先处理RX错误，再排空字节环，逐字节传入解码器。完成一批解析或处理RX错误后通知Servo任务一次。通知可合并，样本不能因此合并。
 
@@ -128,8 +139,8 @@ sample_id从1开始，按u32自然回绕。CRC失败不生成样本、不增加s
 
 - 全部32项的source_generation必须非零且相同。
 - 条件成立时，取首字节的上下文作为整帧上下文。
-- 帧中同一控制源的PWM可以变化；不改用末字节PWM，不因此判上下文失效。
-- 条件不成立时，该帧仅进入最新原始快照，不进入RC FIFO，并按2.5建立交付边界。
+- 帧中同一控制源的PWM、purpose和session可以变化；不改用末字节上下文，不因此判上下文失效。
+- 条件不成立时，该帧仅进入最新原始快照，不进入观测FIFO，并按2.5建立交付边界。
 
 上下文表示首字节接收完成时已提交的软件命令。它排除后来命令对旧帧的解释，但不等于ESC内部采样时刻；PWM预装载和电调内部反馈延迟不由该标记消除。
 
@@ -141,17 +152,17 @@ sample_id从1开始，按u32自然回绕。CRC失败不生成样本、不增加s
 | --- | --- | --- |
 | 上下文无效 | 清空旧FIFO，增加delivery_epoch | 保留当前合法帧 |
 | 有效上下文，但source与接收层记住的上一有效source不同 | 清空旧FIFO，增加delivery_epoch，再处理当前帧 | 保留当前合法帧 |
-| 有效上下文且非RC | 不入队，计入丢弃统计 | 保留当前合法帧供非RC读取 |
-| 有效RC上下文，FIFO未满 | 加到队尾 | 保留当前合法帧 |
-| 有效RC上下文，FIFO已满8项 | 丢弃全部8项，增加delivery_epoch，再入当前帧 | 保留当前合法帧 |
+| 有效上下文，但既非RC也非显式AUTO | 不入队，计入丢弃统计 | 保留当前合法帧供幅值诊断 |
+| 有效RC或显式AUTO上下文，FIFO未满 | 加到队尾 | 保留当前合法帧 |
+| 有效RC或显式AUTO上下文，FIFO已满8项 | 丢弃全部8项，增加delivery_epoch，再入当前帧 | 保留当前合法帧 |
 
-“上一source”是接收层上一份上下文有效且source非零的合法帧的来源，不要求该帧是RC、已入队或已被Servo消费。首份有效上下文只建立记忆，不因首次建立而增加delivery_epoch；source变化分支在建立边界后记住当前source。弹出一项按FIFO顺序返回；弹空无效果。`DiscardSamples`仅在FIFO非空时清空并增加delivery_epoch。
+“上一source”是接收层上一份上下文有效且source非零的合法帧的来源，不要求该帧是RC、AUTO、已入队或已被Servo消费。首份有效上下文只建立记忆，不因首次建立而增加delivery_epoch；source变化分支在建立边界后记住当前source。弹出一项按FIFO顺序返回；弹空无效果。`DiscardSamples`仅在FIFO非空时清空并增加delivery_epoch。
 
 ### 2.5 三种代号
 
 | 代号 | 增加条件 | 清理规则 |
 | --- | --- | --- |
-| receive_epoch | RX错误、接收重启，以及兼容接收接口报告的缓冲/位置错误 | 清待解析块、RC FIFO和上下文窗口；最新原始快照失效；请求解析器复位；同时增加delivery_epoch |
+| receive_epoch | RX错误、接收重启，以及兼容接收接口报告的缓冲/位置错误 | 清待解析块、观测FIFO和上下文窗口；最新原始快照失效；请求解析器复位；同时增加delivery_epoch |
 | delivery_epoch | 上述接收边界、上下文拒绝、已观察source变化、FIFO满、显式丢弃非空FIFO | 清上一source识别记忆；对应路径按2.4清FIFO |
 | source_generation | 软件提交PWM时RC标志改变 | 标记控制源阶段；本身不表示硬件或接收错误 |
 
@@ -181,14 +192,14 @@ next = 当前RTOS tick
 
 此处RTOS tick为1ms。通知不移动next；过期的控制周期不补发PWM。20ms控制过程按顺序执行：
 
-1. 刷新运行配置；若当前已是RC则消费RC反馈，否则丢弃RC FIFO并读取最新样本走原非RC估计路径。
+1. 刷新运行配置；若当前已是RC则消费RC反馈，否则消费AUTO反馈。
 2. 更新RC输入与控制权。
 3. 按取得控制权的源输出PWM；提交输出后更新32位上下文。
 4. 更新Hall方向提示，发布快照。
 
-样本通知入口只在RC生效时运行：消费RC反馈、更新Hall方向提示、发布快照。非RC时直接返回，不运行AUTO估计、PI、门控、RC输入计数或PWM输出。无新样本时仍通过控制截止点检查陈旧与失效。
+样本通知入口在RC生效时消费RC反馈，在非RC时消费AUTO反馈；两者都会更新运动估计、方向/动作证据、Hall提示和快照。样本通知不写PWM，不运行RC输入计数，也不把历史队列补发成输出。无新样本时仍通过控制截止点检查陈旧与失效。
 
-源切换时，清FIFO、清RC方向及停稳证据，重新初始化运动估计器，并使旧AUTO执行历史失效；学习中位保留。新输出上下文在后续PWM提交时生成。旧source的帧即使晚解析，也不能建立新RC阶段的方向。
+源切换时，清FIFO、清RC方向及停稳证据，重新初始化运动估计器，并使旧AUTO执行历史失效；学习中位保留。边界同时用`ESC_MOTION_APPLIED_ACTION_EXTERNAL_OVERRIDE`和边界时刻写入运动估计器的时间栅栏：边界前的样本不能证明边界后的停稳，仍新鲜的RPM幅值本身不被伪造或改写。新输出上下文在后续PWM提交时生成。旧source的帧即使晚解析，也不能建立新RC或AUTO阶段的方向/动作许可。
 
 初始化顺序为接收模块初始化、Servo初始化并发布初始中位命令上下文，最后启动输入接收；避免Servo发布的上下文被接收模块初始化覆盖。
 
@@ -382,8 +393,8 @@ Dashboard在bit12=1时显示零，否则仅在bit6=1且bit23=1时使用有符号
 | 低速不等于停稳 | 低速计数清零，源边界200ms | 接收时刻300/320/340ms，v_abs=0.04 | 数量已达3但跨度不足，Z=0 |
 | 超时端点 | 最后样本时刻t | 在t+250ms与t+251ms读取 | 前者仍新鲜，后者幅值/方向失效 |
 | 帧内PWM跨中位 | source不变 | 首字节P=1600，后续字节P=1400 | 全帧按P=1600解释；时间取末字节，不创建交付缺口 |
-| FIFO满 | 已排队8份 | 第9份合法RC帧 | 旧8份全部丢弃，delivery增加，第9份成为新阶段第1份 |
-| 上下文跨源 | 一帧前后source不同 | CRC正确、RPM有效 | 原始快照更新，RC FIFO清空，交付代号增加；只发布可用幅值 |
+| FIFO满 | 已排队8份 | 第9份合法RC或显式AUTO帧 | 旧8份全部丢弃，delivery增加，第9份成为新阶段第1份 |
+| 上下文跨源 | 一帧前后source不同 | CRC正确、RPM有效 | 原始快照更新，观测FIFO清空，交付代号增加；只发布可用幅值 |
 | 只有新原始快照 | 最新sample_id未消费且FIFO为空 | 最新R有效、新鲜 | 清方向及停稳资格，发布幅值，bit23=0 |
 | 重复样本 | 已处理sample_id=i | 再次读取i | 不增加初次确认或停稳样本数 |
 
@@ -391,14 +402,14 @@ Dashboard在bit12=1时显示零，否则仅在bit6=1且bit23=1时使用有符号
 
 ## 9. 资源、同步与诊断
 
-字节环、样本FIFO和上下文窗口均静态分配。普通任务状态复制使用BASEPRI及`configMAX_SYSCALL_INTERRUPT_PRIORITY`：屏蔽NVIC优先级编号≥5的中断，包括调度所需中断；编号3的PD15采样继续运行。字节环与其ISR共享的短临界区仍使用PRIMASK。上下文采用32位原子发布，不回查PWM历史表。Servo任务栈为512个32位字，即2KiB。
+字节环、样本FIFO和上下文窗口均静态分配。普通任务状态复制使用BASEPRI及`configMAX_SYSCALL_INTERRUPT_PRIORITY`：屏蔽NVIC优先级编号≥5的中断，包括调度所需中断；编号3的PD15采样继续运行。字节环与其ISR共享的短临界区仍使用PRIMASK。输出上下文采用双槽发布；非活动槽准备不要求屏蔽PD15，实际CCR写入与槽索引提交在同一个短PRIMASK临界区完成。Servo任务栈为512个32位字，即2KiB。
 
 一次观测只消费入口已有B项，B≤8。时长或队列深度诊断不用于设置额外限速。不能通过扩大FIFO而把过期数据解释为实时数据。
 
 | 接口 | 主要字段及解释 |
 | --- | --- |
-| EscTelemetry_GetDiagnostics | samples_published：合法样本；observed_samples_queued/consumed/discarded：RC交付统计；observed_queue_overflows：队满事件；observed_context_rejected：上下文拒绝；observed_queue_depth_peak：历史峰值 |
-| ServoBasic_GetObservationDiagnostics | samples_processed：完整RC观测；samples_wrong_source/expired：跳过原因；samples_magnitude_only：仅幅值；delivery_gaps：消费者检测到代号变化 |
+| EscTelemetry_GetDiagnostics | samples_published：合法样本；observed_samples_queued/consumed/discarded：RC或显式AUTO交付统计；observed_queue_overflows：队满事件；observed_context_rejected：上下文拒绝；observed_queue_depth_peak：历史峰值 |
+| ServoBasic_GetObservationDiagnostics | samples_processed：完整RC/AUTO观测；samples_wrong_source/expired：跳过原因；samples_magnitude_only：仅幅值；delivery_gaps：消费者检测到代号变化 |
 | 同上 | max_sample_age_ms：完整处理项入口年龄最大值；max_publish_age_ms：同一sample/receive阶段首次发布年龄的最大值 |
 | 同上 | max_batch_cycles：观测批次DWT周期数峰值，不含随后完整快照发布；max_batch_samples：有效处理项数峰值 |
 | 同上 | max_control_lateness_ticks：控制起点迟到峰值；control_deadlines_skipped：跳过的截止点数 |
@@ -411,9 +422,9 @@ diagnostics中的discarded包含非RC合法帧及边界清理，不能把所有�
 
 ## 10. AUTO共享边界及实现索引
 
-RC独占逐帧方向观测。AUTO仍在20ms控制入口使用最新原始Sample，维持独立方向和Mode2状态；RC规则不得用于替代AUTO换向许可。两者共用接收器及一个运动估计器，源切换时按第3节重新建立证据。
+RC和AUTO共用同一个观测FIFO，但使用各自的方向观测实例和动作历史。AUTO逐帧消费显式AUTO上下文样本，并用purpose/session约束DRIVE、BRAKE和NEUTRAL证据；RC规则不得用于替代AUTO换向许可。两者共用接收器及一个运动估计器，源切换时按第3节重新建立证据。
 
-RC观测结果只影响速度符号、Hall提示和发布内容，不回写RC油门。软件实现无法从RPM幅值独立验证方向；连续性承诺仅覆盖有效数据及已有方向条件下的中位过渡，不覆盖真实证据丢失。
+RC观测结果只影响速度符号、Hall提示和发布内容，不回写RC油门。AUTO观测结果只服务AUTO方向、PID反馈和模式二许可。AUTO已经确认停稳后，如果实际提交相反方向推进，会先清除AUTO观测器里的旧方向，再等待该新purpose/session下的DRIVE运动样本确认新方向；RC观测实例不因这条AUTO规则改变。软件实现无法从RPM幅值独立验证方向；连续性承诺仅覆盖有效数据及已有方向条件下的中位过渡，不覆盖真实证据丢失。
 
 | 实现内容 | 文件 |
 | --- | --- |

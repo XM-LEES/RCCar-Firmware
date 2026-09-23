@@ -29,9 +29,14 @@ static uint8_t esc_telemetry_stm32_drain_soft_uart(void)
 
     while (EscSoftUartStm32_ReadByte(&item) != 0U)
     {
-        if (EscTelemetry_ProcessReceivedByte(item.byte,
-                                             item.received_tick_ms,
-                                             item.output_context) != 0U)
+        EscTelemetryOutputContext_t output_context;
+
+        output_context.output_context = item.output_context;
+        output_context.output_metadata = item.output_metadata;
+        if (EscTelemetry_ProcessReceivedByteWithContext(
+                item.byte,
+                item.received_tick_ms,
+                &output_context) != 0U)
         {
             progressed = 1U;
         }
@@ -44,7 +49,8 @@ void EscTelemetryStm32_Init(void)
 {
     EscTelemetry_Init();
     EscSoftUartStm32_Init();
-    EscSoftUartStm32_SetOutputContextProvider(EscTelemetry_GetOutputContext);
+    EscSoftUartStm32_SetOutputContextProvider(
+        EscTelemetry_GetOutputContextSnapshot);
 }
 
 uint8_t EscTelemetryStm32_Start(void)

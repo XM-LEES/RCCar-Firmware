@@ -83,6 +83,7 @@ typedef struct
     uint8_t stop_config_valid;
     EscMotionReason_t config_reason;
     EscMotionReason_t stop_config_reason;
+    float meters_per_raw;
 
     uint8_t has_sample;
     uint32_t last_sample_id;

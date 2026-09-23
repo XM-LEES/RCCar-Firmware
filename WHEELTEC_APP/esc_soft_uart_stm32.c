@@ -32,6 +32,7 @@ typedef struct
     uint8_t byte;
     uint32_t received_tick_ms;
     uint32_t output_context;
+    uint32_t output_metadata;
 } EscSoftUartRingItem_t;
 
 #if defined(ESC_SOFT_UART_STM32_HOST_TEST)
@@ -167,7 +168,7 @@ ESC_SOFT_UART_INLINE void esc_soft_uart_push_byte(uint8_t byte)
 {
     uint16_t next_head = (uint16_t)((s_ring_head + 1U) &
                                     ESC_SOFT_UART_RING_MASK);
-    uint32_t output_context = 0UL;
+    EscTelemetryOutputContext_t output_context;
 
     if (next_head == s_ring_tail)
     {
@@ -176,15 +177,17 @@ ESC_SOFT_UART_INLINE void esc_soft_uart_push_byte(uint8_t byte)
         return;
     }
 
+    memset(&output_context, 0, sizeof(output_context));
     if (s_output_context_provider !=
         (EscSoftUartStm32OutputContextProvider_t)0)
     {
-        output_context = s_output_context_provider();
+        s_output_context_provider(&output_context);
     }
 
     s_ring[s_ring_head].byte = byte;
     s_ring[s_ring_head].received_tick_ms = uwTick;
-    s_ring[s_ring_head].output_context = output_context;
+    s_ring[s_ring_head].output_context = output_context.output_context;
+    s_ring[s_ring_head].output_metadata = output_context.output_metadata;
     s_ring_head = next_head;
     s_diagnostics.bytes_received++;
 }
@@ -356,6 +359,7 @@ uint8_t EscSoftUartStm32_ReadByte(EscSoftUartStm32Byte_t *item)
         item->byte = s_ring[s_ring_tail].byte;
         item->received_tick_ms = s_ring[s_ring_tail].received_tick_ms;
         item->output_context = s_ring[s_ring_tail].output_context;
+        item->output_metadata = s_ring[s_ring_tail].output_metadata;
         s_ring_tail = (uint16_t)((s_ring_tail + 1U) &
                                  ESC_SOFT_UART_RING_MASK);
         has_item = 1U;

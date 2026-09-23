@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1820" height="1440" viewBox="0 0 1820 1440" role="img" aria-labelledby="title desc">
-<title id="title">ESC观测与RC方向推断</title><desc id="desc">从PD15字节接收、完整样本队列、Servo观测，到24字节速度上报；下部为RC方向转移及证据失效路径。</desc>
+<title id="title">ESC观测与RC/AUTO方向推断</title><desc id="desc">从PD15字节接收、RC/AUTO共享观测FIFO、Servo逐帧观测，到24字节速度上报；下部为RC方向转移及证据失效路径。</desc>
 <rect width="100%" height="100%" fill="white"/>
 <defs>
 <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#2563eb"/></marker>
@@ -10,7 +10,7 @@
 <marker id="arrow-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#b91c1c"/></marker>
 </defs><g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" fill="#0f172a">
 <text x="910" y="60" text-anchor="middle" font-size="31" font-weight="700" fill="#2563eb">ESC观测 · 完整样本、方向推断与速度发布</text>
-<text x="910" y="101" text-anchor="middle" font-size="19" font-weight="400" fill="#64748b">收到新帧即更新RC观测；PWM命令每20ms更新，上行每50ms发送</text>
+<text x="910" y="101" text-anchor="middle" font-size="19" font-weight="400" fill="#64748b">RC/AUTO逐帧消费同一FIFO；PWM命令每20ms更新，上行每50ms发送</text>
 <text x="910" y="151" text-anchor="middle" font-size="23" font-weight="700" fill="#2563eb">接收与发布路径</text>
 <polyline points="295,250 365,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
 <polyline points="635,250 725,250" stroke="#0f766e" stroke-width="2.2" fill="none" marker-end="url(#arrow-green)"/>
@@ -24,21 +24,21 @@
 <text x="170" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">PD15字节接收</text>
 <text x="170" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">115200 / 8N1</text>
 <text x="170" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">逐字节保存接收时刻</text>
-<text x="170" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">同时保存软件PWM上下文</text>
+<text x="170" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">保存两字输出上下文</text>
 <rect x="365" y="180" width="270" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" stroke-width="1.6"/>
 <text x="500" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">FE32解码</text>
 <text x="500" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">32字节 + 前缀 + CRC</text>
-<text x="500" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">首字节上下文、末字节时间</text>
-<text x="500" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">校验控制源一致性</text>
+<text x="500" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">首字节两字上下文、末字节时间</text>
+<text x="500" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">校验source一致性</text>
 <rect x="725" y="180" width="290" height="140" rx="8" fill="#ecfdf5" stroke="#0f766e" stroke-width="1.6"/>
-<text x="870" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">RC完整样本FIFO</text>
-<text x="870" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">固定8项，按接收顺序</text>
-<text x="870" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">动作与RPM作为一份证据</text>
-<text x="870" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">队满建立缺口并保留新帧</text>
+<text x="870" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">RC/AUTO观测FIFO</text>
+<text x="870" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">固定8项，按帧顺序</text>
+<text x="870" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC或显式AUTO入队</text>
+<text x="870" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">队满建立delivery缺口</text>
 <rect x="1095" y="180" width="300" height="140" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
-<text x="1245" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">Servo任务 · RC观测</text>
-<text x="1245" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">按顺序更新幅值、停稳、方向</text>
-<text x="1245" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">本批处理完才发布一致结果</text>
+<text x="1245" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">Servo任务 · RC/AUTO观测</text>
+<text x="1245" y="246" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">按顺序更新幅值/方向/停稳</text>
+<text x="1245" y="273" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">批末发布一致快照</text>
 <text x="1245" y="300" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">新帧唤醒不额外写PWM</text>
 <rect x="1495" y="180" width="280" height="140" rx="8" fill="#fff7ed" stroke="#b45309" stroke-width="1.6"/>
 <text x="1635" y="215" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">速度上报</text>
@@ -48,23 +48,23 @@
 <rect x="365" y="435" width="270" height="140" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
 <text x="500" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">最新原始快照</text>
 <text x="500" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">每份合法FE32均更新</text>
-<text x="500" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">即使RC上下文不成立</text>
+<text x="500" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">即使观测上下文不入队</text>
 <text x="500" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">仍保留原始RPM及有效性</text>
 <rect x="725" y="435" width="290" height="140" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
-<text x="870" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">AUTO现有入口</text>
-<text x="870" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">每20ms读取最新样本</text>
-<text x="870" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">方向及动作门控独立维护</text>
-<text x="870" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">不消费RC逐帧判向结果</text>
+<text x="870" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">仅幅值回退</text>
+<text x="870" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">合法帧无可用输出上下文</text>
+<text x="870" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">清除受影响的方向/停稳证据</text>
+<text x="870" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">不提供AUTO动作许可</text>
 <rect x="1095" y="435" width="300" height="140" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
 <text x="1245" y="470" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">20ms控制截止点</text>
-<text x="1245" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC输入、控制权和PWM更新</text>
+<text x="1245" y="501" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC输入、AUTO计算、PWM更新</text>
 <text x="1245" y="528" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">通知不移动原定截止点</text>
 <text x="1245" y="555" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">先处理反馈，再提交新命令</text>
 <text x="550" y="382" text-anchor="middle" font-size="17" font-weight="700" fill="#64748b">保留最新帧</text>
 <text x="1055" y="236" text-anchor="middle" font-size="16" font-weight="700" fill="#0f766e">通知</text>
 <text x="1323" y="386" text-anchor="middle" font-size="17" font-weight="700" fill="#2563eb">固定周期</text>
-<text x="690" y="613" text-anchor="middle" font-size="18" font-weight="700" fill="#2563eb">PWM提交后更新上下文；后续接收字节保存该命令标记</text>
-<text x="910" y="679" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">上下文是软件命令，不是ESC内部采样时刻；实线为数据处理，虚线为命令上下文。</text>
+<text x="690" y="613" text-anchor="middle" font-size="18" font-weight="700" fill="#2563eb">实际CCR写入与上下文索引在同一短PRIMASK区提交</text>
+<text x="910" y="679" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">上下文是软件命令，不是ESC内部采样时刻；帧内PWM/metadata可变，但按首字节解释。</text>
 <text x="910" y="744" text-anchor="middle" font-size="26" font-weight="700" fill="#2563eb">RC方向状态转移</text>
 <text x="910" y="782" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">q = sign(P − N)；N为学习中位，M为同帧运动证据，H为已保存的换向过渡证据</text>
 <polyline points="370,976 460,976 460,821 845,821 845,850" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#arrow-blue)"/>
@@ -93,8 +93,8 @@
 <text x="910" y="1171" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">H由BRAKE / NEUTRAL，或相反侧DRIVE且M=0设置；H不等于机械停稳或电调倒车许可。</text>
 <rect x="70" y="1220" width="1650" height="135" rx="8" fill="#fef2f2" stroke="#b91c1c" stroke-width="1.6"/>
 <text x="895" y="1255" text-anchor="middle" font-size="20" font-weight="700" fill="#0f172a">证据失效 → 回到方向未知</text>
-<text x="895" y="1286" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">RC切换、遥测超时、RX失效、上下文拒绝或交付缺口：清方向、换向证据和停稳累计，保留已学中位。</text>
+<text x="895" y="1286" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">源切换、遥测超时、RX失效、上下文拒绝或交付缺口：清方向、换向证据和停稳累计，保留已学中位。</text>
 <text x="895" y="1313" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">未知动作也清方向；RPM无效清幅值有效性。新鲜RPM仍可用但方向未知时，只发布幅值。</text>
 <text x="895" y="1340" text-anchor="middle" font-size="18" font-weight="400" fill="#0f172a">正常中位PWM不制造缺口；已经确认的方向保持，幅值继续跟随最新样本。</text>
-<text x="910" y="1398" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">精确执行优先级、初始化、队列清理及逐帧复现序列见 ESC_OBSERVATION.md。</text>
+<text x="910" y="1398" text-anchor="middle" font-size="18" font-weight="400" fill="#64748b">AUTO相反推进在停稳后先清旧方向，再由新purpose/session的DRIVE确认；详见 ESC_OBSERVATION.md。</text>
 </g></svg>

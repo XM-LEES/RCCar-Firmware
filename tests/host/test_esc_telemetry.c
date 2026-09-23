@@ -495,6 +495,196 @@ static int test_non_rc_frames_do_not_enter_observed_queue(void)
     return 0;
 }
 
+static int test_auto_neutral_frame_enters_observed_queue(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+    uint32_t context;
+
+    EscTelemetry_Init();
+    context = EscTelemetry_PublishAutoOutputContext(
+        1500U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL,
+        42U);
+    EscTelemetry_RecordBytes(ESC_FE32_FIXTURE_BRAKE_DYN02,
+                             ESC_FE32_FRAME_LEN,
+                             1030U);
+    EscTelemetry_ProcessPending();
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1500U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(observed.output_context) == 0U);
+    EXPECT_TRUE(EscTelemetry_ContextSource(observed.output_context) ==
+                EscTelemetry_ContextSource(context));
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(observed.output_metadata) != 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL);
+    EXPECT_TRUE(EscTelemetry_MetadataSession(observed.output_metadata) == 42U);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
+    EXPECT_TRUE(diagnostics.observed_samples_discarded == 0U);
+
+    return 0;
+}
+
+static int test_prepare_does_not_publish_until_commit(void)
+{
+    EscTelemetryOutputContext_t snapshot;
+    EscTelemetryPreparedOutputContext_t prepared;
+    uint32_t old_context;
+
+    EscTelemetry_Init();
+    old_context = EscTelemetry_PublishOutputContext(1500U, 0U);
+
+    EXPECT_TRUE(EscTelemetry_PrepareOutputContext(
+                    1700U,
+                    0U,
+                    ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST,
+                    31U,
+                    &prepared) == 1U);
+    EscTelemetry_GetOutputContextSnapshot(&snapshot);
+    EXPECT_TRUE(snapshot.output_context == old_context);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(snapshot.output_context) == 1500U);
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(snapshot.output_metadata) == 0U);
+
+    EXPECT_TRUE(EscTelemetry_ContextPwm(prepared.output_context) == 1700U);
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(prepared.output_metadata) != 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(prepared.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST);
+    EXPECT_TRUE(EscTelemetry_MetadataSession(prepared.output_metadata) == 31U);
+
+    EscTelemetry_CommitOutputContext(&prepared);
+    EscTelemetry_GetOutputContextSnapshot(&snapshot);
+    EXPECT_TRUE(snapshot.output_context == prepared.output_context);
+    EXPECT_TRUE(snapshot.output_metadata == prepared.output_metadata);
+
+    return 0;
+}
+
+static int test_publish_output_context_wrapper_commits_immediately(void)
+{
+    EscTelemetryOutputContext_t snapshot;
+    uint32_t context;
+
+    EscTelemetry_Init();
+    context = EscTelemetry_PublishOutputContext(1600U, 1U);
+    EscTelemetry_GetOutputContextSnapshot(&snapshot);
+
+    EXPECT_TRUE(snapshot.output_context == context);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(snapshot.output_context) == 1600U);
+    EXPECT_TRUE(EscTelemetry_ContextRcActive(snapshot.output_context) != 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataAutoContext(snapshot.output_metadata) == 0U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(snapshot.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_RC_DIRECT);
+
+    return 0;
+}
+
+static int test_auto_pwm_change_same_metadata_keeps_first_byte_pwm(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryOutputContext_t first_context;
+    EscTelemetryOutputContext_t second_context;
+    uint32_t source;
+    size_t index;
+
+    EscTelemetry_Init();
+    (void)EscTelemetry_PublishAutoOutputContext(
+        1500U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST,
+        9U);
+    EscTelemetry_GetOutputContextSnapshot(&first_context);
+    source = EscTelemetry_ContextSource(first_context.output_context);
+    for (index = 0U; index < ESC_FE32_FRAME_LEN / 2U; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByteWithContext(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            1060U + (uint32_t)index,
+            &first_context);
+    }
+
+    (void)EscTelemetry_PublishAutoOutputContext(
+        1620U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST,
+        9U);
+    EscTelemetry_GetOutputContextSnapshot(&second_context);
+    EXPECT_TRUE(EscTelemetry_ContextSource(second_context.output_context) ==
+                source);
+    for (; index < ESC_FE32_FRAME_LEN; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByteWithContext(
+            ESC_FE32_FIXTURE_PEAK_DYN02[index],
+            1060U + (uint32_t)index,
+            &second_context);
+    }
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1500U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST);
+    EXPECT_TRUE(EscTelemetry_MetadataSession(observed.output_metadata) == 9U);
+
+    return 0;
+}
+
+static int test_auto_metadata_change_inside_frame_keeps_first_byte_metadata(void)
+{
+    EscTelemetryObservedSample_t observed;
+    EscTelemetryDiagnostics_t diagnostics;
+    EscTelemetryOutputContext_t first_context;
+    EscTelemetryOutputContext_t second_context;
+    uint32_t source;
+    size_t index;
+
+    EscTelemetry_Init();
+    (void)EscTelemetry_PublishAutoOutputContext(
+        1500U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL,
+        10U);
+    EscTelemetry_GetOutputContextSnapshot(&first_context);
+    source = EscTelemetry_ContextSource(first_context.output_context);
+    for (index = 0U; index < ESC_FE32_FRAME_LEN / 2U; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByteWithContext(
+            ESC_FE32_FIXTURE_BRAKE_DYN02[index],
+            1090U + (uint32_t)index,
+            &first_context);
+    }
+
+    (void)EscTelemetry_PublishAutoOutputContext(
+        1500U,
+        ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE,
+        11U);
+    EscTelemetry_GetOutputContextSnapshot(&second_context);
+    EXPECT_TRUE(EscTelemetry_ContextSource(second_context.output_context) ==
+                source);
+    for (; index < ESC_FE32_FRAME_LEN; ++index)
+    {
+        (void)EscTelemetry_ProcessReceivedByteWithContext(
+            ESC_FE32_FIXTURE_BRAKE_DYN02[index],
+            1090U + (uint32_t)index,
+            &second_context);
+    }
+
+    EXPECT_TRUE(EscTelemetry_PendingSamples() == 1U);
+    EXPECT_TRUE(EscTelemetry_PopSample(&observed) == 1U);
+    EXPECT_TRUE(EscTelemetry_ContextPwm(observed.output_context) == 1500U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) ==
+                ESC_TELEMETRY_OUTPUT_PURPOSE_NEUTRAL);
+    EXPECT_TRUE(EscTelemetry_MetadataSession(observed.output_metadata) == 10U);
+    EXPECT_TRUE(EscTelemetry_MetadataPurpose(observed.output_metadata) !=
+                ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE);
+
+    EscTelemetry_GetDiagnostics(&diagnostics);
+    EXPECT_TRUE(diagnostics.observed_context_rejected == 0U);
+    EXPECT_TRUE(diagnostics.observed_samples_queued == 1U);
+
+    return 0;
+}
+
 static int test_observed_queue_overflow_starts_new_delivery_epoch(void)
 {
     EscTelemetryObservedSample_t observed;
@@ -584,6 +774,26 @@ int main(void)
         return 1;
     }
     if (test_non_rc_frames_do_not_enter_observed_queue() != 0)
+    {
+        return 1;
+    }
+    if (test_auto_neutral_frame_enters_observed_queue() != 0)
+    {
+        return 1;
+    }
+    if (test_prepare_does_not_publish_until_commit() != 0)
+    {
+        return 1;
+    }
+    if (test_publish_output_context_wrapper_commits_immediately() != 0)
+    {
+        return 1;
+    }
+    if (test_auto_pwm_change_same_metadata_keeps_first_byte_pwm() != 0)
+    {
+        return 1;
+    }
+    if (test_auto_metadata_change_inside_frame_keeps_first_byte_metadata() != 0)
     {
         return 1;
     }

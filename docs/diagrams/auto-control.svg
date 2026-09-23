@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1820" height="1460" viewBox="0 0 1820 1460" role="img" aria-labelledby="title"><title id="title">AUTO纵向控制：完整PID、逐帧观测与非对称换向</title><rect width="1820" height="1460" fill="white"/><defs>
+<marker id="a-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#2563eb"/></marker>
+<marker id="a-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#0f766e"/></marker>
+<marker id="a-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#b45309"/></marker>
+<marker id="a-red" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#b91c1c"/></marker>
+<marker id="a-gray" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L10 4 L0 8 Z" fill="#64748b"/></marker>
+</defs><g font-family="Noto Sans CJK SC, sans-serif">
+<text x="910" y="52" text-anchor="middle" font-size="32" fill="#2563eb" font-weight="700">AUTO纵向控制 · 完整 PID 与非对称动作</text>
+<text x="910" y="89" text-anchor="middle" font-size="20" fill="#64748b" font-weight="400">当前实现：数值计算、动作许可与真实输出相互校验；RC 已验证路径独立保留</text>
+<polyline points="280,225 340,225" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#a-blue)"/>
+<polyline points="640,225 725,225" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#a-blue)"/>
+<polyline points="1045,225 1130,225" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#a-blue)"/>
+<polyline points="1440,225 1530,225" fill="none" stroke="#b45309" stroke-width="2.5" marker-end="url(#a-orange)"/>
+<polyline points="1285,145 1285,115 490,115 490,145" fill="none" stroke="#b45309" stroke-width="2.5" marker-end="url(#a-orange)"/>
+<rect x="698" y="88" width="370" height="30" rx="4" fill="white"/>
+<text x="883" y="110" text-anchor="middle" font-size="18" fill="#b45309" font-weight="700">最终 u_applied → 积分跟踪</text>
+<polyline points="1655,315 1655,470" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<rect x="1515" y="363" width="280" height="30" rx="4" fill="white"/>
+<text x="1655" y="385" text-anchor="middle" font-size="18" fill="#0f766e" font-weight="700">FE32：RPM 幅值 + 实际动作</text>
+<polyline points="1530,545 1440,545" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<polyline points="1130,545 1045,545" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<polyline points="725,545 680,545 680,400 490,400 490,315" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<rect x="370" y="371" width="310" height="30" rx="4" fill="white"/>
+<text x="525" y="393" text-anchor="middle" font-size="18" fill="#0f766e" font-weight="700">v、a：新样本才更新 I / D</text>
+<polyline points="885,455 885,315" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<rect x="742.5" y="370" width="285" height="30" rx="4" fill="white"/>
+<text x="885" y="392" text-anchor="middle" font-size="18" fill="#0f766e" font-weight="700">Δ、a、年龄、停稳、动作</text>
+<polyline points="1045,570 1090,570 1090,350 1285,350 1285,315" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<rect x="1140" y="369" width="290" height="30" rx="4" fill="white"/>
+<text x="1285" y="391" text-anchor="middle" font-size="18" fill="#0f766e" font-weight="700">许可确认 / 异常撤销</text>
+<polyline points="885,635 885,710" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#a-green)"/>
+<rect x="40" y="145" width="240" height="170" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="160" y="179" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">有效目标 r</text>
+<text x="160" y="213" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">直接使用命令速度</text>
+<text x="160" y="242" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">0 / BRAKE：受控停车</text>
+<text x="160" y="271" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">目标直接进入 PID</text>
+<rect x="340" y="145" width="300" height="170" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="490" y="179" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">完整 PID</text>
+<text x="490" y="213" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">e = r − v</text>
+<text x="490" y="242" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">u_raw = Kp·e + I − Kd·a</text>
+<text x="490" y="271" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">初始 Ki = Kd = 0</text>
+<rect x="725" y="145" width="320" height="170" rx="10" fill="#fef2f2" stroke="#b91c1c" stroke-width="2"/>
+<text x="885" y="179" text-anchor="middle" font-size="22" fill="#b91c1c" font-weight="700">动作及刹车调度</text>
+<text x="885" y="213" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">超速量 + 滑行进度</text>
+<text x="885" y="242" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">预测释放 / 停稳 / 换向</text>
+<text x="885" y="271" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">详见刹车介入与释放图</text>
+<rect x="1130" y="145" width="310" height="170" rx="10" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+<text x="1285" y="179" text-anchor="middle" font-size="22" fill="#b45309" font-weight="700">许可检查与输出</text>
+<text x="1285" y="213" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">连续会话、反馈确认</text>
+<text x="1285" y="242" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">合法区间 + 电调端点</text>
+<text x="1285" y="271" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">唯一 Servo 写入者：20ms</text>
+<rect x="1530" y="145" width="250" height="170" rx="10" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+<text x="1655" y="179" text-anchor="middle" font-size="22" fill="#b45309" font-weight="700">电调与车辆</text>
+<text x="1655" y="213" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">PWM → ESC → 电机</text>
+<text x="1655" y="242" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">刹车力度含物理时延</text>
+<text x="1655" y="271" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">模式二：前后不对称</text>
+<rect x="1530" y="470" width="250" height="160" rx="10" fill="#ecfdf5" stroke="#0f766e" stroke-width="2"/>
+<text x="1655" y="504" text-anchor="middle" font-size="22" fill="#0f766e" font-weight="700">PD15 接收</text>
+<text x="1655" y="538" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">ISR：字节与命令上下文</text>
+<text x="1655" y="567" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">任务：校验完整 FE32</text>
+<text x="1655" y="596" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">用途 / 会话随帧保存</text>
+<rect x="1130" y="470" width="310" height="160" rx="10" fill="#ecfdf5" stroke="#0f766e" stroke-width="2"/>
+<text x="1285" y="504" text-anchor="middle" font-size="22" fill="#0f766e" font-weight="700">8 项静态 FIFO</text>
+<text x="1285" y="538" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">全部合法帧顺序交付</text>
+<text x="1285" y="567" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">缺口立即撤销旧证据</text>
+<text x="1285" y="596" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">不补发历史 PWM</text>
+<rect x="725" y="455" width="320" height="180" rx="10" fill="#ecfdf5" stroke="#0f766e" stroke-width="2"/>
+<text x="885" y="489" text-anchor="middle" font-size="22" fill="#0f766e" font-weight="700">Servo 逐帧观测</text>
+<text x="885" y="523" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">幅值 m / 方向 D、K / 停稳 Z</text>
+<text x="885" y="552" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">ESC 动作 S / 变化率 a</text>
+<text x="885" y="581" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">动作许可单独维护</text>
+<text x="885" y="610" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">批末发布一致快照</text>
+<rect x="380" y="710" width="1010" height="112" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+<text x="885" y="744" text-anchor="middle" font-size="22" fill="#64748b" font-weight="700">24 字节上行 · 每 50ms 取最新结果</text>
+<text x="885" y="778" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">保留速度 / 转向字段；幅值有效与方向可信分开；实际 ESC 状态不由控制意图替换</text>
+<text x="910" y="879" text-anchor="middle" font-size="25" fill="#2563eb" font-weight="700">换向只按对应方向的证据路径执行</text>
+<polyline points="355,997 480,997" fill="none" stroke="#b91c1c" stroke-width="2.5" marker-end="url(#a-red)"/>
+<polyline points="845,997 970,997" fill="none" stroke="#b45309" stroke-width="2.5" marker-end="url(#a-orange)"/>
+<polyline points="1335,997 1460,997" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#a-blue)"/>
+<rect x="45" y="935" width="310" height="150" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="200" y="969" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">前进 → 倒车</text>
+<text x="200" y="1003" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">负目标到来</text>
+<text x="200" y="1032" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">F_READY 或连续刹车有效</text>
+<rect x="480" y="935" width="365" height="150" rx="10" fill="#fef2f2" stroke="#b91c1c" stroke-width="2"/>
+<text x="662.5" y="969" text-anchor="middle" font-size="22" fill="#b91c1c" font-weight="700">连续完整负向制动</text>
+<text x="662.5" y="1003" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">保持 P_R 至少 100ms + 新 BRAKE</text>
+<text x="662.5" y="1032" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">完整输出后新停稳证据</text>
+<text x="662.5" y="1061" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">中间不得夹入中位</text>
+<rect x="970" y="935" width="365" height="150" rx="10" fill="#fff7ed" stroke="#b45309" stroke-width="2"/>
+<text x="1152.5" y="969" text-anchor="middle" font-size="22" fill="#b45309" font-weight="700">回中并确认</text>
+<text x="1152.5" y="1003" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">中位 ≥ 100ms + 新 NEUTRAL</text>
+<text x="1152.5" y="1032" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">仍停稳 → 建立倒车资格</text>
+<rect x="1460" y="935" width="315" height="150" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="1617.5" y="969" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">倒车 PID 推进</text>
+<text x="1617.5" y="1003" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">正常负向请求</text>
+<text x="1617.5" y="1032" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">DRIVE 运动样本确认方向</text>
+<rect x="365.5" y="956" width="105" height="30" rx="4" fill="white"/>
+<text x="418" y="978" text-anchor="middle" font-size="18" fill="#b91c1c" font-weight="700">不回中</text>
+<rect x="850.5" y="956" width="115" height="30" rx="4" fill="white"/>
+<text x="908" y="978" text-anchor="middle" font-size="18" fill="#b45309" font-weight="700">资格齐备</text>
+<rect x="1343.5" y="956" width="105" height="30" rx="4" fill="white"/>
+<text x="1396" y="978" text-anchor="middle" font-size="18" fill="#2563eb" font-weight="700">确认完成</text>
+<polyline points="355,1197 480,1197" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#a-gray)"/>
+<polyline points="845,1197 970,1197" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#a-gray)"/>
+<polyline points="1335,1197 1460,1197" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#a-blue)"/>
+<rect x="45" y="1135" width="310" height="145" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="200" y="1169" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">倒车 → 前进</text>
+<text x="200" y="1203" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">正目标到来</text>
+<text x="200" y="1232" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">未停稳前禁止正向 PWM</text>
+<rect x="480" y="1135" width="365" height="145" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+<text x="662.5" y="1169" text-anchor="middle" font-size="22" fill="#64748b" font-weight="700">回中滑停</text>
+<text x="662.5" y="1203" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">减速依靠摩擦及负载</text>
+<text x="662.5" y="1232" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">不发送正向刹车</text>
+<rect x="970" y="1135" width="365" height="145" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+<text x="1152.5" y="1169" text-anchor="middle" font-size="22" fill="#64748b" font-weight="700">确认停稳与中位</text>
+<text x="1152.5" y="1203" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">新停稳证据 + 新 NEUTRAL</text>
+<text x="1152.5" y="1232" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">中位已持续 ≥ 100ms</text>
+<rect x="1460" y="1135" width="315" height="145" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+<text x="1617.5" y="1169" text-anchor="middle" font-size="22" fill="#2563eb" font-weight="700">前进 PID 推进</text>
+<text x="1617.5" y="1203" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">正常正向请求</text>
+<text x="1617.5" y="1232" text-anchor="middle" font-size="19" fill="#0f172a" font-weight="400">DRIVE 运动样本确认方向</text>
+<rect x="366.5" y="1156" width="105" height="30" rx="4" fill="white"/>
+<text x="419" y="1178" text-anchor="middle" font-size="18" fill="#64748b" font-weight="700">立即回中</text>
+<rect x="850.5" y="1156" width="115" height="30" rx="4" fill="white"/>
+<text x="908" y="1178" text-anchor="middle" font-size="18" fill="#64748b" font-weight="700">逐帧确认</text>
+<rect x="1343.5" y="1156" width="105" height="30" rx="4" fill="white"/>
+<text x="1396" y="1178" text-anchor="middle" font-size="18" fill="#2563eb" font-weight="700">确认完成</text>
+<text x="910" y="1342" text-anchor="middle" font-size="20" fill="#b45309" font-weight="700">初始许可未知：停稳 / 中位 → 正常负向查询 → DRIVE 确认倒车，或 BRAKE 确认后在原会话内升级资格制动</text>
+<text x="910" y="1382" text-anchor="middle" font-size="20" fill="#64748b" font-weight="400">命令陈旧、证据缺口或动作冲突：下一控制截止点回中；未知方向不伪造符号，回中不等于物理驻车</text>
+</g></svg>

@@ -48,6 +48,7 @@ static uint32_t s_hall_b_calls;
 static uint32_t s_hal_tim_calls;
 static uint32_t s_hal_uart_calls;
 static uint32_t s_hal_dma_calls;
+static EscTelemetryOutputContext_t s_provider_context;
 
 static void push_trace(enum trace_event event)
 {
@@ -81,9 +82,19 @@ static void reset_irq_fixture(void)
     s_hal_tim_calls = 0U;
     s_hal_uart_calls = 0U;
     s_hal_dma_calls = 0U;
+    memset(&s_provider_context, 0, sizeof(s_provider_context));
     uwTick = 0U;
     GPIOD->IDR = ESC_SOFT_UART_STM32_RX_PIN_MASK;
     EscSoftUartStm32_Init();
+}
+
+static void output_context_provider(
+    EscTelemetryOutputContext_t *output_context)
+{
+    if (output_context != NULL)
+    {
+        *output_context = s_provider_context;
+    }
 }
 
 void EscSoftUartHost_SetPriority(IRQn_Type irq, uint32_t priority,
@@ -291,6 +302,30 @@ static int tim5_irq_decodes_byte_without_hal_handlers(void)
     return 0;
 }
 
+static int tim5_irq_captures_coherent_output_metadata(void)
+{
+    EscSoftUartStm32Byte_t item;
+
+    reset_irq_fixture();
+    EXPECT_TRUE(EscSoftUartStm32_Start(32U) == 1U);
+    s_provider_context.output_context =
+        (5UL << ESC_TELEMETRY_CONTEXT_SOURCE_SHIFT) | 1600UL;
+    s_provider_context.output_metadata =
+        ESC_TELEMETRY_METADATA_AUTO_CONTEXT_MASK |
+        (uint32_t)ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_BRAKE |
+        (123UL << ESC_TELEMETRY_METADATA_SESSION_SHIFT);
+    EscSoftUartStm32_SetOutputContextProvider(output_context_provider);
+
+    uwTick = 33U;
+    feed_byte(0x3CU, 0U);
+
+    EXPECT_TRUE(EscSoftUartStm32_ReadByte(&item) == 1U);
+    EXPECT_TRUE(item.byte == 0x3CU);
+    EXPECT_TRUE(item.output_context == s_provider_context.output_context);
+    EXPECT_TRUE(item.output_metadata == s_provider_context.output_metadata);
+    return 0;
+}
+
 static int start_glitch_rearms_without_fault_or_ring_drop(void)
 {
     EscSoftUartStm32Byte_t item;
@@ -394,6 +429,8 @@ int main(void)
                          pd15_exti_runs_before_hall_and_keeps_hall_pending);
     failures += run_test("tim5_irq_decodes_byte_without_hal_handlers",
                          tim5_irq_decodes_byte_without_hal_handlers);
+    failures += run_test("tim5_irq_captures_coherent_output_metadata",
+                         tim5_irq_captures_coherent_output_metadata);
     failures += run_test("start_glitch_rearms_without_fault_or_ring_drop",
                          start_glitch_rearms_without_fault_or_ring_drop);
     failures += run_test("stop_low_fault_drops_ring_and_recovers",
@@ -408,6 +445,6 @@ int main(void)
         return 1;
     }
 
-    printf("test_soft_uart_irq: 7 tests passed\n");
+    printf("test_soft_uart_irq: 8 tests passed\n");
     return 0;
 }

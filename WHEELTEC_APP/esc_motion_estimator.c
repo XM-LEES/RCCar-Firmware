@@ -108,7 +108,8 @@ uint8_t EscMotionEstimator_ConfigIsValid(const EscMotionEstimatorConfig_t *confi
 
         if (isfinite(meters_per_raw) == 0 ||
             meters_per_raw <= 0.0 ||
-            meters_per_raw > (double)FLT_MAX)
+            meters_per_raw > (double)FLT_MAX ||
+            (float)meters_per_raw <= 0.0f)
         {
             valid = 0U;
         }
@@ -210,6 +211,10 @@ EscMotionReason_t EscMotionEstimator_SetConfig(EscMotionEstimator_t *estimator,
     estimator->config_valid = new_config_valid;
     estimator->stop_config_valid = new_stop_config_valid;
     estimator->config_reason = reason;
+    /* Do the wide configuration arithmetic once, outside the sample path. */
+    estimator->meters_per_raw = (new_config_valid != 0U) ?
+        (float)(((double)config->wheel_rpm_per_raw * ESC_MOTION_TWO_PI *
+                 (double)config->wheel_radius_m) / 60.0) : 0.0f;
     if (same_magnitude_config == 0U)
     {
         esc_motion_clear_sample_and_stop(estimator);
@@ -221,29 +226,14 @@ EscMotionReason_t EscMotionEstimator_SetConfig(EscMotionEstimator_t *estimator,
     return reason;
 }
 
-static uint8_t esc_motion_raw_rpm_to_mps(const EscMotionEstimatorConfig_t *config,
+static uint8_t esc_motion_raw_rpm_to_mps(const EscMotionEstimator_t *estimator,
                                          uint32_t rpm_raw,
                                          float *speed_magnitude_mps)
 {
-    const double wheel_axle_rpm =
-        (double)rpm_raw * (double)config->wheel_rpm_per_raw;
-    const double speed_mps =
-        (wheel_axle_rpm * ESC_MOTION_TWO_PI *
-         (double)config->wheel_radius_m) / 60.0;
-    float local_speed_mps;
+    const float local_speed_mps = (float)rpm_raw * estimator->meters_per_raw;
 
     if (speed_magnitude_mps == NULL ||
-        isfinite(wheel_axle_rpm) == 0 ||
-        isfinite(speed_mps) == 0 ||
-        wheel_axle_rpm < 0.0 ||
-        speed_mps < 0.0 ||
-        speed_mps > (double)FLT_MAX)
-    {
-        return 0U;
-    }
-
-    local_speed_mps = (float)speed_mps;
-    if (isfinite(local_speed_mps) == 0 ||
+        isfinite(local_speed_mps) == 0 || local_speed_mps < 0.0f ||
         (rpm_raw != 0U && local_speed_mps <= 0.0f))
     {
         return 0U;
@@ -358,7 +348,7 @@ EscMotionReason_t EscMotionEstimator_ObserveSample(EscMotionEstimator_t *estimat
         return ESC_MOTION_REASON_RPM_INVALID;
     }
 
-    if (esc_motion_raw_rpm_to_mps(&estimator->config,
+    if (esc_motion_raw_rpm_to_mps(estimator,
                                   sample->rpm_raw,
                                   &estimator->last_speed_magnitude_mps) == 0U)
     {
