@@ -1444,42 +1444,23 @@ static Mode2DriveGateOutput_t evaluate_unknown(Mode2DriveGate_t *gate,
         {
             return startup_hold_output(gate);
         }
-        /* Context not yet confirmed: re-emit the last propulsion PWM to keep
-         * the ESC busy until it responds. pid_active is suppressed so the
-         * integral does not accumulate before direction is known. */
+        /* Context not yet confirmed: re-emit the live PID propulsion PWM to keep
+         * the ESC busy until it responds. pid_active is kept alive so the
+         * integral can accumulate if the initial proportional jump is too weak
+         * to break the ESC deadband on small commands. */
         if (target == MODE2_DRIVE_TARGET_FORWARD)
         {
-            float hold_offset = gate->last_pwm_us -
-                (float)gate->config.center_pwm_us;
-            /* A neutral commit can overwrite last_pwm_us while the gate is
-             * still in its startup phase. Re-seed from the current signed PID
-             * request instead of turning the hold into another neutral frame. */
-            if (hold_offset <= 0.0f)
-            {
-                hold_offset = input->pid_raw_us;
-            }
-            Mode2DriveGateOutput_t out =
-                forward_output(gate,
-                               MODE2_DRIVE_REASON_STARTUP_HOLD,
-                               MODE2_DRIVE_PHASE_F_START,
-                               hold_offset);
-            out.pid_active = 0U;
-            return out;
+            return forward_output(gate,
+                                  MODE2_DRIVE_REASON_STARTUP_HOLD,
+                                  MODE2_DRIVE_PHASE_F_START,
+                                  input->pid_raw_us);
         }
+        else
         {
-            float hold_offset = gate->last_pwm_us -
-                (float)gate->config.center_pwm_us;
-            if (hold_offset >= 0.0f)
-            {
-                hold_offset = input->pid_raw_us;
-            }
-            Mode2DriveGateOutput_t out =
-                reverse_output(gate,
-                               MODE2_DRIVE_REASON_STARTUP_HOLD,
-                               gate->phase,
-                               hold_offset);
-            out.pid_active = 0U;
-            return out;
+            return reverse_output(gate,
+                                  MODE2_DRIVE_REASON_STARTUP_HOLD,
+                                  gate->phase,
+                                  input->pid_raw_us);
         }
     }
 
