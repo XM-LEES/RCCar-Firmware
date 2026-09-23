@@ -95,19 +95,6 @@ static int16_t clamp_float_to_i16(float value)
     return (int16_t)value;
 }
 
-static uint16_t clamp_float_to_u16(float value)
-{
-    if (value < 0.0f)
-    {
-        return 0U;
-    }
-    if (value > 65535.0f)
-    {
-        return 65535U;
-    }
-    return (uint16_t)value;
-}
-
 static void write_i16_be(uint8_t *buffer, int16_t value)
 {
     buffer[0] = (uint8_t)((uint16_t)value >> 8);
@@ -160,7 +147,7 @@ void RobotDataTransmitTask(void* param)
         uint32_t status_bits = 0U;
         float hall_speed_mps = 0.0f;
         uint8_t hall_speed_valid;
-        uint16_t battery_mv;
+        uint16_t esc_pwm_us = ESC_PWM_NEUTRAL_PULSE_US;
         uint8_t esc_speed_magnitude_valid = 0U;
         uint8_t esc_direction_known = 0U;
         uint32_t active_fault_sources = 0U;
@@ -183,7 +170,6 @@ void RobotDataTransmitTask(void* param)
         }
 
         update_power_state();
-        battery_mv = clamp_float_to_u16(g_app_runtime_state.voltage_v * 1000.0f);
         hall_snapshot = HallSpeed_GetState();
         hall_speed_valid = HallSpeed_GetSnapshotSpeedMps(&hall_snapshot, &hall_speed_mps);
         if (hall_snapshot.stationary_confirmed != 0U)
@@ -204,6 +190,7 @@ void RobotDataTransmitTask(void* param)
         if (ServoBasic_GetControlSnapshot(&control_snapshot) != 0U)
         {
             servo_diagnostics = control_snapshot.diagnostics;
+            esc_pwm_us = control_snapshot.state.esc_pulse_us;
             esc_speed_magnitude_valid = control_snapshot.esc_uplink_speed_valid;
             esc_direction_known = control_snapshot.esc_direction_known;
             speed_mps = control_snapshot.esc_uplink_speed_mps;
@@ -291,7 +278,7 @@ void RobotDataTransmitTask(void* param)
         write_i16_be(&basebuffer[7], clamp_float_to_i16(speed_mps * 1000.0f));
         write_i16_be(&basebuffer[9], clamp_float_to_i16(steering_angle_rad * 1000.0f));
         write_i16_be(&basebuffer[11], clamp_float_to_i16(yaw_rate_rad_s * 1000.0f));
-        write_u16_be(&basebuffer[13], battery_mv);
+        write_u16_be(&basebuffer[13], esc_pwm_us);
         write_u16_be(&basebuffer[15], (dt_ms > 65535U) ? 65535U : (uint16_t)dt_ms);
         write_u32_be(&basebuffer[17], status_bits);
         basebuffer[21] = TELEMETRY_PROTOCOL_ID;

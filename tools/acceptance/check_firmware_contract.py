@@ -182,14 +182,12 @@ def check_telemetry(root: Path) -> list[Check]:
         "write_i16_be(&basebuffer[7], clamp_float_to_i16(speed_mps * 1000.0f))",
         "write_i16_be(&basebuffer[9], clamp_float_to_i16(steering_angle_rad * 1000.0f))",
         "write_i16_be(&basebuffer[11], clamp_float_to_i16(yaw_rate_rad_s * 1000.0f))",
+        "write_u16_be(&basebuffer[13], esc_pwm_us)",
         "write_u16_be(&basebuffer[15], (dt_ms > 65535U) ? 65535U : (uint16_t)dt_ms)",
         "write_u32_be(&basebuffer[17], status_bits)",
         "basebuffer[23] = BaseFRAME_TAIL",
     ]
-    battery_slot_ok = (
-        "write_u16_be(&basebuffer[13], battery_mv)" in text
-        or "write_u16_be(&basebuffer[13], clamp_float_to_u16(g_app_runtime_state.voltage_v * 1000.0f))" in text
-    )
+    battery_slot_ok = "write_u16_be(&basebuffer[13], esc_pwm_us)" in text
     add(results, "telemetry_layout", all(needle in text for needle in layout_needles) and battery_slot_ok, "24-byte telemetry layout")
     add(results, "telemetry_esc_action_flags", all(needle in text for needle in [
         "#define TELEMETRY_FLAG_ESC_ACTION_SHIFT         6U",

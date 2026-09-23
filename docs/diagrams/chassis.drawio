@@ -190,7 +190,7 @@
         <mxCell id="hall_capture" value="&lt;b&gt;Hall 测速与诊断&lt;/b&gt;&lt;br&gt;B 通道脉冲周期测速&lt;br&gt;保留短脉冲过滤与历史诊断&lt;br&gt;不参与 ESC 主速度闭环" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="415" y="1090" width="325" height="135" />
         </mxCell>
-        <mxCell id="status" value="&lt;b&gt;状态回传&lt;/b&gt;&lt;br&gt;ESC 来源的速度 / 应用角&lt;br&gt;Hall 速度 / ADC 电池电压&lt;br&gt;RC、限幅、故障等原有标志" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">
+        <mxCell id="status" value="&lt;b&gt;状态回传&lt;/b&gt;&lt;br&gt;ESC 来源的速度 / 应用角&lt;br&gt;Hall 速度 / ESC PWM E&lt;br&gt;RC、限幅、故障等原有标志" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0f172a;fillColor=#faf5ff;strokeColor=#7e22ce;spacing=8;" vertex="1" parent="1">
           <mxGeometry as="geometry" x="815" y="1135" width="320" height="135" />
         </mxCell>
         <mxCell id="motor" value="&lt;b&gt;电机 / ESC遥测&lt;/b&gt;&lt;br&gt;FE32 rpm_raw 幅值" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#0f172a;fillColor=#fff7ed;strokeColor=#b45309;spacing=8;" vertex="1" parent="1">
