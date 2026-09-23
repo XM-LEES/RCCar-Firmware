@@ -2104,12 +2104,15 @@ static void servo_basic_feed_auto_pid(void)
     sample.tick_ms = s_esc_latest_raw_sample.received_tick_ms;
     sample.direction = (LongitudinalDirection_t)direction;
     sample.valid = (s_esc_feedback_available != 0U &&
-        (direction != 0 || s_esc_latest_raw_sample.rpm_raw == 0U)) ? 1U : 0U;
+        (direction != 0 ||
+         s_esc_latest_raw_sample.rpm_raw == 0U ||
+         s_esc_stop_confirmed != 0U)) ? 1U : 0U;
     if (sample.valid != 0U)
     {
-        sample.signed_speed_mps = (direction < 0) ?
-            -s_esc_motion_estimate.speed_magnitude_mps :
-             s_esc_motion_estimate.speed_magnitude_mps;
+        sample.signed_speed_mps = (s_esc_stop_confirmed != 0U) ? 0.0f :
+            ((direction < 0) ?
+             -s_esc_motion_estimate.speed_magnitude_mps :
+              s_esc_motion_estimate.speed_magnitude_mps);
     }
     (void)LongitudinalController_ObserveFeedback(&s_longitudinal_controller, &sample);
 }
