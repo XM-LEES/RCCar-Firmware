@@ -2201,8 +2201,8 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
     if (epoch != s_auto_delivery_epoch)
     {
         s_observation_diagnostics.delivery_gaps++;
-        servo_basic_invalidate_auto_history(now_ms);
-        s_auto_fault_pending = 1U;
+        /* A delivery boundary drops event evidence, but a still-fresh latest
+         * FE32 sample remains usable for the running PID/output session. */
         s_auto_delivery_epoch = epoch;
     }
     if (EscTelemetry_GetSnapshot(&latest) == 0U)
@@ -2231,8 +2231,6 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
         if (s_auto_delivery_epoch != item.delivery_epoch)
         {
             s_observation_diagnostics.delivery_gaps++;
-            servo_basic_invalidate_auto_history(now_ms);
-            s_auto_fault_pending = 1U;
             s_auto_delivery_epoch = item.delivery_epoch;
         }
         if (servo_basic_tick_delta_ms(now_ms, item.sample.received_tick_ms, &age_ms) == 0U ||
@@ -2240,8 +2238,6 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
             age_ms > s_esc_motion_config.telemetry_timeout_ms)
         {
             s_observation_diagnostics.samples_expired++;
-            servo_basic_invalidate_auto_history(now_ms);
-            s_auto_fault_pending = 1U;
             continue;
         }
         if (item.sample.sample_id == s_esc_last_observed_sample_id &&
@@ -2257,8 +2253,8 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
         servo_basic_update_cached_estimate(now_ms);
         if (s_esc_feedback_available == 0U)
         {
-            servo_basic_invalidate_auto_history(now_ms);
-            s_auto_fault_pending = 1U;
+            /* The estimator will revoke freshness at the configured timeout;
+             * one malformed event must not cancel an otherwise fresh session. */
         }
         else
         {
@@ -2279,8 +2275,6 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
          latest.receive_epoch != s_esc_last_observed_epoch) && EscTelemetry_PendingSamples() == 0U)
     {
         uint32_t age_ms;
-        servo_basic_invalidate_auto_history(now_ms);
-        s_auto_fault_pending = 1U;
         if (servo_basic_tick_delta_ms(now_ms, latest.sample.received_tick_ms, &age_ms) != 0U &&
             s_esc_motion_config.telemetry_timeout_ms != 0U &&
             age_ms <= s_esc_motion_config.telemetry_timeout_ms)
@@ -2303,8 +2297,6 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
     if (epoch != s_auto_delivery_epoch)
     {
         s_observation_diagnostics.delivery_gaps++;
-        servo_basic_invalidate_auto_history(now_ms);
-        s_auto_fault_pending = 1U;
         s_auto_delivery_epoch = epoch;
     }
     servo_basic_update_cached_estimate(now_ms);

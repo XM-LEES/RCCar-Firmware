@@ -1996,7 +1996,7 @@ static int test_zero_ki_does_not_create_hidden_integral_or_output(void)
     return 0;
 }
 
-static int test_delivery_gap_blocks_and_recovers_on_fresh_stop(void)
+static int test_delivery_gap_preserves_session_but_receive_boundary_resets(void)
 {
     servo_basic_observation_diagnostics_t before;
     servo_basic_observation_diagnostics_t after;
@@ -2016,7 +2016,7 @@ static int test_delivery_gap_blocks_and_recovers_on_fresh_stop(void)
     before = ServoBasic_GetObservationDiagnostics();
     mock_esc_delivery_boundary();
     run_control_at(1060U);
-    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
+    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
     after = ServoBasic_GetObservationDiagnostics();
     EXPECT_EQ_U32(after.delivery_gaps, before.delivery_gaps + 1U);
 
@@ -2024,7 +2024,7 @@ static int test_delivery_gap_blocks_and_recovers_on_fresh_stop(void)
     run_control_at(1080U);
     set_esc_sample(2U, 6U, 1100U, 0U, 1U);
     run_control_at(1100U);
-    EXPECT_TRUE(s_last_esc_pulse > APP_ORIN_ESC_CENTER_US);
+    EXPECT_EQ_U16(s_last_esc_pulse, APP_ORIN_ESC_CENTER_US);
 
     return 0;
 }
@@ -2998,7 +2998,7 @@ int main(void)
     {
         return 1;
     }
-    if (test_delivery_gap_blocks_and_recovers_on_fresh_stop() != 0)
+    if (test_delivery_gap_preserves_session_but_receive_boundary_resets() != 0)
     {
         return 1;
     }
