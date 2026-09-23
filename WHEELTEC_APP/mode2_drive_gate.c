@@ -1449,20 +1449,35 @@ static Mode2DriveGateOutput_t evaluate_unknown(Mode2DriveGate_t *gate,
          * integral does not accumulate before direction is known. */
         if (target == MODE2_DRIVE_TARGET_FORWARD)
         {
+            float hold_offset = gate->last_pwm_us -
+                (float)gate->config.center_pwm_us;
+            /* A neutral commit can overwrite last_pwm_us while the gate is
+             * still in its startup phase. Re-seed from the current signed PID
+             * request instead of turning the hold into another neutral frame. */
+            if (hold_offset <= 0.0f)
+            {
+                hold_offset = input->pid_raw_us;
+            }
             Mode2DriveGateOutput_t out =
                 forward_output(gate,
                                MODE2_DRIVE_REASON_STARTUP_HOLD,
                                MODE2_DRIVE_PHASE_F_START,
-                               gate->last_pwm_us - (float)gate->config.center_pwm_us);
+                               hold_offset);
             out.pid_active = 0U;
             return out;
         }
         {
+            float hold_offset = gate->last_pwm_us -
+                (float)gate->config.center_pwm_us;
+            if (hold_offset >= 0.0f)
+            {
+                hold_offset = input->pid_raw_us;
+            }
             Mode2DriveGateOutput_t out =
                 reverse_output(gate,
                                MODE2_DRIVE_REASON_STARTUP_HOLD,
                                gate->phase,
-                               gate->last_pwm_us - (float)gate->config.center_pwm_us);
+                               hold_offset);
             out.pid_active = 0U;
             return out;
         }

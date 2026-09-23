@@ -2215,6 +2215,15 @@ static void servo_basic_update_esc_feedback(uint32_t now_ms)
         return;
     }
     s_esc_rx_invalidated = 0U;
+    /* A receive epoch marks a real receiver/parser boundary. A delivery
+     * boundary alone may be tolerated, but samples from a new receive epoch
+     * must not extend the old AUTO direction/startup session. */
+    if (s_esc_receive_epoch != 0U &&
+        latest.receive_epoch != s_esc_receive_epoch)
+    {
+        servo_basic_invalidate_auto_history(now_ms);
+        s_auto_fault_pending = 1U;
+    }
     s_esc_receive_epoch = latest.receive_epoch;
     while (remaining-- != 0U && EscTelemetry_PopSample(&item) != 0U)
     {
