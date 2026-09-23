@@ -306,6 +306,15 @@ static int test_startup_forward_and_drive_confirmation(void)
     EXPECT_TRUE(output.purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST);
     EXPECT_TRUE(output.final_pwm_us > TEST_CENTER_PWM_US);
 
+    /* The ESC can still report NEUTRAL for several frames while the motor
+     * crosses its electrical dead zone. The just-issued propulsion request
+     * must remain applied until fresh DRIVE feedback arrives. */
+    output = eval_commit(&gate, input_cmd(1.0f, 120.0f, 220U), 220U);
+    EXPECT_TRUE(output.action == MODE2_DRIVE_ACTION_FORWARD);
+    EXPECT_TRUE(output.phase == MODE2_DRIVE_PHASE_F_START);
+    EXPECT_TRUE(output.purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST);
+    EXPECT_TRUE(output.final_pwm_us > TEST_CENTER_PWM_US);
+
     observe_value(&gate,
         motion_obs(10U, 220U, 0.30f, MODE2_DRIVE_TARGET_FORWARD, 0.0f,
                    output.session_id,

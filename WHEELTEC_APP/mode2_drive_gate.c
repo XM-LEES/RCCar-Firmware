@@ -1415,6 +1415,31 @@ static Mode2DriveGateOutput_t evaluate_unknown(Mode2DriveGate_t *gate,
                               MODE2_DRIVE_PHASE_NEUTRAL_WAIT);
     }
 
+    /*
+     * The first propulsion command may be reported by the ESC as NEUTRAL
+     * until the motor crosses its electrical dead zone. Keep the just-issued
+     * request alive while feedback is fresh; otherwise the gate emits one
+     * propulsion frame, immediately returns to 1500 us, and can never reach
+     * DRIVE. A DRIVE sample still has to confirm the direction before the
+     * permission becomes F_READY/R_READY.
+     */
+    if ((gate->phase == MODE2_DRIVE_PHASE_F_START ||
+         gate->phase == MODE2_DRIVE_PHASE_R_QUERY ||
+         gate->phase == MODE2_DRIVE_PHASE_R_START) &&
+        startup_hold_context_matches(gate, target, now_ms) == 0U &&
+        gate->has_output_context != 0U &&
+        ((target == MODE2_DRIVE_TARGET_FORWARD &&
+          gate->last_purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_FORWARD_REQUEST &&
+          input->pid_raw_us > 0.0f) ||
+         (target == MODE2_DRIVE_TARGET_REVERSE &&
+          gate->last_purpose == ESC_TELEMETRY_OUTPUT_PURPOSE_REVERSE_REQUEST &&
+          input->pid_raw_us < 0.0f)) &&
+        elapsed_ms(now_ms, gate->last_commit_ms) <=
+            gate->config.feedback_timeout_ms)
+    {
+        return startup_hold_output(gate);
+    }
+
     if (target == MODE2_DRIVE_TARGET_FORWARD &&
         gate->phase == MODE2_DRIVE_PHASE_F_RECOVER &&
         gate->latest_observation.direction_known != 0U &&

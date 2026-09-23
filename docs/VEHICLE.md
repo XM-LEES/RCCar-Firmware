@@ -30,7 +30,7 @@
 | 转向角—脉宽 | −0.349 / 0 / +0.349 rad ↔ 1105 / 1500 / 1895 µs | 正左转对应 PWM 增大 |
 | 速度目标处理 | 无缩放、无软件死区、无速度上限 | 精确零表示停车；非零目标直接进入PID与模式二门控 |
 | 转角变化率 | 0.900 rad/s | `APP_ORIN_STEERING_RATE_LIMIT_MRADPS=900` |
-| PID Kp / Ki / Kd | 100.0 / 0.0 / 0.0 | Kp：µs/(m/s)；Ki：µs/[(m/s)·s]；Kd：µs/(m/s²) |
+| PID Kp / Ki / Kd | 120.0 / 20.0 / 0.0 | Kp：µs/(m/s)；Ki：µs/[(m/s)·s]；Kd：µs/(m/s²)；工程初值，需实车标定 |
 | PID微分滤波 / 积分跟踪时间 | 80 / 100 ms | `APP_SPEED_PID_DERIVATIVE_TAU_MS` / `APP_SPEED_PID_TRACKING_TAU_MS` |
 | AUTO最小刹车偏移 | 50 µs | `APP_AUTO_BRAKE_MIN_US`；需实车标定，不代表已测制动力 |
 | 前进刹车进入误差 | max(0.20 m/s, 0.10×目标) | `APP_AUTO_BRAKE_ENTER_ERROR_MPS` / `APP_AUTO_BRAKE_ENTER_RATIO` |
